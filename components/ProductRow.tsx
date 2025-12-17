@@ -127,83 +127,94 @@ const ProductRow = ({
       typeof product.name === "string"
   );
 
+  // Debug logging for ProductRow
+  console.log(`🛍️ ProductRow - ${categoryName}:`, {
+    productsCount: products.length,
+    visibleProductsCount: visibleProducts.length,
+    loading,
+    isLoaded,
+    categoryId
+  });
+
   const handleSeeAllClick = () => {
-    // Store subcategory products and info for caching
-    sessionStorage.setItem(
-      `subcategory_${categoryId}_products`,
-      JSON.stringify(products)
-    );
-    sessionStorage.setItem(`subcategory_${categoryId}_name`, categoryName);
-    sessionStorage.setItem(`subcategory_${categoryId}_id`, categoryId);
-
-    // Store parent category info for back navigation
-    // We need to get the parent category ID from the current context
-    // This will be set by the parent component that knows the parent category
-    const parentCategoryId = (window as any).currentParentCategoryId;
-    if (parentCategoryId) {
+    if (typeof window !== 'undefined') {
+      // Store subcategory products and info for caching
       sessionStorage.setItem(
-        `subcategory_${categoryId}_parent_id`,
-        parentCategoryId.toString()
+        `subcategory_${categoryId}_products`,
+        JSON.stringify(products)
       );
-    }
+      sessionStorage.setItem(`subcategory_${categoryId}_name`, categoryName);
+      sessionStorage.setItem(`subcategory_${categoryId}_id`, categoryId);
 
-    // For "all" category, redirect to a special route or handle differently
-    if (categoryId === "all") {
-      // You might want to create a special route for "all products" or handle this differently
-      console.log("See all products clicked - all products already displayed");
-      return;
-    }
+      // Store parent category info for back navigation
+      // We need to get the parent category ID from the current context
+      // This will be set by the parent component that knows the parent category
+      const parentCategoryId = (window as any).currentParentCategoryId;
+      if (parentCategoryId) {
+        sessionStorage.setItem(
+          `subcategory_${categoryId}_parent_id`,
+          parentCategoryId.toString()
+        );
+      }
 
-    // Check if this is a parent category from "All" view
-    const isParentCategoryFromAll = (window as any).isParentCategoryFromAll;
-    if (isParentCategoryFromAll) {
-      // Store source tracking for back button behavior
-      sessionStorage.setItem('category_source', 'all');
-      // Navigate to parent category page
-      router.push(`/categories/${categoryId}`);
-    } else {
-      // Regular subcategory navigation
-      router.push(`/categories/${categoryId}`);
+      // For "all" category, redirect to a special route or handle differently
+      if (categoryId === "all") {
+        // You might want to create a special route for "all products" or handle this differently
+        console.log("See all products clicked - all products already displayed");
+        return;
+      }
+
+      // Check if this is a parent category from "All" view
+      const isParentCategoryFromAll = (window as any).isParentCategoryFromAll;
+      if (isParentCategoryFromAll) {
+        // Store source tracking for back button behavior
+        sessionStorage.setItem('category_source', 'all');
+        // Navigate to parent category page
+        router.push(`/categories/${categoryId}`);
+      } else {
+        // Regular subcategory navigation
+        router.push(`/categories/${categoryId}`);
+      }
     }
   };
 
   return (
-    <div ref={rowRef} className="mb-8">
+    <div ref={rowRef} className="mb-4 sm:mb-6 md:mb-8">
       {/* Header with category name and See All button */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold text-gray-600">{categoryName}</h2>
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
+        <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl font-semibold text-gray-600">{categoryName}</h2>
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
           <button
             onClick={handleSeeAllClick}
-            className="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors"
+            className="text-blue-600 hover:text-blue-800 font-medium text-[10px] sm:text-xs md:text-sm transition-colors"
           >
             See All
           </button>
-          <div className="flex gap-1">
+          <div className="flex gap-0.5 sm:gap-1">
             <button
               onClick={scrollLeft}
               disabled={!canScrollLeft}
-              className={`p-2 rounded-full transition-colors ${
+              className={`p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
                 canScrollLeft
                   ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
                   : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }`}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
             <button
               onClick={scrollRight}
               disabled={(!canScrollRight && !hasMore) || loadingMore}
-              className={`p-2 rounded-full transition-colors ${
+              className={`p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
                 (canScrollRight || hasMore) && !loadingMore
                   ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
                   : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }`}
             >
               {loadingMore ? (
-                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+                <div className="w-3 h-3 sm:w-3 sm:h-3 md:w-4 md:h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <ChevronRight size={16} />
+                <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
               )}
             </button>
           </div>
@@ -215,7 +226,7 @@ const ProductRow = ({
         <div
           ref={scrollContainerRef}
           onScroll={checkScrollButtons}
-          className="flex gap-3 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
+          className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -226,7 +237,7 @@ const ProductRow = ({
               Array.from({ length: 6 }).map((_, index) => (
                 <div
                   key={`skeleton-${index}`}
-                  className="flex-shrink-0 w-[180px] sm:w-[200px]"
+                  className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
                 >
                   <ProductCardSkeleton />
                 </div>
@@ -236,7 +247,7 @@ const ProductRow = ({
               Array.from({ length: 6 }).map((_, index) => (
                 <div
                   key={`skeleton-unloaded-${index}`}
-                  className="flex-shrink-0 w-[180px] sm:w-[200px]"
+                  className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
                 >
                   <ProductCardSkeleton />
                 </div>
@@ -248,7 +259,7 @@ const ProductRow = ({
                   initial={{ opacity: 0.2 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex-shrink-0 w-[180px] sm:w-[200px]"
+                  className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
                 >
                   <ProductCard product={product} />
                 </motion.div>

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = "https://celeste-api-846811285865.us-central1.run.app";
+import { API_BASE_URL } from '@/lib/api';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(
   request: NextRequest,
@@ -8,11 +10,31 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const response = await fetch(`${API_BASE_URL}/products/${id}`, {
+    const { searchParams } = new URL(request.url);
+    
+    // Forward all query parameters to the backend
+    const params_ = new URLSearchParams();
+    for (const [key, value] of searchParams.entries()) {
+      params_.append(key, value);
+    }
+    
+    // Get authentication headers from the request
+    const authHeader = request.headers.get('authorization');
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add authorization header if present
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+    
+    const url = `${API_BASE_URL}/products/${id}${params_.toString() ? '?' + params_.toString() : ''}`;
+    console.log('🔍 Product API - Requesting URL:', url);
+    
+    const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
+      headers,
     });
 
     if (!response.ok) {
@@ -20,6 +42,7 @@ export async function GET(
     }
 
     const data = await response.json();
+    console.log('🔍 Product API - Response received, inventory:', data.data?.inventory ? 'available' : 'null');
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching product:', error);

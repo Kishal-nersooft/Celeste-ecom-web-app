@@ -117,38 +117,38 @@ const Categories = ({ onSelectCategory }: Props) => {
 
 
   return (
-    <div className="py-4 px-4">
+    <div className="py-2 sm:py-3 md:py-4 px-4">
       <div className="relative">
         {/* Left scroll button */}
         <button
           onClick={scrollLeft}
           disabled={!canScrollLeft}
-          className={`absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full transition-colors ${
+          className={`absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
             canScrollLeft
               ? "bg-black hover:bg-gray-800 text-white shadow-lg"
               : "bg-gray-100 text-gray-400 cursor-not-allowed"
           }`}
         >
-          <ChevronLeft size={16} />
+          <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
         </button>
 
         {/* Right scroll button */}
         <button
           onClick={scrollRight}
           disabled={!canScrollRight}
-          className={`absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 rounded-full transition-colors ${
+          className={`absolute right-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
             canScrollRight
               ? "bg-black hover:bg-gray-800 text-white shadow-lg"
               : "bg-gray-100 text-gray-400 cursor-not-allowed"
           }`}
         >
-          <ChevronRight size={16} />
+          <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
         </button>
 
         {/* Categories container */}
         <div 
           ref={scrollContainerRef}
-          className="flex overflow-x-hidden space-x-4 pb-2 px-8"
+          className="flex overflow-x-auto space-x-2 sm:space-x-3 md:space-x-4 pb-2 px-6 sm:px-7 md:px-8 scrollbar-hide"
           onScroll={checkScrollButtons}
         >
           {displayCategories.map((category) => {
@@ -161,7 +161,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                 {/* Main Category */}
                 <div
                   className={cn(
-                    "flex flex-col items-center cursor-pointer min-w-[80px]",
+                    "flex flex-col items-center cursor-pointer min-w-[60px] sm:min-w-[70px] md:min-w-[80px]",
                     isActive
                       ? "text-black"
                       : "text-gray-500 hover:text-black"
@@ -170,7 +170,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                 >
                   <div
                     className={cn(
-                      "w-16 h-16 rounded-full flex items-center justify-center p-2 transition-colors duration-200 relative",
+                      "w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full flex items-center justify-center p-1 sm:p-1.5 md:p-2 transition-colors duration-200 relative",
                       isActive
                         ? "bg-black"
                         : "bg-gray-100 group-hover:bg-gray-200"
@@ -180,22 +180,24 @@ const Categories = ({ onSelectCategory }: Props) => {
                       <Image
                         src={category.image_url as string}
                         alt={category.name}
-                        width={40}
-                        height={40}
+                        width={30}
+                        height={30}
+                        className="sm:w-9 sm:h-9 md:w-10 md:h-10"
                         style={{ objectFit: "contain" }}
                       />
                     ) : isAllCategory ? (
                       <Image
                         src="/all_category_icon.png"
                         alt={category.name}
-                        width={40}
-                        height={40}
+                        width={30}
+                        height={30}
+                        className="sm:w-9 sm:h-9 md:w-10 md:h-10"
                         style={{ objectFit: "contain" }}
                       />
                     ) : isDealsCategory ? (
                       <span
                         className={cn(
-                          "text-lg",
+                          "text-sm sm:text-base md:text-lg",
                           isActive
                             ? "text-white"
                             : "text-gray-700"
@@ -206,7 +208,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                     ) : (
                       <span
                         className={cn(
-                          "text-xs text-center font-medium",
+                          "text-[8px] sm:text-[10px] md:text-xs text-center font-medium",
                           isActive
                             ? "text-white"
                             : "text-gray-700"
@@ -217,7 +219,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                     )}
                   </div>
                   <p className={cn(
-                    "mt-2 text-xs font-medium text-center line-clamp-1",
+                    "mt-1 sm:mt-1.5 md:mt-2 text-[10px] sm:text-[11px] md:text-xs font-medium text-center line-clamp-1",
                     isActive ? "text-black" : "text-gray-500"
                   )}>
                     {category.name}

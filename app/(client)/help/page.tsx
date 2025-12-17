@@ -10,9 +10,9 @@ import { Phone, Mail, MapPin, User, MessageSquare } from "lucide-react";
 import toast from "react-hot-toast";
 
 // Import the images
-import celesteLogoIcon from "@/images/CelesteLogoiconwhitecopy2 copy.png";
+import celesteLogoIcon from "@/images/CelesteLogoiconwhitecopy2.png";
 import celesteLogoWhite from "@/images/Celeste-Logo-white2.png";
-import groceryBagImage from "@/images/Group 400.png";
+import groceryBagImage from "@/images/Group400.png";
 
 export default function HelpPage() {
   const [formData, setFormData] = useState({

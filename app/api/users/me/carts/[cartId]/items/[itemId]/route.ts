@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = "https://celeste-api-846811285865.us-central1.run.app";
+import { API_BASE_URL } from '@/lib/api';
+
+export const dynamic = 'force-dynamic';
 
 export async function PUT(
   request: NextRequest,
@@ -65,7 +67,7 @@ export async function DELETE(
       );
     }
 
-    console.log(`🌐 DELETE /users/me/carts/${cartId}/items/${itemId} - Connecting to real backend API...`);
+    console.log(`🌐 DELETE /api/users/me/carts/${cartId}/items/${itemId} - Connecting to real backend API...`);
 
     const response = await fetch(`${API_BASE_URL}/users/me/carts/${cartId}/items/${itemId}`, {
       method: 'DELETE',

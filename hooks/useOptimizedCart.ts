@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef } from 'react';
-import { useCartStore } from '@/store';
+import useCartStore from '@/store';
 import { Product } from '@/store';
 import { invalidateProduct } from '@/lib/cache-invalidation';
 
@@ -25,7 +25,7 @@ export const useOptimizedCart = () => {
     await addItem(product);
 
     // Invalidate cache for this product (smart invalidation)
-    invalidateProduct(product.id, product.ecommerce_category_id, product.store_id);
+    invalidateProduct(product.id, product.ecommerce_category_id, undefined);
 
     // Debounce any subsequent updates
     updateTimeoutRef.current = setTimeout(() => {

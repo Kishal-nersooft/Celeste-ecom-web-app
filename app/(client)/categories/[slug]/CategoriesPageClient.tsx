@@ -10,6 +10,7 @@ import { Product } from "../../../../store";
 import { Category } from "@/components/Categories";
 import { getSubcategories, getProductsBySubcategoryWithPricing, getParentCategoryFromSubcategory, getProductsByParentCategoryWithPagination, getParentCategories } from "@/lib/api";
 import { ArrowLeft } from "lucide-react";
+import Loader from "@/components/Loader";
 
 interface Props {
   categoryId: string;
@@ -20,7 +21,8 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   const router = useRouter();
   const [products, setProducts] = useState<Product[]>(fallbackProducts);
   const [displayCategoryName, setDisplayCategoryName] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
   const [subcategories, setSubcategories] = useState<Category[]>([]);
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<number | null>(null);
   const [parentCategoryName, setParentCategoryName] = useState<string>("");
@@ -75,12 +77,12 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
         // First, try to determine if this is a parent category or subcategory
         // Get all parent categories to check if the ID matches
         const parentCategories = await getParentCategories();
-        const isParent = parentCategories.some(cat => cat.id === parseInt(categoryId));
+        const isParent = parentCategories.some((cat: any) => cat.id === parseInt(categoryId));
         
         if (isParent) {
           // This is a parent category - show all products from all subcategories
           setIsParentCategory(true);
-          setDisplayCategoryName(parentCategories.find(cat => cat.id === parseInt(categoryId))?.name || "");
+          setDisplayCategoryName(parentCategories.find((cat: any) => cat.id === parseInt(categoryId))?.name || "");
           
           // Load initial products (18 products)
           const result = await getProductsByParentCategoryWithPagination(
@@ -154,7 +156,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
       } catch (error) {
         console.error("Error fetching category data:", error);
       } finally {
-        setIsLoading(false);
+        setIsLoadingProducts(false);
       }
     };
 
@@ -163,6 +165,9 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
 
   const handleSubcategorySelect = async (subcategoryId: number | null) => {
     if (!subcategoryId) return;
+    
+    // Set loading state for products
+    setIsLoadingProducts(true);
     
     // Preserve parent category ID for the new subcategory
     const parentCategoryId = sessionStorage.getItem(`subcategory_${categoryId}_parent_id`);
@@ -200,29 +205,20 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   };
 
   if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-top bg-gray-100 min-h-screen">
-        <Container className="p-8 bg-white rounded-lg shadow-md mt-3">
-          <div className="text-center py-10">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-            <p className="mt-4 text-gray-600">Loading products...</p>
-          </div>
-        </Container>
-      </div>
-    );
+    return <Loader />;
   }
 
   return (
     <div className="bg-gray-100 min-h-screen">
-      <Container className="py-4">
+      <Container className="py-3 sm:py-4">
         {/* Header with Go Back Button */}
-        <div className="flex items-center mb-4">
+        <div className="flex items-center mb-3 sm:mb-4">
           <button
             onClick={handleGoBack}
-            className="flex items-center text-gray-600 hover:text-gray-800 transition-colors mr-4"
+            className="flex items-center text-gray-600 hover:text-gray-800 transition-colors mr-3 sm:mr-4"
           >
-            <ArrowLeft className="w-5 h-5 mr-2" />
-            <span className="font-medium">
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
+            <span className="font-medium text-sm sm:text-base truncate">
               {isParentCategory ? displayCategoryName : parentCategoryName}
             </span>
           </button>
@@ -230,12 +226,12 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
 
         {isParentCategory ? (
           /* Parent Category Layout - Full Width Grid */
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="mb-6">
-              <h1 className="text-2xl font-semibold text-gray-800">
+          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
+            <div className="mb-3 sm:mb-4 md:mb-6">
+              <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800">
                 {displayCategoryName} - All Products
               </h1>
-              <p className="text-gray-600 mt-1">
+              <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">
                 {totalProducts > 0 ? `${products.length} of ${totalProducts}` : products.length} {products.length === 1 ? 'product' : 'products'} found
               </p>
             </div>
@@ -244,14 +240,24 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
             <div 
               ref={scrollContainerRef}
               onScroll={handleScroll}
-              className="overflow-y-auto max-h-[70vh] pr-2"
+              className="overflow-y-auto max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] pr-1 sm:pr-2"
             >
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                {products.map((product) => (
-                  <div key={product.id} className="w-full">
-                    <ProductCard product={product} />
-                  </div>
-                ))}
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
+                {isLoadingProducts ? (
+                  // Show skeleton cards while loading
+                  Array.from({ length: 12 }).map((_, index) => (
+                    <div key={`skeleton-${index}`} className="w-full">
+                      <ProductCardSkeleton />
+                    </div>
+                  ))
+                ) : (
+                  // Show actual products when loaded
+                  products.map((product) => (
+                    <div key={product.id} className="w-full">
+                      <ProductCard product={product} />
+                    </div>
+                  ))
+                )}
                 
                 {/* Loading More Skeleton */}
                 {loadingMore && Array.from({ length: 6 }).map((_, index) => (
@@ -261,14 +267,9 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
                 ))}
               </div>
               
-              {products.length === 0 && !isLoading && (
-                <div className="text-center py-10 text-gray-500">
-                  No products found for this category.
-                </div>
-              )}
               
               {!hasMore && products.length > 0 && (
-                <div className="text-center py-6 text-gray-500">
+                <div className="text-center py-4 sm:py-5 md:py-6 text-gray-500 text-xs sm:text-sm">
                   You've reached the end of the products.
                 </div>
               )}
@@ -276,7 +277,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
           </div>
         ) : (
           /* Subcategory Layout - With Sidebar */
-          <div className="flex bg-white rounded-lg shadow-md overflow-hidden" style={{ height: '650px' }}>
+          <div className="flex bg-white rounded-lg shadow-md overflow-hidden" style={{ height: 'calc(100vh - 200px)', minHeight: '500px', maxHeight: '650px' }}>
             {/* Left Sidebar - Subcategory Selector */}
             <SubcategorySelector
               subcategories={subcategories}
@@ -287,33 +288,38 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
             />
 
             {/* Right Side - Products Grid */}
-            <div className="flex-1 p-6 flex flex-col">
-              <div className="mb-4">
-                <h1 className="text-2xl font-semibold text-gray-800">
+            <div className="flex-1 p-3 sm:p-4 md:p-6 flex flex-col min-h-0 overflow-hidden">
+              <div className="mb-3 sm:mb-4 flex-shrink-0">
+                <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800">
                   {selectedSubcategoryId 
                     ? subcategories.find(s => s.id === selectedSubcategoryId)?.name || "Products"
                     : displayCategoryName || "All Products"
                   }
                 </h1>
-                <p className="text-gray-600 mt-1">
+                <p className="text-xs sm:text-sm text-gray-600 mt-1">
                   {products.length} {products.length === 1 ? 'product' : 'products'} found
                 </p>
               </div>
               
-              {/* Scrollable Products Container - Shows 2 rows of 5 products */}
-              <div className="flex-1 overflow-y-auto pr-2 min-h-0">
-                <div className="grid grid-cols-5 gap-3">
-                  {products.map((product) => (
-                    <div key={product.id} className="w-full">
-                      <ProductCard product={product} />
-                    </div>
-                  ))}
+              {/* Scrollable Products Container - 2 columns on mobile */}
+              <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 min-h-0">
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
+                  {isLoadingProducts ? (
+                    // Show skeleton cards while loading
+                    Array.from({ length: 10 }).map((_, index) => (
+                      <div key={`skeleton-${index}`} className="w-full">
+                        <ProductCardSkeleton />
+                      </div>
+                    ))
+                  ) : (
+                    // Show actual products when loaded
+                    products.map((product) => (
+                      <div key={product.id} className="w-full">
+                        <ProductCard product={product} />
+                      </div>
+                    ))
+                  )}
                 </div>
-                {products.length === 0 && (
-                  <div className="text-center py-10 text-gray-500">
-                    No products found for this category.
-                  </div>
-                )}
               </div>
             </div>
           </div>

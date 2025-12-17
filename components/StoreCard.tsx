@@ -7,7 +7,7 @@ import { useLocation } from '@/contexts/LocationContext';
 import { Store } from '@/types/store';
 import Image from 'next/image';
 import storeImage from '@/images/store-image.jpeg';
-import celesteLogo from '@/images/CelesteLogoiconwhitecopy2 copy.png';
+import celesteLogo from '@/images/CelesteLogoiconwhitecopy2.png';
 
 interface StoreCardProps {
   store: Store;

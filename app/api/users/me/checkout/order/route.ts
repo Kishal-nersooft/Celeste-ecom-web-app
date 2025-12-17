@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = "https://celeste-api-846811285865.us-central1.run.app";
+import { API_BASE_URL } from '@/lib/api';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
       order_id: `ORD-${Date.now()}`,
       total_amount: 0,
       items: [],
-      location: body.location || { mode: 'delivery', address_id: 1 },
+      location: { mode: 'delivery', address_id: 1 },
       status: 'pending',
       created_at: new Date().toISOString(),
       estimated_delivery: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()

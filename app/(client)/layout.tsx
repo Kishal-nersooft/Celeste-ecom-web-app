@@ -2,15 +2,12 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "../globals.css";
 import { Poppins } from "next/font/google";
-import { draftMode } from "next/headers";
-import DisableDraftMode from "@/components/DisableDraftMode";
 import { Header } from "@/components/Header";
 import Footer from "@/components/Footer";
 import { Toaster } from "react-hot-toast";
 import { FirebaseAuthProvider } from "@/components/FirebaseAuthProvider";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { CategoryProvider } from "@/contexts/CategoryContext";
-import CacheManager from "@/components/CacheManager";
 
 const poppins = localFont({
   src: "../fonts/Poppins.woff2",
@@ -37,14 +34,11 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${poppins.variable} antialiased`}>
-        {(await draftMode()).isEnabled && (
-          <DisableDraftMode />
-        )}
         <FirebaseAuthProvider>
           <LocationProvider>
             <CategoryProvider>
               <Header />
-              <div className="main-content pt-20">{children}</div>
+              <div className="main-content pt-36 lg:pt-20">{children}</div>
               <Footer />
               <Toaster
                 position="bottom-right"
@@ -55,10 +49,6 @@ export default async function RootLayout({
                   },
                 }}
               />
-              {/* Cache Manager for debugging - only show in development */}
-              {process.env.NODE_ENV === 'development' && (
-                <CacheManager showStats={true} showControls={true} />
-              )}
             </CategoryProvider>
           </LocationProvider>
         </FirebaseAuthProvider>

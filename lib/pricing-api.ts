@@ -1,5 +1,5 @@
 // Individual product pricing API functions
-const API_BASE_URL = "https://celeste-api-846811285865.us-central1.run.app";
+import { API_BASE_URL } from './api';
 
 // Function to get individual product pricing (DISABLED - causes too many requests)
 // This function is now disabled to prevent excessive API calls

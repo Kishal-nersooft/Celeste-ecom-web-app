@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from "react";
 import ProductGrid from "./ProductGrid";
 import ProductRow from "./ProductRow";
+import ProductCardSkeleton from "./ProductCardSkeleton";
 import Categories, { Category } from "./Categories";
 import { Product } from "../store";
 import DiscountBanner from "./DiscountBanner";
@@ -13,6 +14,8 @@ import {
 } from "../lib/api";
 import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
 import { useCategory } from "../contexts/CategoryContext";
+import { useLocation } from "../contexts/LocationContext";
+import Loader from "./Loader";
 
 interface Props {
   products: Product[];
@@ -38,6 +41,9 @@ const ProductList = ({
     setSelectedCategory,
     setLastVisitedCategory,
   } = useCategory();
+
+  // Use location context for inventory data
+  const { defaultAddress, isLocationLoading, isLocationReady, deliveryType } = useLocation();
 
   // Filter out invalid products to prevent errors
   const validProducts = products.filter(
@@ -74,6 +80,9 @@ const ProductList = ({
   };
 
   // Use paginated products hook for efficient lazy loading
+  // Only pass location (lat/lng) when in delivery mode, not for pickup
+  const shouldUseLocation = deliveryType === 'delivery' && !storeId;
+  
   const {
     products: paginatedProducts,
     subcategories,
@@ -96,21 +105,38 @@ const ProductList = ({
     storeId,
     categories,
     pageSize: 60, // Increased page size to show more products per category
+    latitude: shouldUseLocation ? defaultAddress?.latitude : undefined,
+    longitude: shouldUseLocation ? defaultAddress?.longitude : undefined,
   });
 
   // Clean console logs - only show once when data changes
-  if (
-    validProducts.length > 0 &&
-    validProducts.length !== (window as any).lastProductCount
-  ) {
-    console.log(
-      "📦 ProductList - Products:",
-      validProducts.length,
-      "Categories:",
-      categories.length
-    );
-    (window as any).lastProductCount = validProducts.length;
-  }
+  React.useEffect(() => {
+    if (
+      validProducts.length > 0 &&
+      typeof window !== 'undefined' &&
+      validProducts.length !== (window as any).lastProductCount
+    ) {
+      console.log(
+        "📦 ProductList - Products:",
+        validProducts.length,
+        "Categories:",
+        categories.length
+      );
+      (window as any).lastProductCount = validProducts.length;
+    }
+  }, [validProducts.length, categories.length]);
+
+  // Debug logging for All and Deals categories
+  console.log("📦 ProductList - Current state:", {
+    selectedCategory,
+    isDeals,
+    validProductsCount: validProducts.length,
+    parentCategoryNamesCount: Object.keys(parentCategoryNames).length,
+    parentProductsCount: Object.keys(parentProducts).length,
+    loading,
+    parentCategoryNames,
+    parentProductsKeys: Object.keys(parentProducts)
+  });
 
   return (
     <div>
@@ -133,6 +159,7 @@ const ProductList = ({
             loadingMore={loadingMore}
             onLoadMore={loadMore}
             hasMore={hasMore}
+            isLoaded={!loading && paginatedProducts.length > 0}
           />
         </div>
       ) : selectedCategory ? (
@@ -141,7 +168,9 @@ const ProductList = ({
           {subcategories.length > 0 ? (
             subcategories.map((subcategory, index) => {
               // Set parent category ID for back navigation
-              (window as any).currentParentCategoryId = selectedCategory;
+              if (typeof window !== 'undefined') {
+                (window as any).currentParentCategoryId = selectedCategory;
+              }
               const subcategoryProductsList = subcategoryProducts[subcategory.id] || [];
               const isLoaded = loadedSubcategories[subcategory.id] || false;
               const isLoading = loadingSubcategories[subcategory.id] || false;
@@ -159,7 +188,7 @@ const ProductList = ({
                     preloadNextSubcategories(index, subcategories);
                   }}
                   hasMore={false}
-                  isLoaded={isLoaded}
+                  isLoaded={isLoaded && subcategoryProductsList.length > 0}
                   onScrollIntoView={() => {
                     if (!isLoaded && !isLoading) {
                       loadSubcategoryProducts(subcategory.id);
@@ -169,25 +198,56 @@ const ProductList = ({
                 />
               );
             })
-          ) : (
-            <div className="text-center py-10 text-gray-500">
-              {loading
-                ? "Loading subcategories..."
-                : "No subcategories found for this category."}
-            </div>
-          )}
+          ) : loading ? (
+            <Loader />
+          ) : null}
         </div>
       ) : (
         // Show all products grouped by parent categories when "All" is selected
         <div>
-          {Object.keys(parentCategoryNames).length > 0 ? (
+          {loading && Object.keys(parentCategoryNames).length === 0 ? (
+            // Show skeleton cards for parent categories during initial loading
+            categories
+              .filter(cat => !cat.parent_category_id)
+              .slice(0, 5) // Show skeleton for first 5 parent categories
+              .map((parentCategory) => (
+                <div key={`skeleton-${parentCategory.id}`} className="mb-8">
+                  {/* Category title */}
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-xl font-semibold text-gray-800">
+                      {parentCategory.name}
+                    </h3>
+                  </div>
+                  
+                  {/* Skeleton cards row */}
+                  <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-4">
+                    {Array.from({ length: 6 }).map((_, index) => (
+                      <div
+                        key={`skeleton-${parentCategory.id}-${index}`}
+                        className="flex-shrink-0 w-[180px] sm:w-[200px]"
+                      >
+                        <ProductCardSkeleton />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+          ) : Object.keys(parentCategoryNames).length > 0 ? (
             Object.keys(parentCategoryNames).map((parentId) => {
               const parentCategoryName =
                 parentCategoryNames[parseInt(parentId)] || "Unknown Category";
               const categoryProducts = parentProducts[parseInt(parentId)] || [];
 
+              console.log(`📦 ProductList - Rendering category ${parentCategoryName}:`, {
+                parentId,
+                categoryProductsCount: categoryProducts.length,
+                loading
+              });
+
               // Set flag to indicate this is a parent category from "All" view
-              (window as any).isParentCategoryFromAll = true;
+              if (typeof window !== 'undefined') {
+                (window as any).isParentCategoryFromAll = true;
+              }
 
               return (
                 <ProductRow
@@ -199,18 +259,19 @@ const ProductList = ({
                   loadingMore={loadingMore}
                   onLoadMore={loadMore}
                   hasMore={hasMore}
+                  isLoaded={!loading && categoryProducts.length > 0}
                 />
               );
             })
-          ) : (
-            <div className="text-center py-10 text-gray-500">
-              {loading
-                ? "Loading all products..."
-                : "No products available at the moment."}
-            </div>
-          )}
+          ) : null}
         </div>
       )}
+      
+      <style jsx>{`
+        .scrollbar-hide::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
     </div>
   );
 };

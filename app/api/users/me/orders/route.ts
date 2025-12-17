@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = "https://celeste-api-846811285865.us-central1.run.app";
+import { API_BASE_URL } from '@/lib/api';
+
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,8 +17,8 @@ export async function GET(request: NextRequest) {
       hasAuth: !!request.headers.get('authorization')
     });
     
-    // Use the general orders endpoint as per API documentation
-    const response = await fetch(`${API_BASE_URL}/orders/`, {
+    // Use the general orders endpoint with include parameters for products, stores, and addresses
+    const response = await fetch(`${API_BASE_URL}/orders/?include_products=true&include_stores=true&include_addresses=true`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -81,8 +83,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error fetching orders:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return NextResponse.json(
-      { error: 'Internal server error', details: error.message },
+      { error: 'Internal server error', details: errorMessage },
       { status: 500 }
     );
   }

@@ -1,5 +1,5 @@
 // Backend API integration for authentication
-const API_BASE_URL = "https://celeste-api-846811285865.us-central1.run.app";
+import { API_BASE_URL } from './api';
 
 export interface RegisterUserRequest {
   idToken: string;
@@ -41,12 +41,13 @@ export async function registerUser(data: RegisterUserRequest): Promise<RegisterU
       message: 'User registered successfully',
       data: result
     };
-  } catch (error: any) {
+  } catch (error) {
     console.error('Registration error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return {
       success: false,
       message: 'Registration failed',
-      error: error.message
+      error: errorMessage
     };
   }
 }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE_URL = "https://celeste-api-846811285865.us-central1.run.app";
+import { API_BASE_URL } from '@/lib/api';
+
+export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,6 +22,7 @@ export async function POST(request: NextRequest) {
       location: body.location,
       timestamp: new Date().toISOString()
     });
+    console.log('📥 PREVIEW API - Full request body:', JSON.stringify(body, null, 2));
 
     const response = await fetch(`${API_BASE_URL}/users/me/checkout/preview`, {
       method: 'POST',
@@ -34,6 +37,8 @@ export async function POST(request: NextRequest) {
       const errorData = await response.json().catch(() => ({}));
       console.log(`❌ External API error: ${response.status} ${response.statusText}`);
       console.log('❌ Error details:', JSON.stringify(errorData, null, 2));
+      console.log('❌ Request that failed:', JSON.stringify(body, null, 2));
+      console.log('❌ Backend URL:', `${API_BASE_URL}/users/me/checkout/preview`);
       return NextResponse.json(
         { error: 'Failed to preview order', details: errorData },
         { status: response.status }

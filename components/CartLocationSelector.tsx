@@ -10,9 +10,11 @@ import { ArrowLeft, LocateIcon, ChevronRight, ClockIcon, HeartIcon, HomeIcon, Br
 import { useLocation } from "@/contexts/LocationContext";
 import AddressSelector from "@/components/AddressSelector";
 import { useAuth } from "@/components/FirebaseAuthProvider";
+import { createUserAddress } from "@/lib/api";
+import Loader from "@/components/Loader";
 
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyB1zVZ0tZ4O1VuOpmDp8ArAq6NZZBjcExI";
-const libraries: ("places" | "drawing" | "geometry" | "localContext" | "visualization")[] = ["places"];
+const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
 
 interface CartLocationSelectorProps {
   onLocationSelect: (location: string) => void;
@@ -21,7 +23,7 @@ interface CartLocationSelectorProps {
 const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationSelect }) => {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
-  const { selectedLocation, setSelectedLocation, defaultAddress, setDefaultAddress, addressId, setAddressId } = useLocation();
+  const { selectedLocation, setSelectedLocation, defaultAddress, setDefaultAddress, addressId, setAddressId, deliveryType, setDeliveryType, setHasSelectedDeliveryType } = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [mapCenter, setMapCenter] = useState({ lat: -34.397, lng: 150.644 });
   const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -32,7 +34,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
   const [currentView, setCurrentView] = useState<'main' | 'map' | 'savedAddresses'>('main');
   const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
-  const [deliveryType, setDeliveryType] = useState<'pickup' | 'delivery'>('delivery');
+  // Remove local deliveryType state - use LocationContext instead
 
   const { isLoaded, loadError } = useLoadScript({
     googleMapsApiKey: GOOGLE_API_KEY,
@@ -40,35 +42,32 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
   });
 
   React.useEffect(() => {
-    if (isLoaded) {
-      // Try AutocompleteSuggestion first (new API)
-      if (window.google.maps.places.AutocompleteSuggestion) {
-        try {
-          const autocomplete = new window.google.maps.places.AutocompleteSuggestion();
-          setAutocompleteService(autocomplete);
-        } catch (error) {
-          console.error('Error creating AutocompleteSuggestion:', error);
-          // Fallback to AutocompleteService
-          if (window.google.maps.places.AutocompleteService) {
-            try {
-              const fallbackAutocomplete = new window.google.maps.places.AutocompleteService();
-              setAutocompleteService(fallbackAutocomplete);
-            } catch (fallbackError) {
-              console.error('Error creating fallback AutocompleteService:', fallbackError);
-            }
-          }
-        }
-      } else if (window.google.maps.places.AutocompleteService) {
-        // Fallback to old API if new one is not available
+    if (isLoaded && window.google) {
+      console.log('Google Maps loaded, initializing services...');
+      
+      // Initialize AutocompleteService
+      if (window.google.maps.places.AutocompleteService) {
         try {
           const autocomplete = new window.google.maps.places.AutocompleteService();
+          console.log('✅ AutocompleteService initialized');
           setAutocompleteService(autocomplete);
         } catch (error) {
-          console.error('Error creating fallback AutocompleteService:', error);
+          console.error('❌ Error creating AutocompleteService:', error);
         }
+      } else {
+        console.error('❌ AutocompleteService not available');
       }
       
-      setGeocoderService(new (window as any).google.maps.Geocoder());
+      // Initialize Geocoder
+      if (window.google.maps.Geocoder) {
+        try {
+          const geocoder = new window.google.maps.Geocoder();
+          console.log('✅ Geocoder initialized');
+          setGeocoderService(geocoder);
+        } catch (error) {
+          console.error('❌ Error creating Geocoder:', error);
+        }
+      }
     }
   }, [isLoaded]);
 
@@ -107,7 +106,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
     }
   }, [isOpen, user]);
 
-  const handleSelectLocation = (location: string, description?: string) => {
+  const handleSelectLocation = async (location: string, description?: string) => {
     setSelectedLocation(location);
     onLocationSelect(location);
     setIsOpen(false);
@@ -118,8 +117,68 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
     const matchingAddress = savedAddresses.find(addr => 
       addr.fullAddress.toLowerCase().includes(location.toLowerCase())
     );
+    
     if (matchingAddress) {
       setAddressId(matchingAddress.id);
+    } else if (location && !location.startsWith('Lat:') && !location.startsWith('Lng:')) {
+      // This is a new address that needs to be created in the backend
+      try {
+        // Get coordinates for the address using geocoder
+        if (geocoderService) {
+          geocoderService.geocode({ address: location }, async (results: any, status: any) => {
+            if (status === "OK" && results[0]) {
+              const { lat, lng } = results[0].geometry.location;
+              
+              try {
+                // Create new address in backend
+                const newAddress = await createUserAddress({
+                  address: location,
+                  latitude: lat(),
+                  longitude: lng(),
+                  is_default: true // Set as default
+                });
+                
+                // Handle different response structures
+                let addressId = null;
+                let addressData = null;
+                
+                if (newAddress && newAddress.id) {
+                  addressId = newAddress.id;
+                  addressData = newAddress;
+                } else if (newAddress && newAddress.data && newAddress.data.id) {
+                  addressId = newAddress.data.id;
+                  addressData = newAddress.data;
+                } else if (Array.isArray(newAddress) && newAddress[0] && newAddress[0].id) {
+                  addressId = newAddress[0].id;
+                  addressData = newAddress[0];
+                }
+                
+                if (addressId && addressData) {
+                  // Update context with new address
+                  setDefaultAddress(addressData);
+                  setAddressId(addressId);
+                  console.log('✅ New address created and set:', { addressId, addressData });
+                } else {
+                  console.error('❌ Invalid address response structure:', newAddress);
+                  toast.error('Failed to save address');
+                }
+              } catch (error) {
+                console.error('❌ Failed to create address:', error);
+                toast.error('Failed to save address');
+              }
+            } else {
+              console.error('❌ Geocoding failed:', status);
+              toast.error('Could not find coordinates for the address');
+            }
+          });
+        } else {
+          console.error('❌ Geocoder service not available');
+          toast.error('Address service not available');
+        }
+      } catch (error) {
+        console.error('❌ Error in handleSelectLocation:', error);
+        toast.error('Failed to process address');
+      }
     }
 
     setRecentLocations((prevLocations) => {
@@ -129,7 +188,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
     });
   };
 
-  const handleAddressSelect = (addressData: {
+  const handleAddressSelect = async (addressData: {
     name: string;
     fullAddress: string;
     coordinates: { lat: number; lng: number };
@@ -154,38 +213,66 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
 
     // Update context with new address
     setDefaultAddress(newAddress);
-    setAddressId(newAddress.id);
+    setAddressId(parseInt(newAddress.id));
     
     // Select the new address
-    handleSelectLocation(addressData.fullAddress, addressData.city);
+    await handleSelectLocation(addressData.fullAddress, addressData.city);
     toast.success("Address saved successfully!");
   };
 
   const fetchPredictions = React.useCallback(
     (input: string) => {
-      if (!input) {
+      if (!input || input.trim().length < 2) {
         setPredictions([]);
         return;
       }
       
+      // Use AutocompleteService for address suggestions
       if (autocompleteService && typeof autocompleteService.getPlacePredictions === 'function') {
         autocompleteService.getPlacePredictions(
-          { input, componentRestrictions: { country: "lk" } },
+          { 
+            input: input.trim(),
+            types: ['geocode', 'establishment']
+          },
           (predictions: any, status: any) => {
             if (status === "OK" && predictions) {
               setPredictions(predictions);
+            } else if (status === "ZERO_RESULTS") {
+              setPredictions([]);
             } else {
               setPredictions([]);
-              console.error("AutocompleteService failed due to: " + status);
+              console.error("AutocompleteService failed:", status);
+            }
+          }
+        );
+        return;
+      }
+      
+      // Fallback: Use Geocoder only if AutocompleteService is not available
+      if (!autocompleteService && geocoderService) {
+        geocoderService.geocode(
+          { address: input.trim() },
+          (results: any, status: any) => {
+            if (status === "OK" && results && results.length > 0) {
+              const predictions = results.slice(0, 5).map((result: any, index: number) => ({
+                place_id: `geocoder_${index}`,
+                description: result.formatted_address,
+                structured_formatting: {
+                  main_text: result.formatted_address.split(',')[0],
+                  secondary_text: result.formatted_address.split(',').slice(1).join(',').trim()
+                }
+              }));
+              setPredictions(predictions);
+            } else {
+              setPredictions([]);
             }
           }
         );
       } else {
-        console.log('AutocompleteSuggestion API detected, but getPlacePredictions not available');
         setPredictions([]);
       }
     },
-    [autocompleteService]
+    [autocompleteService, geocoderService]
   );
 
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -200,12 +287,13 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
 
     if (!geocoderService) return;
 
-    geocoderService.geocode({ address: prediction.description }, (results: any, status: any) => {
+    geocoderService.geocode({ address: prediction.description }, async (results: any, status: any) => {
       if (status === "OK" && results[0]) {
         const { lat, lng } = results[0].geometry.location;
         setMapCenter({ lat: lat(), lng: lng() });
         setMarkerPosition({ lat: lat(), lng: lng() });
-        handleSelectLocation(results[0].formatted_address, prediction.structured_formatting.secondary_text);
+        // Use prediction.description instead of formatted_address to show the place name
+        await handleSelectLocation(prediction.description, prediction.structured_formatting.secondary_text);
       } else {
         console.error("Geocode was not successful for the following reason: " + status);
       }
@@ -216,12 +304,12 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
     if (!searchQuery) return;
     if (!geocoderService) return;
 
-    geocoderService.geocode({ address: searchQuery }, (results: any, status: any) => {
+    geocoderService.geocode({ address: searchQuery }, async (results: any, status: any) => {
       if (status === "OK" && results[0]) {
         const { lat, lng } = results[0].geometry.location;
         setMapCenter({ lat: lat(), lng: lng() });
         setMarkerPosition({ lat: lat(), lng: lng() });
-        handleSelectLocation(results[0].formatted_address, results[0].address_components.find((comp: any) => comp.types.includes('locality'))?.long_name);
+        await handleSelectLocation(results[0].formatted_address, results[0].address_components.find((comp: any) => comp.types.includes('locality'))?.long_name);
       } else {
         console.error("Geocode was not successful for the following reason: " + status);
       }
@@ -231,22 +319,22 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
   const handleGetCurrentLocation = () => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
-        (position) => {
+        async (position) => {
           const { latitude, longitude } = position.coords;
           const latLng = { lat: latitude, lng: longitude };
           setMapCenter(latLng);
           setMarkerPosition(latLng);
           if (geocoderService) {
-            geocoderService.geocode({ location: latLng }, (results: any, status: any) => {
+            geocoderService.geocode({ location: latLng }, async (results: any, status: any) => {
               if (status === "OK" && results[0]) {
-                handleSelectLocation(results[0].formatted_address, results[0].address_components.find((comp: any) => comp.types.includes('locality'))?.long_name);
+                await handleSelectLocation(results[0].formatted_address, results[0].address_components.find((comp: any) => comp.types.includes('locality'))?.long_name);
               } else {
                 console.error("Reverse geocode was not successful: " + status);
-                handleSelectLocation(`Lat: ${latitude}, Lng: ${longitude}`);
+                await handleSelectLocation(`Lat: ${latitude}, Lng: ${longitude}`);
               }
             });
           } else {
-            handleSelectLocation(`Lat: ${latitude}, Lng: ${longitude}`);
+            await handleSelectLocation(`Lat: ${latitude}, Lng: ${longitude}`);
           }
         },
         (error) => {
@@ -264,19 +352,19 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
     const lng = e.latLng.lng();
     setMarkerPosition({ lat, lng });
     if (geocoderService) {
-      geocoderService.geocode({ location: { lat, lng } }, (results: any, status: any) => {
+      geocoderService.geocode({ location: { lat, lng } }, async (results: any, status: any) => {
         if (status === "OK" && results[0]) {
-          handleSelectLocation(results[0].formatted_address, results[0].address_components.find((comp: any) => comp.types.includes('locality'))?.long_name);
+          await handleSelectLocation(results[0].formatted_address, results[0].address_components.find((comp: any) => comp.types.includes('locality'))?.long_name);
         } else {
           console.error("Reverse geocode was not successful: " + status);
-          handleSelectLocation(`Lat: ${lat}, Lng: ${lng}`);
+          await handleSelectLocation(`Lat: ${lat}, Lng: ${lng}`);
         }
       });
     }
   };
 
-  if (loadError) return <div>Error loading maps</div>;
-  if (!isLoaded) return <div>Loading Maps...</div>;
+  if (loadError) return <Loader />;
+  if (!isLoaded) return <Loader />;
 
   return (
     <>
@@ -302,38 +390,47 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
                 <Button
                   variant="ghost"
                   className={`rounded-full px-4 py-2 ${deliveryType === 'pickup' ? 'bg-black text-white' : ''}`}
-                  onClick={() => setDeliveryType('pickup')}
+                  onClick={() => {
+                    setDeliveryType('pickup');
+                    setHasSelectedDeliveryType(true);
+                  }}
                 >
                   Pickup
                 </Button>
                 <Button
                   variant="ghost"
                   className={`rounded-full px-4 py-2 ${deliveryType === 'delivery' ? 'bg-black text-white' : ''}`}
-                  onClick={() => setDeliveryType('delivery')}
+                  onClick={() => {
+                    setDeliveryType('delivery');
+                    setHasSelectedDeliveryType(true);
+                  }}
                 >
                   Delivery
                 </Button>
               </div>
             </div>
-            <div className="relative flex items-center mb-4 border rounded-lg px-3 py-2">
-              <ArrowLeft className="mr-2 h-5 w-5 text-gray-500" />
-              <input
-                id="location-search"
-                type="text"
-                placeholder="Search Location"
-                className="flex-grow border-none focus:ring-0 outline-none"
-                value={searchQuery}
-                onChange={handleSearchInputChange}
-              />
+            <div className="relative mb-4">
+              <div className="flex items-center border rounded-lg px-3 py-2">
+                <ArrowLeft className="mr-2 h-5 w-5 text-gray-500" />
+                <input
+                  id="location-search"
+                  type="text"
+                  placeholder="Search Location"
+                  className="flex-grow border-none focus:ring-0 outline-none"
+                  value={searchQuery}
+                  onChange={handleSearchInputChange}
+                />
+              </div>
               {predictions.length > 0 && (
-                <ul className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-20 mt-1 max-h-60 overflow-y-auto">
+                <ul className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-50 mt-1 max-h-60 overflow-y-auto">
                   {predictions.map((prediction) => (
                     <li
                       key={prediction.place_id}
-                      className="px-4 py-2 cursor-pointer hover:bg-gray-100"
+                      className="px-4 py-2 cursor-pointer hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
                       onClick={() => handlePredictionClick(prediction)}
                     >
-                      {prediction.description}
+                      <div className="font-medium text-sm">{prediction.structured_formatting.main_text}</div>
+                      <div className="text-xs text-gray-500">{prediction.structured_formatting.secondary_text}</div>
                     </li>
                   ))}
                 </ul>
@@ -377,7 +474,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
                       <li
                         key={locString}
                         className="flex items-center justify-between cursor-pointer py-2 hover:bg-gray-50 rounded-md px-2"
-                        onClick={() => handleSelectLocation(name, description)}
+                        onClick={async () => await handleSelectLocation(name, description)}
                       >
                         <div className="flex items-center space-x-3">
                           <ClockIcon className="h-5 w-5 text-gray-400" />
@@ -414,7 +511,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
                 {markerPosition && <Marker position={markerPosition} />}
               </GoogleMap>
             </div>
-            <Button className="mt-2 w-full" onClick={() => markerPosition && handleSelectLocation(`Lat: ${markerPosition.lat}, Lng: ${markerPosition.lng}`, `Map Location`)}>Confirm Location</Button>
+            <Button className="mt-2 w-full" onClick={async () => markerPosition && await handleSelectLocation(`Lat: ${markerPosition.lat}, Lng: ${markerPosition.lng}`, `Map Location`)}>Confirm Location</Button>
           </div>
         )}
 
@@ -438,7 +535,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
                   <div 
                     key={address.id} 
                     className="flex items-center justify-between cursor-pointer py-2 hover:bg-gray-50 rounded-md px-2"
-                    onClick={() => handleSelectLocation(address.fullAddress, address.city)}
+                    onClick={async () => await handleSelectLocation(address.fullAddress, address.city)}
                   >
                     <div className="flex items-center space-x-3">
                       {address.name.toLowerCase().includes('home') || address.name.toLowerCase().includes('house') ? (

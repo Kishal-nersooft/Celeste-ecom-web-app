@@ -23,6 +23,18 @@ export interface Product {
     discount_percentage: number;
     applied_price_lists: string[];
   };
+  inventory?: {
+    can_order: boolean;
+    max_available: number;
+    in_stock: boolean;
+    ondemand_delivery_available: boolean;
+    reason_unavailable: string | null;
+  };
+  future_pricing?: {
+    min_quantity: number;
+    final_price: number;
+    discount_percentage: number;
+  }[];
   // Legacy fields for backward compatibility
   price?: number;
   unit?: string;
@@ -33,6 +45,7 @@ export interface Product {
 export interface CartItem {
   product: Product;
   quantity: number;
+  itemId?: number; // Cart item ID from backend
 }
 
 export interface OrderItem {
@@ -40,430 +53,854 @@ export interface OrderItem {
   name: string;
   price: number;
   quantity: number;
-  imageUrl?: string;
-}
-
-export enum OrderStatus {
-  PENDING = "PENDING",
-  PROCESSING = "PROCESSING",
-  SHIPPED = "SHIPPED",
-  DELIVERED = "DELIVERED",
-  CANCELLED = "CANCELLED",
+  imageUrl?: string; // For compatibility with backend
 }
 
 export interface Order {
   id: string;
-  orderNumber: string;
   userId: string;
   items: OrderItem[];
-  totalAmount: number;
-  status: OrderStatus;
-  createdAt: string;
+  total: number;
+  totalAmount?: number; // For compatibility with backend
+  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
   customerName?: string;
   email?: string;
   deliveryLocation?: string;
-  orderType?: 'delivery' | 'pickup';
-  payment?: {
-    method: string;
-    transaction_id: string;
-    amount: number;
-    status: string;
-  };
-  location?: {
-    mode: 'delivery' | 'pickup';
-    id: number;
-    address?: string;
-  };
+  orderType: 'delivery' | 'pickup';
+  fulfillmentMode?: 'delivery' | 'pickup'; // For compatibility with backend
+  deliveryCharge?: number; // For compatibility with backend
+  orderNumber?: string; // For compatibility with backend
+  createdAt: Date;
+  updatedAt: Date;
 }
 
+export interface Cart {
+  id: number;
+  name: string;
+  description?: string;
+  items: CartItem[];
+  createdAt: string;
+  updatedAt?: string;
+  isActive: boolean;
+  itemCount: number;
+  totalPrice: number;
+  isOrdered?: boolean; // Whether this cart has been used in an order
+  status?: 'active' | 'ordered' | 'completed'; // Cart status from backend
+}
+
+
 interface CartState {
+  // Legacy single cart properties (for backward compatibility)
   items: CartItem[];
   orders: Order[];
-  cartId: number | string | null;
+  cartId: number | null;
   isCartCreated: boolean;
+  isSyncing: boolean;
+  
+  // Multi-cart properties
+  carts: Cart[];
+  activeCartId: number | null;
+  isLoadingCarts: boolean;
+  
+  // Legacy cart functions (now work with active cart)
   addItem: (product: Product) => Promise<void>;
   removeItem: (productId: number) => Promise<void>;
+  updateItemQuantity: (productId: number, newQuantity: number) => Promise<void>;
   deleteCartProduct: (productId: number) => Promise<void>;
-  resetCart: () => Promise<void>;
-  clearCart: () => void;
-  clearInvalidCart: () => void;
+  clearCart: () => Promise<void>;
   getTotalPrice: () => number;
   getSubTotalPrice: () => number;
   getItemCount: (productId: number) => number;
   getGroupedItems: () => CartItem[];
   placeOrder: (userId: string, customerName?: string, email?: string, deliveryLocation?: string, orderType?: 'delivery' | 'pickup') => Order;
   getOrders: () => Order[];
-  createCart: () => Promise<void>;
-  syncWithBackend: () => Promise<void>;
-  resetCartOnPermissionError: () => Promise<void>;
-  validateCart: () => Promise<boolean>;
+  resetCart: () => Promise<void>;
+  setCartId: (cartId: number | null) => void;
+  setIsCartCreated: (isCreated: boolean) => void;
+  
+  // New multi-cart functions
+  createNewCart: (name?: string, description?: string) => Promise<Cart>;
+  switchCart: (cartId: number) => Promise<void>;
+  loadUserCarts: () => Promise<void>;
+  deleteCart: (cartId: number) => Promise<void>;
+  getActiveCart: () => Cart | null;
+  getCartById: (cartId: number) => Cart | null;
+  updateCartName: (cartId: number, name: string) => Promise<void>;
+  syncActiveCartWithBackend: () => Promise<void>;
 }
+
+// Debounce utility
+let debounceTimeouts: { [key: string]: NodeJS.Timeout } = {};
+
+const debounce = (key: string, fn: () => Promise<void>, delay: number) => {
+  if (debounceTimeouts[key]) {
+    clearTimeout(debounceTimeouts[key]);
+  }
+  debounceTimeouts[key] = setTimeout(fn, delay);
+};
 
 const useCartStore = create<CartState>()(
   persist(
     (set, get) => ({
+      // Legacy single cart properties
       items: [],
       orders: [],
       cartId: null,
       isCartCreated: false,
-      createCart: async () => {
+      isSyncing: false,
+      
+      // Multi-cart properties
+      carts: [],
+      activeCartId: null,
+      isLoadingCarts: false,
+
+      addItem: async (product: Product) => {
+        const state = get();
+        
+        // Check if item already exists in active cart
+        const existingItem = state.items.find(item => item && item.product && item.product.id === product.id);
+        
+        let updatedItems;
+        if (existingItem) {
+          // Update quantity locally
+          updatedItems = state.items.map(item =>
+            item && item.product && item.product.id === product.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item
+          );
+          set({ items: updatedItems });
+        } else {
+          // Add new item locally
+          updatedItems = [...state.items, { product, quantity: 1 }];
+          set({ items: updatedItems });
+        }
+
+        // Create cart if no active cart exists
+        let newCartId = state.activeCartId;
+        if (!state.activeCartId) {
+          try {
+            // Preserve the items before creating cart
+            const itemsToPreserve = updatedItems;
+            const newCart = await get().createNewCart();
+            newCartId = newCart.id;
+            console.log('✅ New cart created for first item:', newCartId);
+            
+            // Restore the items after cart creation (createNewCart clears items)
+            set({ 
+              items: itemsToPreserve,
+              activeCartId: newCartId,
+              cartId: newCartId 
+            });
+          } catch (error) {
+            console.error('❌ Failed to create cart:', error);
+            // Rollback: remove the item that was added
+            set({ items: state.items });
+            return;
+          }
+        }
+
+        // Update the active cart in the carts array with current items
+        const currentState = get();
+        set({
+          carts: currentState.carts.map(cart => 
+            cart.id === currentState.activeCartId 
+              ? {
+                  ...cart,
+                  items: currentState.items,
+                  itemCount: currentState.items.length,
+                  totalPrice: currentState.items.reduce((total, item) => {
+                    if (!item || !item.product) return total;
+                    const price = item.product.pricing?.final_price || item.product.base_price || 0;
+                    return total + (price * item.quantity);
+                  }, 0)
+                }
+              : cart
+          )
+        });
+
+        // Debounced backend sync
+        debounce('addItem', async () => {
+          const currentState = get();
+          if (!currentState.activeCartId) return;
+
+          try {
+            set({ isSyncing: true });
+            const { addItemToCart } = await import('./lib/api');
+            await addItemToCart(currentState.activeCartId, { 
+              product_id: product.id, 
+              quantity: 1 
+            });
+            console.log('✅ Item synced to backend');
+          } catch (error) {
+            console.error('❌ Failed to sync item:', error);
+          } finally {
+            set({ isSyncing: false });
+          }
+        }, 500);
+      },
+
+      removeItem: async (productId: number) => {
+        const state = get();
+        const existingItem = state.items.find(item => item && item.product && item.product.id === productId);
+        
+        if (!existingItem) return;
+
+        let newItems;
+        if (existingItem.quantity > 1) {
+          // Decrease quantity locally
+          newItems = state.items.map(item =>
+            item && item.product && item.product.id === productId
+              ? { ...item, quantity: item.quantity - 1 }
+              : item
+          );
+        } else {
+          // Remove item completely locally
+          newItems = state.items.filter(item => item && item.product && item.product.id !== productId);
+        }
+        
+        set({ items: newItems });
+
+        // Update the active cart in the carts array
+        set(state => ({
+          carts: state.carts.map(cart => 
+            cart.id === state.activeCartId 
+              ? {
+                  ...cart,
+                  items: newItems,
+                  itemCount: newItems.length,
+                  totalPrice: newItems.reduce((total, item) => {
+                    if (!item || !item.product) return total;
+                    const price = item.product.pricing?.final_price || item.product.base_price || 0;
+                    return total + (price * item.quantity);
+                  }, 0)
+                }
+              : cart
+          )
+        }));
+
+        // Debounced backend sync
+        debounce('removeItem', async () => {
+          const currentState = get();
+          if (!currentState.activeCartId) return;
+
+          try {
+            set({ isSyncing: true });
+            const { removeFromCart } = await import('./lib/api');
+            await removeFromCart(currentState.activeCartId, productId);
+            console.log('✅ Item removal synced to backend');
+          } catch (error) {
+            console.error('❌ Failed to sync removal:', error);
+          } finally {
+            set({ isSyncing: false });
+          }
+        }, 500);
+      },
+
+      updateItemQuantity: async (productId: number, newQuantity: number) => {
+        if (newQuantity <= 0) {
+          get().removeItem(productId);
+          return;
+        }
+
+        // Update quantity locally
+        const newItems = get().items.map(item =>
+          item && item.product && item.product.id === productId
+            ? { ...item, quantity: newQuantity }
+            : item
+        );
+        set({ items: newItems });
+
+        // Update the active cart in the carts array
+        set(state => ({
+          carts: state.carts.map(cart => 
+            cart.id === state.activeCartId 
+              ? {
+                  ...cart,
+                  items: newItems,
+                  itemCount: newItems.length,
+                  totalPrice: newItems.reduce((total, item) => {
+                    if (!item || !item.product) return total;
+                    const price = item.product.pricing?.final_price || item.product.base_price || 0;
+                    return total + (price * item.quantity);
+                  }, 0)
+                }
+              : cart
+          )
+        }));
+
+        // Debounced backend sync
+        debounce('updateQuantity', async () => {
+          const currentState = get();
+          if (!currentState.activeCartId) return;
+
+          try {
+            set({ isSyncing: true });
+            const { updateCartItemQuantityByProductId } = await import('./lib/api');
+            
+            console.log(`🔄 Updating quantity for product ${productId} to ${newQuantity} in cart ${currentState.activeCartId}`);
+            // Update quantity directly using the new API function
+            await updateCartItemQuantityByProductId(currentState.activeCartId, productId, newQuantity);
+            console.log('✅ Quantity update synced to backend');
+          } catch (error) {
+            console.error('❌ Failed to sync quantity update:', error);
+          } finally {
+            set({ isSyncing: false });
+          }
+        }, 300);
+      },
+
+      deleteCartProduct: async (productId: number) => {
+        // Remove item completely locally
+        const newItems = get().items.filter(item => item && item.product && item.product.id !== productId);
+        set({ items: newItems });
+
+        // Update the active cart in the carts array
+        set(state => ({
+          carts: state.carts.map(cart => 
+            cart.id === state.activeCartId 
+              ? {
+                  ...cart,
+                  items: newItems,
+                  itemCount: newItems.length,
+                  totalPrice: newItems.reduce((total, item) => {
+                    if (!item || !item.product) return total;
+                    const price = item.product.pricing?.final_price || item.product.base_price || 0;
+                    return total + (price * item.quantity);
+                  }, 0)
+                }
+              : cart
+          )
+        }));
+
+        // Debounced backend sync
+        debounce('deleteProduct', async () => {
+          const currentState = get();
+          if (!currentState.activeCartId) return;
+
+          try {
+            set({ isSyncing: true });
+            const { removeFromCart } = await import('./lib/api');
+            await removeFromCart(currentState.activeCartId, productId);
+            console.log('✅ Product deletion synced to backend');
+          } catch (error) {
+            console.error('❌ Failed to sync product deletion:', error);
+          } finally {
+            set({ isSyncing: false });
+          }
+        }, 500);
+      },
+
+      clearCart: async () => {
+        const state = get();
+        
+        // Clear locally
+        set({ items: [] });
+
+        // Update the active cart in the carts array
+        set(state => ({
+          carts: state.carts.map(cart => 
+            cart.id === state.activeCartId 
+              ? {
+                  ...cart,
+                  items: [],
+                  itemCount: 0,
+                  totalPrice: 0
+                }
+              : cart
+          )
+        }));
+
+        // Clear backend immediately
+        if (state.activeCartId) {
+          try {
+            const { deleteCart } = await import('./lib/api');
+            await deleteCart(state.activeCartId);
+            console.log('✅ Cart cleared from backend');
+          } catch (error: any) {
+            // Handle 409 Conflict gracefully - this means the cart is associated with a completed order
+            if (error.message?.includes('409') || error.message?.includes('Conflict')) {
+              console.log('ℹ️ Cart cannot be deleted (associated with completed order)');
+            } else {
+              console.error('❌ Failed to clear backend cart:', error);
+            }
+          }
+        }
+
+        // Reset cart state regardless of backend deletion success
+        set({ 
+          activeCartId: null, 
+          cartId: null, 
+          isCartCreated: false,
+          carts: state.carts.filter(cart => cart.id !== state.activeCartId)
+        });
+      },
+
+      getTotalPrice: () => {
+        const items = get().items || [];
+        return items.reduce((total, item) => {
+          if (!item || !item.product) return total;
+          const price = item.product.pricing?.final_price || item.product.base_price || 0;
+          return total + (price * item.quantity);
+        }, 0);
+      },
+
+      getSubTotalPrice: () => {
+        return get().getTotalPrice();
+      },
+
+      getItemCount: (productId: number) => {
+        const items = get().items || [];
+        const item = items.find(item => item && item.product && item.product.id === productId);
+        return item ? item.quantity : 0;
+      },
+
+      getGroupedItems: () => {
+        return get().items;
+      },
+
+      placeOrder: (userId: string, customerName?: string, email?: string, deliveryLocation?: string, orderType: 'delivery' | 'pickup' = 'delivery') => {
+        const items = get().items;
+        const total = get().getTotalPrice();
+        
+        const order: Order = {
+          id: `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          userId,
+          items: items.filter(item => item && item.product).map(item => ({
+            productId: item.product.id,
+            name: item.product.name,
+            price: item.product.pricing?.final_price || item.product.base_price,
+            quantity: item.quantity
+          })),
+          total,
+          status: 'pending',
+          customerName,
+          email,
+          deliveryLocation,
+          orderType,
+          createdAt: new Date(),
+          updatedAt: new Date()
+        };
+
+        set(state => ({ orders: [...state.orders, order] }));
+        return order;
+      },
+
+      getOrders: () => {
+        return get().orders;
+      },
+
+      resetCart: async () => {
+        await get().clearCart();
+        set({ orders: [] });
+      },
+
+      setCartId: (cartId: number | null) => {
+        set({ cartId });
+      },
+
+      setIsCartCreated: (isCreated: boolean) => {
+        set({ isCartCreated: isCreated });
+      },
+
+      // Multi-cart functions
+      createNewCart: async (name?: string, description?: string) => {
         try {
           const { createCart } = await import('./lib/api');
-          // Generate a completely unique cart name using timestamp and random string
           const timestamp = Date.now();
           const randomString = Math.random().toString(36).substr(2, 12);
           const sessionId = typeof window !== 'undefined' ? 
             (sessionStorage.getItem('sessionId') || `session_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`) : 
             `server_${timestamp}`;
           
-          const cartData = {
-            name: `Cart_${sessionId}_${timestamp}_${randomString}`,
-            description: `Dynamic shopping cart - Session: ${sessionId}`
+          const cartName = name || `Cart_${sessionId}_${timestamp}_${randomString}`;
+          const cartDescription = description || `User cart - Session: ${sessionId}`;
+          
+          const cartResponse = await createCart({
+            name: cartName,
+            description: cartDescription
+          });
+          
+          const newCartId = cartResponse.data?.id || cartResponse.id;
+          
+          const newCart: Cart = {
+            id: newCartId,
+            name: `Cart #${newCartId}`, // Use cart ID for naming
+            description: cartDescription,
+            items: [],
+            createdAt: new Date().toISOString(),
+            isActive: true,
+            itemCount: 0,
+            totalPrice: 0,
+            isOrdered: false,
+            status: 'active'
           };
           
-          console.log('🛒 Creating dynamic cart with data:', cartData);
-          const cart = await createCart(cartData);
-          set({ cartId: cart.id, isCartCreated: true });
-          console.log('✅ Cart created successfully with ID:', cart.id);
+          // Update state
+          set(state => {
+            const updatedCarts = state.carts.map(cart => ({ ...cart, isActive: false }));
+            return {
+              carts: [...updatedCarts, newCart],
+              activeCartId: newCartId,
+              cartId: newCartId,
+              isCartCreated: true,
+              items: [] // Clear current items when creating new cart
+            };
+          });
           
-          // Store session ID for future cart operations
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('sessionId', sessionId);
-          }
-        } catch (error: any) {
-          console.error('❌ Failed to create cart:', error);
-          // If it's a conflict error, try with a different name
-          if (error.message?.includes('409') || error.message?.includes('Conflict')) {
-            console.log('🔄 Cart name conflict, trying with different name...');
-            try {
-              const { createCart } = await import('./lib/api');
-              const timestamp = Date.now();
-              const randomId = Math.random().toString(36).substr(2, 15);
-              const sessionId = typeof window !== 'undefined' ? 
-                (sessionStorage.getItem('sessionId') || `session_${Date.now()}_${Math.random().toString(36).substr(2, 8)}`) : 
-                `server_${timestamp}`;
-              
-              const cartData = {
-                name: `Cart_${sessionId}_${timestamp}_${randomId}_retry`,
-                description: `Dynamic shopping cart retry - Session: ${sessionId}`
-              };
-              
-              const cart = await createCart(cartData);
-              set({ cartId: cart.id, isCartCreated: true });
-              console.log('✅ Cart created with unique retry ID:', cart.id);
-              
-              // Store session ID for future cart operations
-              if (typeof window !== 'undefined') {
-                sessionStorage.setItem('sessionId', sessionId);
-              }
-            } catch (retryError) {
-              console.error('❌ Failed to create cart even with unique name:', retryError);
-              throw retryError;
-            }
-          } else {
-            throw error;
-          }
-        }
-      },
-      clearCart: () => {
-        set({ cartId: null, isCartCreated: false, items: [] });
-        // Clear session storage to prevent old cart IDs from persisting
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('cart-store');
-          sessionStorage.removeItem('sessionId');
-        }
-        console.log('🛒 Cart cleared completely');
-      },
-      resetCartOnPermissionError: async () => {
-        console.log('🔄 Resetting cart due to permission error...');
-        set({ cartId: null, isCartCreated: false, items: [] });
-        // Clear the persisted data to prevent the old cart ID from coming back
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('cart-store');
-        }
-        try {
-          await get().createCart();
-          console.log('✅ New cart created after permission error');
+          console.log('✅ New cart created:', newCartId);
+          return newCart;
         } catch (error) {
-          console.error('❌ Failed to create new cart after permission error:', error);
+          console.error('❌ Failed to create new cart:', error);
+          throw error;
         }
       },
-      clearInvalidCart: () => {
-        console.log('🔄 Clearing invalid cart ID...');
-        set({ cartId: null, isCartCreated: false, items: [] });
-        // Clear the persisted data to prevent the old cart ID from coming back
-        if (typeof window !== 'undefined') {
-          localStorage.removeItem('cart-store');
+
+      switchCart: async (cartId: number) => {
+        try {
+          const { getCartDetails, getProductById } = await import('./lib/api');
+          
+          // Get cart details from backend
+          const cartDetails = await getCartDetails(cartId);
+          const cartData = cartDetails?.data || cartDetails;
+          
+          // Convert backend items to CartItem format with full product data
+          // Fetch complete product details for ALL items to ensure we have full data
+          const cartItemsPromises = (cartData.items || []).map(async (item: any) => {
+            const productId = item.product_id || item.product?.id;
+            
+            if (!productId) {
+              console.warn('⚠️ Cart item has no product ID');
+              return null;
+            }
+            
+            try {
+              // Always fetch complete product data to ensure we have everything
+              console.log(`🔍 Fetching complete product data for ID: ${productId}`);
+              const fullProduct = await getProductById(productId.toString());
+              
+              if (!fullProduct) {
+                console.warn(`⚠️ Product ${productId} not found`);
+                return null;
+              }
+              
+              console.log(`✅ Got complete data for product ${productId}:`, fullProduct?.name);
+              
+              return {
+                product: {
+                  id: fullProduct.id,
+                  name: fullProduct.name,
+                  base_price: fullProduct.base_price || 0,
+                  pricing: {
+                    base_price: fullProduct.base_price || 0,
+                    final_price: fullProduct.pricing?.final_price || fullProduct.final_price || fullProduct.base_price || 0,
+                    discount_applied: fullProduct.pricing?.discount_applied || 0,
+                    discount_percentage: fullProduct.pricing?.discount_percentage || 0,
+                    applied_price_lists: fullProduct.pricing?.applied_price_lists || []
+                  },
+                  image_urls: fullProduct.image_urls || [],
+                  unit_measure: fullProduct.unit_measure || 'piece',
+                  ref: fullProduct.ref,
+                  description: fullProduct.description,
+                  brand: fullProduct.brand,
+                  ecommerce_category_id: fullProduct.ecommerce_category_id,
+                  ecommerce_subcategory_id: fullProduct.ecommerce_subcategory_id,
+                  created_at: fullProduct.created_at,
+                  updated_at: fullProduct.updated_at,
+                  categories: fullProduct.categories,
+                  product_tags: fullProduct.product_tags,
+                  inventory: fullProduct.inventory,
+                  price: fullProduct.price,
+                  unit: fullProduct.unit,
+                  categoryId: fullProduct.categoryId,
+                  imageUrl: fullProduct.image_urls?.[0]
+                },
+                quantity: item.quantity || 1,
+                itemId: item.id
+              };
+            } catch (error) {
+              console.error(`❌ Failed to fetch product ${productId}:`, error);
+              return null;
+            }
+          });
+          
+          const cartItems = (await Promise.all(cartItemsPromises)).filter(item => item !== null);
+          
+          console.log('✅ Cart items after fetching product data:', cartItems.map(item => ({
+            id: item.product.id,
+            name: item.product.name,
+            hasImage: !!item.product.image_urls?.length,
+            hasPricing: !!item.product.pricing?.final_price
+          })));
+          
+          // Update all carts to set the new active one
+          set(state => {
+            const updatedCarts = state.carts.map(cart => ({
+              ...cart,
+              isActive: cart.id === cartId
+            }));
+            
+            // Also update the active cart's items with fresh data
+            const updatedCartsWithFreshData = updatedCarts.map(cart => 
+              cart.id === cartId 
+                ? {
+                    ...cart,
+                    items: cartItems,
+                    itemCount: cartItems.length,
+                    totalPrice: cartItems.reduce((total: number, item: any) => {
+                      const price = item.product.pricing?.final_price || item.product.base_price || 0;
+                      return total + (price * item.quantity);
+                    }, 0)
+                  }
+                : cart
+            );
+            
+            return {
+              carts: updatedCartsWithFreshData,
+              activeCartId: cartId,
+              cartId: cartId,
+              items: cartItems,
+              isCartCreated: true
+            };
+          });
+          
+          console.log('✅ Switched to cart:', cartId, 'with', cartItems.length, 'items');
+        } catch (error) {
+          console.error('❌ Failed to switch cart:', error);
+          throw error;
         }
       },
-      validateCart: async () => {
+
+      loadUserCarts: async () => {
+        try {
+          set({ isLoadingCarts: true });
+          const { getUserCarts } = await import('./lib/api');
+          const response = await getUserCarts();
+          
+          // Convert backend cart format to our Cart interface
+          console.log('🔍 Backend cart data:', response.owned_carts);
+          const carts: Cart[] = (response.owned_carts || []).map((cart: any) => {
+            console.log(`Processing cart ${cart.id}: status="${cart.status}"`);
+            // Safely convert cart items
+            const cartItems = (cart.items || []).map((item: any) => ({
+              product: {
+                id: item.product?.id || item.product_id || 0,
+                name: item.product?.name || 'Unknown Product',
+                base_price: item.product?.base_price || item.base_price || 0,
+                pricing: {
+                  base_price: item.product?.base_price || item.base_price || 0,
+                  final_price: item.product?.pricing?.final_price || item.final_price || item.base_price || 0,
+                  discount_applied: item.product?.pricing?.discount_applied || 0,
+                  discount_percentage: item.product?.pricing?.discount_percentage || 0,
+                  applied_price_lists: item.product?.pricing?.applied_price_lists || []
+                },
+                image_urls: item.product?.image_urls || [item.product?.imageUrl] || [],
+                unit_measure: item.product?.unit_measure || 'piece',
+                // Add other required fields
+                ref: item.product?.ref,
+                description: item.product?.description,
+                brand: item.product?.brand,
+                ecommerce_category_id: item.product?.ecommerce_category_id,
+                ecommerce_subcategory_id: item.product?.ecommerce_subcategory_id,
+                created_at: item.product?.created_at,
+                updated_at: item.product?.updated_at,
+                categories: item.product?.categories,
+                product_tags: item.product?.product_tags,
+                inventory: item.product?.inventory,
+                // Legacy fields
+                price: item.product?.price,
+                unit: item.product?.unit,
+                categoryId: item.product?.categoryId,
+                imageUrl: item.product?.imageUrl
+              },
+              quantity: item.quantity || 1,
+              itemId: item.id
+            }));
+
+            return {
+              id: cart.id,
+              name: `Cart #${cart.id}`, // Use cart ID instead of session name
+              description: cart.description,
+              items: cartItems,
+              createdAt: cart.created_at || new Date().toISOString(),
+              updatedAt: cart.updated_at,
+              isActive: false, // Will be set based on activeCartId
+              itemCount: cartItems.length,
+              totalPrice: cartItems.reduce((total: number, item: any) => {
+                const price = item.product.pricing?.final_price || item.product.base_price || 0;
+                return total + (price * item.quantity);
+              }, 0),
+              isOrdered: cart.is_ordered || false,
+              status: cart.status || 'active' // Default to active if no status
+            };
+          });
+          
+          // Set the first cart as active if no active cart is set
+          const state = get();
+          const activeCartId = state.activeCartId || (carts.length > 0 ? carts[0].id : null);
+          
+          const updatedCarts = carts.map(cart => ({
+            ...cart,
+            isActive: cart.id === activeCartId
+          }));
+          
+          console.log('✅ Final processed carts:', updatedCarts.map(cart => ({
+            id: cart.id,
+            name: cart.name,
+            status: cart.status,
+            itemCount: cart.itemCount
+          })));
+          
+          set({
+            carts: updatedCarts,
+            activeCartId: activeCartId,
+            cartId: activeCartId,
+            isLoadingCarts: false
+          });
+          
+          // Load items for active cart
+          if (activeCartId) {
+            const activeCart = updatedCarts.find(cart => cart.id === activeCartId);
+            if (activeCart) {
+              set({ items: activeCart.items });
+            }
+          }
+          
+          console.log('✅ User carts loaded:', carts.length);
+        } catch (error) {
+          console.error('❌ Failed to load user carts:', error);
+          set({ isLoadingCarts: false });
+          throw error;
+        }
+      },
+
+      deleteCart: async (cartId: number) => {
+        try {
+          const { deleteCart } = await import('./lib/api');
+          await deleteCart(cartId);
+          
+          set(state => {
+            const updatedCarts = state.carts.filter(cart => cart.id !== cartId);
+            const newActiveCartId = state.activeCartId === cartId ? 
+              (updatedCarts.length > 0 ? updatedCarts[0].id : null) : 
+              state.activeCartId;
+            
+            const newActiveCart = updatedCarts.find(cart => cart.id === newActiveCartId);
+            
+            return {
+              carts: updatedCarts,
+              activeCartId: newActiveCartId,
+              cartId: newActiveCartId,
+              items: newActiveCart?.items || []
+            };
+          });
+          
+          console.log('✅ Cart deleted:', cartId);
+        } catch (error) {
+          console.error('❌ Failed to delete cart:', error);
+          throw error;
+        }
+      },
+
+      getActiveCart: () => {
         const state = get();
-        if (!state.cartId || !state.isCartCreated) return true;
-        
-        // Only validate numeric cart IDs
-        if (typeof state.cartId !== 'number') return true;
+        return state.carts.find(cart => cart.id === state.activeCartId) || null;
+      },
+
+      getCartById: (cartId: number) => {
+        const state = get();
+        return state.carts.find(cart => cart.id === cartId) || null;
+      },
+
+      updateCartName: async (cartId: number, name: string) => {
+        try {
+          // Update in backend (if API supports it)
+          // For now, just update locally
+          set(state => ({
+            carts: state.carts.map(cart => 
+              cart.id === cartId ? { ...cart, name } : cart
+            )
+          }));
+          
+          console.log('✅ Cart name updated:', cartId);
+        } catch (error) {
+          console.error('❌ Failed to update cart name:', error);
+          throw error;
+        }
+      },
+
+      syncActiveCartWithBackend: async () => {
+        const state = get();
+        if (!state.activeCartId) return;
         
         try {
           const { getCartDetails } = await import('./lib/api');
-          await getCartDetails(state.cartId);
-          return true;
-        } catch (error: any) {
-          if (error.message?.includes('404') || error.message?.includes('403')) {
-            console.log('❌ Cart validation failed, clearing invalid cart...');
-            state.clearInvalidCart();
-            return false;
-          }
-          return true; // Other errors don't necessarily mean cart is invalid
-        }
-      },
-      addItem: async (product) => {
-        const state = get();
-        
-        // Clear invalid cart ID if it's still 113 (known invalid cart)
-        if (state.cartId === 113) {
-          console.log('🔄 Detected invalid cart ID 113, clearing...');
-          state.clearInvalidCart();
-        }
-        
-        // Check if current cart is available for modification
-        if (state.cartId && typeof state.cartId === 'number' && state.isCartCreated) {
-          try {
-            const { isCartAvailableForModification } = await import('./lib/api');
-            const isAvailable = await isCartAvailableForModification(state.cartId);
-            if (!isAvailable) {
-              console.log('🔄 Current cart is not available (likely ordered), creating new cart...');
-              state.clearCart();
-            }
-          } catch (error) {
-            console.warn('⚠️ Failed to check cart availability, creating new cart:', error);
-            state.clearCart();
-          }
-        }
-        
-        // Always create a new cart for each session to avoid permission issues
-        if (!state.isCartCreated || !state.cartId) {
-          console.log('🔄 Creating new cart for this session...');
-          try {
-            await state.createCart();
-          } catch (error) {
-            console.warn('⚠️ Failed to create cart in backend, continuing with local cart:', error);
-            // Set a temporary cart ID for local use
-            set({ cartId: `temp_${Date.now()}`, isCartCreated: false });
-          }
-        }
-        
-        // Add item to local state
-        set((state) => {
-          const existingItem = state.items.find(
-            (item) => item.product.id === product.id
-          );
-          if (existingItem) {
-            return {
-              items: state.items.map((item) =>
-                item.product.id === product.id
-                  ? { ...item, quantity: item.quantity + 1 }
-                  : item
-              ),
-            };
-          } else {
-            return { items: [...state.items, { product, quantity: 1 }] };
-          }
-        });
-        
-        // Try to sync with backend (non-blocking)
-        const currentState = get();
-        if (currentState.cartId && currentState.isCartCreated) {
-          currentState.syncWithBackend().catch(error => {
-            console.warn('⚠️ Backend sync failed, continuing with local cart:', error);
-          });
-        } else if (currentState.cartId && typeof currentState.cartId === 'string' && currentState.cartId.startsWith('temp_')) {
-          // If we have a temporary cart ID, try to create a real cart and sync
-          console.log('🔄 Attempting to create real cart for sync...');
-          currentState.createCart().then(() => {
-            const newState = get();
-            if (newState.cartId && newState.isCartCreated) {
-              newState.syncWithBackend().catch(error => {
-                console.warn('⚠️ Backend sync failed after cart creation:', error);
-              });
-            }
-          }).catch(error => {
-            console.warn('⚠️ Failed to create real cart for sync:', error);
-          });
-        }
-      },
-      removeItem: async (productId) => {
-        const state = get();
-        
-        // Update local state
-        set((state) => ({
-          items: state.items.reduce((acc, item) => {
-            if (item.product.id === productId) {
-              if (item.quantity > 1) {
-                acc.push({ ...item, quantity: item.quantity - 1 });
-              }
-            } else {
-              acc.push(item);
-            }
-            return acc;
-          }, [] as CartItem[]),
-        }));
-        
-        // Try to sync with backend (non-blocking)
-        if (state.cartId && state.isCartCreated) {
-          state.syncWithBackend().catch(error => {
-            console.warn('⚠️ Backend sync failed, continuing with local cart:', error);
-          });
-        }
-      },
-      deleteCartProduct: async (productId) => {
-        const state = get();
-        
-        // Update local state
-        set((state) => ({
-          items: state.items.filter(
-            ({ product }) => product?.id !== productId
-          ),
-        }));
-        
-        // Try to sync with backend (non-blocking)
-        if (state.cartId && state.isCartCreated) {
-          state.syncWithBackend().catch(error => {
-            console.warn('⚠️ Backend sync failed, continuing with local cart:', error);
-          });
-        }
-      },
-      resetCart: async () => {
-        const state = get();
-        set({ items: [] });
-        
-        // Try to sync with backend (non-blocking)
-        if (state.cartId && state.isCartCreated) {
-          state.syncWithBackend().catch(error => {
-            console.warn('⚠️ Backend sync failed, continuing with local cart:', error);
-          });
-        }
-      },
-      syncWithBackend: async () => {
-        const state = get();
-        
-        // If no cart exists or cart creation failed, create a new one
-        if (!state.cartId || !state.isCartCreated) {
-          console.log('🔄 No valid cart found, creating new cart...');
-          try {
-            await state.createCart();
-          } catch (error) {
-            console.error('❌ Failed to create cart:', error);
-            return;
-          }
-        }
-        
-        const currentState = get();
-        if (!currentState.cartId || !currentState.isCartCreated) {
-          console.error('❌ Still no valid cart after creation attempt');
-          return;
-        }
-        
-        try {
-          const { addItemToCart } = await import('./lib/api');
+          const cartDetails = await getCartDetails(state.activeCartId);
           
-          // Add items to the valid cart
-          for (const localItem of currentState.items) {
-            try {
-              // Ensure cartId is a number before making API call
-              if (typeof currentState.cartId !== 'number') {
-                console.warn('⚠️ Cart ID is not numeric, skipping backend sync');
-                continue;
-              }
-              
-              await addItemToCart(currentState.cartId, {
-                product_id: localItem.product.id,
-                quantity: localItem.quantity
-              });
-              console.log(`✅ Item ${localItem.product.id} added to cart ${currentState.cartId}`);
-            } catch (itemError: any) {
-              // If we get a 403 error, the cart doesn't belong to us - reset and create a new one
-              if (itemError.status === 403 || itemError.message?.includes('403') || itemError.message?.includes('permission')) {
-                console.log('❌ Cart permission denied (403), resetting cart...');
-                console.log('❌ Error details:', itemError.details);
-                await currentState.resetCartOnPermissionError();
-                // Retry with the new cart
-                const newState = get();
-                if (newState.cartId && typeof newState.cartId === 'number') {
-                  try {
-                    await addItemToCart(newState.cartId, {
-                      product_id: localItem.product.id,
-                      quantity: localItem.quantity
-                    });
-                    console.log(`✅ Item ${localItem.product.id} added to new cart ${newState.cartId}`);
-                  } catch (retryError) {
-                    console.error('❌ Failed to add item to new cart:', retryError);
+          // Convert backend items to our CartItem format
+          const backendItems = cartDetails.items || [];
+          const convertedItems = backendItems.map((item: any) => ({
+            product: {
+              id: item.product?.id || item.product_id,
+              name: item.product?.name || 'Unknown Product',
+              base_price: item.product?.base_price || item.base_price || 0,
+              pricing: {
+                base_price: item.product?.base_price || item.base_price || 0,
+                final_price: item.product?.pricing?.final_price || item.final_price || item.base_price || 0,
+                discount_applied: item.product?.pricing?.discount_applied || 0,
+                discount_percentage: item.product?.pricing?.discount_percentage || 0,
+                applied_price_lists: item.product?.pricing?.applied_price_lists || []
+              },
+              image_urls: item.product?.image_urls || [item.product?.imageUrl] || [],
+              unit_measure: item.product?.unit_measure || 'piece',
+              // Add other required fields
+              ref: item.product?.ref,
+              description: item.product?.description,
+              brand: item.product?.brand,
+              ecommerce_category_id: item.product?.ecommerce_category_id,
+              ecommerce_subcategory_id: item.product?.ecommerce_subcategory_id,
+              created_at: item.product?.created_at,
+              updated_at: item.product?.updated_at,
+              categories: item.product?.categories,
+              product_tags: item.product?.product_tags,
+              inventory: item.product?.inventory,
+              // Legacy fields
+              price: item.product?.price,
+              unit: item.product?.unit,
+              categoryId: item.product?.categoryId,
+              imageUrl: item.product?.imageUrl
+            },
+            quantity: item.quantity || 1,
+            itemId: item.id
+          }));
+          
+          // Update the active cart with latest backend data
+          set(state => ({
+            carts: state.carts.map(cart => 
+              cart.id === state.activeCartId 
+                ? {
+                    ...cart,
+                    items: convertedItems,
+                    itemCount: convertedItems.length,
+                    totalPrice: convertedItems.reduce((total: number, item: any) => {
+                      const price = item.product.pricing?.final_price || item.product.base_price || 0;
+                      return total + (price * item.quantity);
+                    }, 0)
                   }
-                }
-              } else {
-                console.log(`⚠️ Item ${localItem.product.id} might already exist in cart or other error:`, itemError.message);
-              }
-            }
-          }
+                : cart
+            ),
+            items: convertedItems
+          }));
           
-          console.log('🔄 Cart synced with backend successfully');
+          console.log('✅ Active cart synced with backend:', convertedItems.length, 'items');
         } catch (error) {
-          console.error('❌ Failed to sync cart with backend:', error);
-          // Don't throw the error - let the user continue with local cart
+          console.error('❌ Failed to sync active cart:', error);
+          throw error;
         }
       },
-      getTotalPrice: () => {
-        return get().items.reduce(
-          (total, item) => total + (item.product.pricing?.final_price ?? item.product.base_price ?? 0) * item.quantity,
-          0
-        );
-      },
-      getSubTotalPrice: () => {
-        return get().items.reduce(
-          (total, item) => total + (item.product.pricing?.final_price ?? item.product.base_price ?? 0) * item.quantity,
-          0
-        );
-      },
-      getItemCount: (productId) => {
-        const item = get().items.find((item) => item.product.id === productId);
-        return item ? item.quantity : 0;
-      },
-      getGroupedItems: () => get().items,
-      placeOrder: (userId, customerName, email, deliveryLocation, orderType) => {
-        const state = get();
-        const orderItems: OrderItem[] = state.items.map((item) => ({
-          productId: item.product.id,
-          name: item.product.name,
-          price: item.product.pricing?.final_price ?? item.product.base_price ?? 0,
-          quantity: item.quantity,
-          imageUrl: item.product.image_urls?.[0] || item.product.imageUrl,
-        }));
 
-        const order: Order = {
-          id: `order_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-          orderNumber: `ORD-${Date.now()}`,
-          userId,
-          items: orderItems,
-          totalAmount: state.getTotalPrice(),
-          status: OrderStatus.PENDING,
-          createdAt: new Date().toISOString(),
-          customerName,
-          email,
-          deliveryLocation,
-          orderType,
-        };
-
-        set((state) => ({
-          orders: [...state.orders, order],
-          items: [], // Clear cart after placing order
-        }));
-
-        return order;
-      },
-      getOrders: () => get().orders,
     }),
     { name: "cart-store" }
   )
 );
 
-export { useCartStore };
 export default useCartStore;

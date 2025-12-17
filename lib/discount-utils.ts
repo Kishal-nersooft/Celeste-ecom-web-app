@@ -42,7 +42,7 @@ export function getDiscountPercentage(product: Product): number {
 export function shouldShowAsDiscounted(product: Product): boolean {
   // Only check if pricing data exists and shows discount
   // Anonymous users will have pricing: null, so no discounts will be shown
-  return product.pricing && isProductDiscounted(product);
+  return !!(product.pricing && isProductDiscounted(product));
 }
 
 /**

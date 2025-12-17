@@ -82,6 +82,16 @@ body {
     @apply duration-300 ease-in-out transition-all cursor-pointer;
   }
 }
+
+@layer utilities {
+  .scrollbar-hide {
+    /* Hide scrollbar for Chrome, Safari and Opera */
+    -webkit-scrollbar: none;
+    /* Hide scrollbar for IE, Edge and Firefox */
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
 body {
   font-family: var(--font-poppins), sans-serif; /* Fallback to sans-serif */
 }

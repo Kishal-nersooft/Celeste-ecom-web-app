@@ -63,7 +63,7 @@ class ProductCache {
       includeCategories: params.includeCategories !== false,
       includePricing: params.includePricing !== false,
       includeInventory: params.includeInventory !== false,
-      storeIds: params.storeIds?.sort() || null,
+      storeIds: Array.isArray(params.storeIds) ? params.storeIds.sort() : null,
       latitude: params.latitude || null,
       longitude: params.longitude || null
     };
@@ -101,11 +101,13 @@ class ProductCache {
   // Load cache from localStorage
   private loadFromStorage(): void {
     try {
-      const stored = localStorage.getItem('product-cache');
-      if (stored) {
-        const data = JSON.parse(stored);
-        this.cache = new Map(data);
-        this.cleanup(); // Remove expired entries on load
+      if (typeof window !== 'undefined') {
+        const stored = localStorage.getItem('product-cache');
+        if (stored) {
+          const data = JSON.parse(stored);
+          this.cache = new Map(data);
+          this.cleanup(); // Remove expired entries on load
+        }
       }
     } catch (error) {
       console.warn('Failed to load product cache from localStorage:', error);
@@ -116,8 +118,10 @@ class ProductCache {
   // Save cache to localStorage
   private saveToStorage(): void {
     try {
-      const data = Array.from(this.cache.entries());
-      localStorage.setItem('product-cache', JSON.stringify(data));
+      if (typeof window !== 'undefined') {
+        const data = Array.from(this.cache.entries());
+        localStorage.setItem('product-cache', JSON.stringify(data));
+      }
     } catch (error) {
       console.warn('Failed to save product cache to localStorage:', error);
     }

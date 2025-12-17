@@ -64,7 +64,7 @@ export const useServerSideProducts = ({
       console.log('📦 useServerSideProducts: Loading cached data:', cachedProducts.length, 'products');
       setData(prev => ({
         ...prev,
-        products: cachedProducts,
+        products: cachedProducts as Product[],
         loading: false,
         loadingMore: false,
         hasMore: cachedProducts.length >= pageSize
@@ -159,7 +159,7 @@ export const useServerSideProducts = ({
         }));
 
         // Cache the results
-        setCachedProducts(cacheKey, newProducts);
+        setCachedProducts(cacheKey, newProducts as any);
         console.log('📦 useServerSideProducts: Cached subcategory products:', newProducts.length);
       } else {
         // Subcategory selected - fetch products for this specific subcategory
@@ -190,7 +190,7 @@ export const useServerSideProducts = ({
         }));
 
         // Cache the results
-        setCachedProducts(cacheKey, newProducts);
+        setCachedProducts(cacheKey, newProducts as any);
         console.log('📦 useServerSideProducts: Cached subcategory products:', newProducts.length);
       }
     } catch (error) {
@@ -248,7 +248,7 @@ export const useServerSideProducts = ({
       }));
 
       // Cache the results
-      setCachedProducts(cacheKey, newProducts);
+      setCachedProducts(cacheKey, newProducts as any);
       console.log('📦 useServerSideProducts: Cached all products:', newProducts.length);
     } catch (error) {
       console.error("❌ Error fetching all products:", error);

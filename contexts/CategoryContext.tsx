@@ -53,17 +53,19 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
     lastVisitedIsDeals: false,
   });
 
-  // Load category state from localStorage on mount
+  // Load category state from localStorage after hydration
   useEffect(() => {
     const loadCategoryState = () => {
-      try {
-        const stored = localStorage.getItem("category-state");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          setCategoryState((prev) => ({ ...prev, ...parsed }));
+      if (typeof window !== 'undefined') {
+        try {
+          const stored = localStorage.getItem("category-state");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            setCategoryState((prev) => ({ ...prev, ...parsed }));
+          }
+        } catch (error) {
+          console.warn("Failed to load category state from localStorage:", error);
         }
-      } catch (error) {
-        console.warn("Failed to load category state from localStorage:", error);
       }
     };
 
@@ -81,29 +83,31 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
 
   // Handle URL-based category restoration
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const categoryParam = urlParams.get("category");
-    const dealsParam = urlParams.get("deals");
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const categoryParam = urlParams.get("category");
+      const dealsParam = urlParams.get("deals");
 
-    if (categoryParam === "deals" || dealsParam === "true") {
-      setCategoryState((prev) => ({
-        ...prev,
-        selectedCategoryId: null,
-        isDealsSelected: true,
-      }));
-    } else if (categoryParam && !isNaN(Number(categoryParam))) {
-      setCategoryState((prev) => ({
-        ...prev,
-        selectedCategoryId: Number(categoryParam),
-        isDealsSelected: false,
-      }));
-    } else if (pathname === "/" && categoryState.lastVisitedCategory !== null) {
-      // Restore last visited category when returning to homepage
-      setCategoryState((prev) => ({
-        ...prev,
-        selectedCategoryId: prev.lastVisitedCategory,
-        isDealsSelected: prev.lastVisitedIsDeals,
-      }));
+      if (categoryParam === "deals" || dealsParam === "true") {
+        setCategoryState((prev) => ({
+          ...prev,
+          selectedCategoryId: null,
+          isDealsSelected: true,
+        }));
+      } else if (categoryParam && !isNaN(Number(categoryParam))) {
+        setCategoryState((prev) => ({
+          ...prev,
+          selectedCategoryId: Number(categoryParam),
+          isDealsSelected: false,
+        }));
+      } else if (pathname === "/" && categoryState.lastVisitedCategory !== null) {
+        // Restore last visited category when returning to homepage
+        setCategoryState((prev) => ({
+          ...prev,
+          selectedCategoryId: prev.lastVisitedCategory,
+          isDealsSelected: prev.lastVisitedIsDeals,
+        }));
+      }
     }
   }, [
     pathname,
@@ -113,14 +117,22 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
 
   const setSelectedCategory = useCallback(
     (categoryId: number | null, isDeals: boolean = false) => {
+      console.log("🎯 CategoryContext - setSelectedCategory called:", { categoryId, isDeals });
+      
       setCategoryState((prev) => {
         // Only update if the values actually changed
         if (
           prev.selectedCategoryId === categoryId &&
           prev.isDealsSelected === isDeals
         ) {
+          console.log("🎯 CategoryContext - No change needed");
           return prev;
         }
+
+        console.log("🎯 CategoryContext - Updating state:", {
+          from: { selectedCategoryId: prev.selectedCategoryId, isDealsSelected: prev.isDealsSelected },
+          to: { selectedCategoryId: categoryId, isDealsSelected: isDeals }
+        });
 
         return {
           ...prev,
@@ -130,20 +142,22 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
       });
 
       // Update URL parameters
-      const url = new URL(window.location.href);
-      if (isDeals) {
-        url.searchParams.set("deals", "true");
-        url.searchParams.delete("category");
-      } else if (categoryId) {
-        url.searchParams.set("category", categoryId.toString());
-        url.searchParams.delete("deals");
-      } else {
-        url.searchParams.delete("category");
-        url.searchParams.delete("deals");
-      }
+      if (typeof window !== 'undefined') {
+        const url = new URL(window.location.href);
+        if (isDeals) {
+          url.searchParams.set("deals", "true");
+          url.searchParams.delete("category");
+        } else if (categoryId) {
+          url.searchParams.set("category", categoryId.toString());
+          url.searchParams.delete("deals");
+        } else {
+          url.searchParams.delete("category");
+          url.searchParams.delete("deals");
+        }
 
-      // Update URL without causing a page reload
-      window.history.replaceState({}, "", url.toString());
+        // Update URL without causing a page reload
+        window.history.replaceState({}, "", url.toString());
+      }
     },
     []
   );
@@ -178,13 +192,15 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
     });
 
     // Clear URL parameters
-    const url = new URL(window.location.href);
-    url.searchParams.delete("category");
-    url.searchParams.delete("deals");
-    window.history.replaceState({}, "", url.toString());
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("category");
+      url.searchParams.delete("deals");
+      window.history.replaceState({}, "", url.toString());
 
-    // Clear localStorage
-    localStorage.removeItem("category-state");
+      // Clear localStorage
+      localStorage.removeItem("category-state");
+    }
   }, []);
 
   const restoreLastVisitedCategory = useCallback(() => {

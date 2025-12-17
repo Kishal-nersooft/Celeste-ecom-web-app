@@ -1,4 +1,5 @@
 import { Product } from "../../../../store";
+import { Category } from "@/components/Categories";
 import CategoriesPageClient from "./CategoriesPageClient";
 
 // Force dynamic rendering

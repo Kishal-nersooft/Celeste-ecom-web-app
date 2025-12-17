@@ -48,14 +48,16 @@ const OrdersComponent = ({ orders }: { orders: Order[] }) => {
                   <TableCell>
                     <span
                       className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        order.status === "DELIVERED"
+                        order.status === "delivered"
                           ? "bg-green-100 text-green-800"
-                          : order.status === "PENDING"
+                          : order.status === "pending"
                           ? "bg-yellow-100 text-yellow-800"
-                          : order.status === "PROCESSING"
+                          : order.status === "confirmed"
                           ? "bg-blue-100 text-blue-800"
-                          : order.status === "SHIPPED"
+                          : order.status === "preparing"
                           ? "bg-purple-100 text-purple-800"
+                          : order.status === "ready"
+                          ? "bg-orange-100 text-orange-800"
                           : "bg-red-100 text-red-800"
                       }`}
                     >

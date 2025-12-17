@@ -5,7 +5,9 @@ import Container from "@/components/Container";
 import ProductList from "@/components/ProductList";
 import { getProductsWithPricing, getCategories } from "@/lib/api";
 import { useAuth } from "@/components/FirebaseAuthProvider";
+import { Product } from "@/store";
 import Link from "next/link";
+import Loader from "@/components/Loader";
 
 export default function DealsPage() {
   const { user, loading: authLoading } = useAuth();
@@ -13,7 +15,6 @@ export default function DealsPage() {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [loadingProgress, setLoadingProgress] = useState<string>("Loading deals...");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -21,17 +22,13 @@ export default function DealsPage() {
         console.log("🔍 Deals page: Starting to fetch data...");
         console.log("🔍 Deals page: User authenticated:", !!user);
         
-        setLoadingProgress("Fetching product data...");
-        
         // Fetch all products with pricing data first
         console.log("🔍 Deals page: Fetching all products with pricing...");
-        setLoadingProgress("Loading products with pricing data...");
         const allProductsResponse = await getProductsWithPricing(null, 1, 100, false, true, true, [1, 2, 3, 4]); // Get all products first
         
         // Filter to only products with discount_applied > 0
         console.log("🔍 Deals page: Filtering for products with discounts...");
-        setLoadingProgress("Filtering discounted products...");
-        const productsResponse = allProductsResponse.filter(product => 
+        const productsResponse = allProductsResponse.filter((product: Product) => 
           product.pricing && 
           product.pricing.discount_applied !== null && 
           product.pricing.discount_applied !== undefined && 
@@ -39,7 +36,6 @@ export default function DealsPage() {
         );
         console.log("🔍 Deals page: getProducts response:", productsResponse);
         
-        setLoadingProgress("Loading categories...");
         console.log("🔍 Deals page: Calling getCategories...");
         const categoriesResponse = await getCategories();
         console.log("🔍 Deals page: getCategories response:", categoriesResponse);
@@ -50,8 +46,6 @@ export default function DealsPage() {
         
         setProducts(productsArray);
         setCategories(categoriesArray);
-        
-        setLoadingProgress("Deals loaded successfully!");
         
         console.log(`✅ Deals page: Found ${productsArray.length} discounted products`);
         console.log(`✅ Deals page: Found ${categoriesArray.length} categories`);
@@ -77,18 +71,7 @@ export default function DealsPage() {
   }, [user, authLoading]);
 
   if (authLoading || loading) {
-    return (
-      <Container className="pb-10">
-        <div className="flex flex-col items-center justify-center min-h-[400px]">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Loading deals...</h1>
-          <p className="text-gray-600 text-center max-w-md">{loadingProgress}</p>
-          <div className="mt-4 w-full max-w-md bg-gray-200 rounded-full h-2">
-            <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
-          </div>
-        </div>
-      </Container>
-    );
+    return <Loader />;
   }
 
   return (
@@ -122,9 +105,6 @@ export default function DealsPage() {
           <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
             <p className="font-semibold">Error loading deals:</p>
             <p className="text-sm mt-1">{error}</p>
-            <Link href="/debug-auth" className="text-blue-600 hover:underline mt-2 inline-block">
-              Debug Authentication
-            </Link>
           </div>
         )}
         
@@ -137,16 +117,7 @@ export default function DealsPage() {
       
       {products.length > 0 ? (
         <ProductList title={false} products={products} categories={categories} />
-      ) : (
-        <div className="text-center py-8">
-          <p className="text-gray-600">No discounted products available at the moment.</p>
-          {!user && (
-            <p className="text-sm text-gray-500 mt-2">
-              Try signing in to see personalized deals.
-            </p>
-          )}
-        </div>
-      )}
+      ) : null}
     </Container>
   );
 }

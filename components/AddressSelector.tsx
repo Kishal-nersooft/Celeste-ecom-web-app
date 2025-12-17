@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -6,6 +6,7 @@ import { useLoadScript, GoogleMap, Marker, Autocomplete } from "@react-google-ma
 import { useLocation } from "@/contexts/LocationContext";
 import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon, X } from "lucide-react";
 import toast from "react-hot-toast";
+import Loader from "@/components/Loader";
 
 const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyB1zVZ0tZ4O1VuOpmDp8ArAq6NZZBjcExI";
 const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
@@ -21,6 +22,13 @@ interface AddressSelectorProps {
   }) => void;
   title?: string;
   description?: string;
+  editingAddress?: {
+    id: number;
+    address: string;
+    latitude: number;
+    longitude: number;
+    name?: string;
+  } | null;
 }
 
 const AddressSelector: React.FC<AddressSelectorProps> = ({
@@ -28,7 +36,8 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   onClose,
   onAddressSelect,
   title = "Select Address",
-  description = "Choose your address by searching or clicking on the map"
+  description = "Choose your address by searching or clicking on the map",
+  editingAddress = null
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [mapCenter, setMapCenter] = useState({ lat: 6.9271, lng: 79.8612 }); // Default to Colombo
@@ -38,9 +47,31 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const [geocoderService, setGeocoderService] = useState<google.maps.Geocoder | null>(null);
   const [autocompleteService, setAutocompleteService] = useState<any>(null);
   const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
-  const [showPredictions, setShowPredictions] = useState(false);
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [currentView, setCurrentView] = useState<'search' | 'map'>('search');
+  
+  // Debug: Log when predictions change
+  useEffect(() => {
+    console.log('AddressSelector - Predictions updated:', predictions.length, predictions);
+  }, [predictions]);
+
+  // Pre-fill form when editing an address
+  useEffect(() => {
+    if (editingAddress && isOpen) {
+      setAddressName(editingAddress.name || "");
+      setSelectedAddress(editingAddress.address);
+      setMarkerPosition({ lat: editingAddress.latitude, lng: editingAddress.longitude });
+      setMapCenter({ lat: editingAddress.latitude, lng: editingAddress.longitude });
+      setCurrentView('map');
+    } else if (!editingAddress && isOpen) {
+      // Reset form when opening for new address
+      setSearchQuery("");
+      setAddressName("");
+      setSelectedAddress("");
+      setMarkerPosition(null);
+      setCurrentView('search');
+    }
+  }, [editingAddress, isOpen]);
   
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
@@ -60,86 +91,74 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   }, [isLoaded, loadError]);
 
   useEffect(() => {
-    if (isLoaded && window.google) {
+    if (isLoaded && typeof window !== 'undefined' && window.google && window.google.maps) {
+      console.log('AddressSelector - Initializing Google Maps services...');
       const geocoder = new window.google.maps.Geocoder();
       
-      // Try AutocompleteSuggestion first (new API)
-      if (window.google.maps.places.AutocompleteSuggestion) {
-        try {
-          const autocomplete = new window.google.maps.places.AutocompleteSuggestion();
-          setAutocompleteService(autocomplete);
-        } catch (error) {
-          console.error('Error creating AutocompleteSuggestion:', error);
-          // Fallback to AutocompleteService
-          if (window.google.maps.places.AutocompleteService) {
-            try {
-              const fallbackAutocomplete = new window.google.maps.places.AutocompleteService();
-              setAutocompleteService(fallbackAutocomplete);
-            } catch (fallbackError) {
-              console.error('Error creating fallback AutocompleteService:', fallbackError);
-            }
-          }
-        }
-      } else if (window.google.maps.places.AutocompleteService) {
-        // Fallback to old API if new one is not available
+      // Initialize AutocompleteService (standard Places API)
+      if (window.google.maps.places && window.google.maps.places.AutocompleteService) {
         try {
           const autocomplete = new window.google.maps.places.AutocompleteService();
+          console.log('AddressSelector - AutocompleteService initialized successfully');
           setAutocompleteService(autocomplete);
         } catch (error) {
-          console.error('Error creating fallback AutocompleteService:', error);
+          console.error('AddressSelector - Error creating AutocompleteService:', error);
         }
+      } else {
+        console.error('AddressSelector - AutocompleteService not available');
       }
       
       setGeocoderService(geocoder);
+      console.log('AddressSelector - Geocoder initialized successfully');
     }
   }, [isLoaded]);
 
-  const fetchPredictions = (input: string) => {
-    if (!input.trim()) {
-      setPredictions([]);
-      setShowPredictions(false);
-      return;
-    }
-
-    // Try AutocompleteService first
-    if (autocompleteService) {
-      try {
-        // Check if it's the old AutocompleteService API
-        if (typeof autocompleteService.getPlacePredictions === 'function') {
-          autocompleteService.getPlacePredictions(
-            {
-              input,
-              componentRestrictions: { country: 'lk' }, // Restrict to Sri Lanka
-              types: ['address']
-            },
-            (predictions: any, status: any) => {
-              if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-                setPredictions(predictions);
-                setShowPredictions(true);
-              } else {
-                setPredictions([]);
-                setShowPredictions(false);
-              }
-            }
-          );
-          return;
-        } else {
-          console.log('AutocompleteSuggestion API detected, but getPlacePredictions not available');
-          // Fall through to Geocoder
-        }
-      } catch (error) {
-        console.error("Error calling AutocompleteService:", error);
+  const fetchPredictions = useCallback(
+    (input: string) => {
+      if (!input || input.trim().length < 2) {
+        setPredictions([]);
+        return;
       }
-    }
+      
+      // Use AutocompleteService for location/place name suggestions
+      // Use 'establishment' to search for named places (like "Nero") rather than street addresses
+      if (autocompleteService && typeof autocompleteService.getPlacePredictions === 'function') {
+        autocompleteService.getPlacePredictions(
+          { 
+            input: input.trim(),
+            types: ['establishment'] // Only search for named places/locations, not street addresses
+          },
+          (predictions: any, status: any) => {
+            console.log('AddressSelector - AutocompleteService response:', { status, predictionsCount: predictions?.length, predictions });
+            // Check both constant and string for compatibility
+            const isOK = status === window.google.maps.places.PlacesServiceStatus.OK || status === "OK";
+            const isZeroResults = status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS || status === "ZERO_RESULTS";
+            
+            if (isOK && predictions && predictions.length > 0) {
+              console.log('AddressSelector - Setting predictions:', predictions.length);
+              setPredictions(predictions);
+            } else if (isZeroResults) {
+              console.log('AddressSelector - Zero results');
+              setPredictions([]);
+            } else {
+              console.error("AddressSelector - AutocompleteService failed:", status);
+              setPredictions([]);
+            }
+          }
+        );
+        return;
+      }
+      
+      console.log('AddressSelector - AutocompleteService not available, using fallback');
 
-    // Fallback: Use Geocoder for basic search
-    if (geocoderService) {
-      try {
+      
+      // Fallback: Use Geocoder only if AutocompleteService is not available
+      if (!autocompleteService && geocoderService) {
         geocoderService.geocode(
-          { address: input, componentRestrictions: { country: 'lk' } },
+          { address: input.trim() },
           (results: any, status: any) => {
-            if (status === window.google.maps.GeocoderStatus.OK && results) {
-              // Convert geocoder results to autocomplete-like format
+            console.log('AddressSelector - Geocoder response:', { status, resultsCount: results?.length });
+            if (status === window.google.maps.GeocoderStatus.OK && results && results.length > 0) {
               const predictions = results.slice(0, 5).map((result: any, index: number) => ({
                 place_id: `geocoder_${index}`,
                 description: result.formatted_address,
@@ -149,26 +168,21 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
                 }
               }));
               setPredictions(predictions);
-              setShowPredictions(true);
             } else {
               setPredictions([]);
-              setShowPredictions(false);
             }
           }
         );
-      } catch (error) {
-        console.error("Error calling Geocoder:", error);
+      } else {
         setPredictions([]);
-        setShowPredictions(false);
       }
-    } else {
-      setPredictions([]);
-      setShowPredictions(false);
-    }
-  };
+    },
+    [autocompleteService, geocoderService]
+  );
 
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target.value;
+    console.log('AddressSelector - Input changed:', input);
     setSearchQuery(input);
     fetchPredictions(input);
   };
@@ -176,7 +190,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const handlePredictionClick = (prediction: google.maps.places.AutocompletePrediction) => {
     setSearchQuery(prediction.description);
     setPredictions([]);
-    setShowPredictions(false);
 
     if (!geocoderService) return;
 
@@ -311,10 +324,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       <Dialog open={isOpen} onOpenChange={handleClose}>
         <DialogContent className="max-w-4xl h-[600px]">
           <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-              <p>Loading map...</p>
-            </div>
+            <Loader />
           </div>
         </DialogContent>
       </Dialog>
@@ -323,48 +333,39 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl h-[600px] p-0">
+      <DialogContent className="max-w-4xl h-[600px] p-0 overflow-visible">
         <DialogHeader className="p-6 pb-4">
           <DialogTitle className="text-xl font-bold">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 flex flex-col px-6 pb-6">
+        <div className="flex-1 flex flex-col px-6 pb-6 overflow-visible">
           {/* Search Section */}
-          <div className="mb-4">
+          <div className="mb-4 overflow-visible">
             <div className="flex gap-2 mb-2">
-              <div className="relative flex-1">
-                <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <div className="relative flex-1 z-[101]">
+                <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 z-10" />
                 <Input
                   ref={searchInputRef}
                   type="text"
                   placeholder="Search for an address..."
                   value={searchQuery}
                   onChange={handleSearchInputChange}
-                  className="pl-10"
+                  className="pl-10 relative z-10"
                 />
-                {showPredictions && predictions.length > 0 && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-200 rounded-md shadow-lg mt-1 max-h-60 overflow-y-auto">
-                    {predictions.map((prediction, index) => (
-                      <div
-                        key={index}
-                        className="p-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                {predictions.length > 0 && (
+                  <ul className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-[200] mt-1 max-h-48 sm:max-h-60 overflow-y-auto">
+                    {predictions.map((prediction) => (
+                      <li
+                        key={prediction.place_id || `prediction-${prediction.description}`}
+                        className="px-3 sm:px-4 py-2 cursor-pointer hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
                         onClick={() => handlePredictionClick(prediction)}
                       >
-                        <div className="flex items-start space-x-2">
-                          <MapPinIcon className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {prediction.structured_formatting.main_text}
-                            </p>
-                            <p className="text-xs text-gray-500">
-                              {prediction.structured_formatting.secondary_text}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
+                        <div className="font-medium text-xs sm:text-sm">{prediction.structured_formatting.main_text}</div>
+                        <div className="text-[10px] sm:text-xs text-gray-500">{prediction.structured_formatting.secondary_text}</div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
               </div>
               <Button onClick={handleSearch} variant="outline">

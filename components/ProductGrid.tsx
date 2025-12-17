@@ -24,7 +24,7 @@ const ProductGrid = memo(
     // Memoize skeleton loading
     const skeletonGrid = useMemo(
       () => (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2 md:gap-3">
           {Array.from({ length: 12 }).map((_, index) => (
             <ProductCardSkeleton key={index} />
           ))}
@@ -40,7 +40,7 @@ const ProductGrid = memo(
 
     return (
       <div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-1.5 sm:gap-2 md:gap-3">
           {products?.map((product) => (
             <motion.div
               key={product?.id} // Use product.id as the key

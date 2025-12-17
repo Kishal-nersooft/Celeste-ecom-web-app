@@ -11,6 +11,8 @@ interface UsePaginatedProductsOptions {
   storeId?: number;
   categories: Category[];
   pageSize?: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface PaginatedData {
@@ -73,7 +75,9 @@ export const usePaginatedProducts = ({
   isDeals,
   storeId,
   categories,
-  pageSize = 20
+  pageSize = 20,
+  latitude,
+  longitude
 }: UsePaginatedProductsOptions) => {
   const [data, setData] = useState<PaginatedData>({
     products: [],
@@ -119,7 +123,7 @@ export const usePaginatedProducts = ({
 
     try {
       const products = await executeWithLimit(() =>
-        getProductsBySubcategoryWithPricing(subcategoryId, 10, storeId ? [storeId] : undefined)
+        getProductsBySubcategoryWithPricing(subcategoryId, 10, storeId ? [storeId] : undefined, latitude, longitude)
       );
 
       setData(prev => ({
@@ -160,6 +164,8 @@ export const usePaginatedProducts = ({
       return;
     }
 
+    console.log("🎯 fetchDealsProducts - Starting fetch for 'Deals' category", { page, append });
+
     if (page === 1) {
       setData(prev => ({ ...prev, loading: true, products: [] }));
     } else {
@@ -180,6 +186,11 @@ export const usePaginatedProducts = ({
           storeId ? [storeId] : undefined
         )
       );
+
+      console.log("🎯 fetchDealsProducts - Received products:", {
+        count: discountedProducts.length,
+        sample: discountedProducts.slice(0, 3).map((p: any) => ({ id: p.id, name: p.name, discount: p.discount_percentage }))
+      });
 
       setData(prev => ({
         ...prev,
@@ -244,7 +255,7 @@ export const usePaginatedProducts = ({
         const loadingSubcategories: { [key: number]: boolean } = {};
         
         // Initialize all subcategories as not loaded
-        subcats.forEach(subcat => {
+        subcats.forEach((subcat: any) => {
           loadedSubcategories[subcat.id] = false;
           loadingSubcategories[subcat.id] = false;
         });
@@ -267,7 +278,9 @@ export const usePaginatedProducts = ({
           getProductsBySubcategoryWithPricing(
             selectedCategory, 
             pageSize, 
-            storeId ? [storeId] : undefined
+            storeId ? [storeId] : undefined,
+            latitude,
+            longitude
           )
         );
 
@@ -311,12 +324,15 @@ export const usePaginatedProducts = ({
         products: append ? prev.products : [],
         subcategories: [],
         parentCategoryNames: {},
+        parentProducts: {},
         loading: false,
         loadingMore: false,
         hasMore: false
       }));
       return;
     }
+
+    console.log("🔄 fetchAllProducts - Starting fetch for 'All' category", { page, append, categoriesCount: categories.length });
 
     if (page === 1) {
       setData(prev => ({ ...prev, loading: true, products: [] }));
@@ -333,18 +349,23 @@ export const usePaginatedProducts = ({
 
       // Get all parent categories first
       const parentCategories = categories.filter(cat => !cat.parent_category_id);
+      console.log("🔄 fetchAllProducts - Parent categories found:", parentCategories.length);
       
       // Fetch products for first few parent categories only (lazy loading)
       const limitedParentCategories = parentCategories.slice(0, 5); // Only first 5 parent categories
+      console.log("🔄 fetchAllProducts - Limited to first 5 categories:", limitedParentCategories.map(c => c.name));
       
       const productPromises = limitedParentCategories.map(parentCat =>
         executeWithLimit(() =>
-          getProductsWithPricing([parentCat.id], page, Math.ceil(pageSize / limitedParentCategories.length), false, true, true, storeId ? [storeId] : undefined)
-        ).then((prods) => ({
-          parentId: parentCat.id,
-          parentName: parentCat.name,
-          products: prods // Products already limited by API call
-        }))
+          getProductsWithPricing([parentCat.id], page, Math.ceil(pageSize / limitedParentCategories.length), false, true, true, storeId ? [storeId] : undefined, latitude, longitude)
+        ).then((prods) => {
+          console.log(`🔄 fetchAllProducts - Category ${parentCat.name} (${parentCat.id}): ${prods.length} products`);
+          return {
+            parentId: parentCat.id,
+            parentName: parentCat.name,
+            products: prods // Products already limited by API call
+          };
+        })
       );
 
       const parentProductData = await Promise.all(productPromises);
@@ -358,6 +379,14 @@ export const usePaginatedProducts = ({
         parentProducts[parentId] = products;
       });
 
+      console.log("🔄 fetchAllProducts - Final data:", {
+        allProductsCount: allProducts.length,
+        parentNamesCount: Object.keys(parentNames).length,
+        parentProductsCount: Object.keys(parentProducts).length,
+        parentNames: parentNames,
+        parentProductsKeys: Object.keys(parentProducts)
+      });
+
       setData(prev => ({
         ...prev,
         products: append ? [...prev.products, ...allProducts] : allProducts,
@@ -367,7 +396,7 @@ export const usePaginatedProducts = ({
         loadingMore: false,
         hasMore: allProducts.length === pageSize,
         currentPage: page,
-        totalProducts: prev.totalProducts + allProducts.length
+        totalProducts: append ? prev.totalProducts + allProducts.length : allProducts.length
       }));
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {

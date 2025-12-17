@@ -44,7 +44,7 @@ export async function createCheckoutSession(
       }/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${
         process.env.NEXT_PUBLIC_BASE_URL || `https://${process.env.VERCEL_URL}`
-      }/cart`,
+      }/checkout`,
       line_items: items.map((item) => ({
         price_data: {
           currency: item.currency,
