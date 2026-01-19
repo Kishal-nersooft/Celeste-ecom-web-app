@@ -153,14 +153,25 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
 
   const verifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!otp || !confirmationResult) {
-      toast.error('Please enter the OTP');
+    
+    // Sanitize OTP - remove all non-digit characters
+    const sanitizedOtp = otp.replace(/\D/g, '');
+    
+    if (!sanitizedOtp || sanitizedOtp.length !== 6) {
+      toast.error('Please enter a valid 6-digit OTP');
+      return;
+    }
+    
+    if (!confirmationResult) {
+      toast.error('OTP session expired. Please request a new OTP.');
+      setStep('phone');
       return;
     }
 
     setLoading(true);
     try {
-      const result = await confirmationResult.confirm(otp);
+      // Use sanitized OTP (digits only)
+      const result = await confirmationResult.confirm(sanitizedOtp);
       const user = result.user;
       
       // Get the ID token
@@ -173,8 +184,25 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
       toast.success('Phone number verified successfully!');
     } catch (error: any) {
       console.error('Error verifying OTP:', error);
-      onError(error.message);
-      toast.error('Invalid OTP. Please try again.');
+      
+      // More specific error messages
+      let errorMessage = 'Invalid OTP. Please try again.';
+      if (error.code === 'auth/invalid-verification-code') {
+        errorMessage = 'Invalid OTP code. Please check and try again.';
+      } else if (error.code === 'auth/code-expired') {
+        errorMessage = 'OTP code has expired. Please request a new one.';
+        setStep('phone');
+        setConfirmationResult(null);
+      } else if (error.code === 'auth/session-expired') {
+        errorMessage = 'Session expired. Please request a new OTP.';
+        setStep('phone');
+        setConfirmationResult(null);
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
+      onError(errorMessage);
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -253,9 +281,15 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
             </label>
             <Input
               type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
               placeholder="Enter 6-digit OTP"
               value={otp}
-              onChange={(e) => setOtp(e.target.value)}
+              onChange={(e) => {
+                // Only allow digits
+                const value = e.target.value.replace(/\D/g, '');
+                setOtp(value.slice(0, 6)); // Limit to 6 digits
+              }}
               maxLength={6}
               required
             />
@@ -279,7 +313,11 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
           <Button 
             type="button" 
             variant="ghost" 
-            onClick={() => setStep('phone')}
+            onClick={() => {
+              setStep('phone');
+              setOtp('');
+              setConfirmationResult(null);
+            }}
             className="w-full"
           >
             Change Phone Number

@@ -2,29 +2,30 @@
 import Container from "@/components/Container";
 import { FileX, Package, CheckCircle, XCircle, Clock, Truck, CheckSquare, X, RotateCcw, Plus, ShoppingBag } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import React, { useEffect, useState, useCallback, Suspense } from "react";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import useCartStore, { Order } from "@/store";
+import { Order } from "@/store";
 import { getUserOrders } from "@/lib/api";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
 import ReorderDialog from "@/components/ReorderDialog";
+import Loader from "@/components/Loader";
 
 type OrderStatusFilter = 'ongoing' | 'completed' | 'cancelled';
 
-const OrdersPage = () => {
+const OrdersPageContent = () => {
   const { user, loading: authLoading } = useAuth();
-  const cartStore = useCartStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeFilter, setActiveFilter] = useState<OrderStatusFilter>('ongoing');
   const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   // Filter orders based on status
   const getFilteredOrders = () => {
@@ -66,83 +67,122 @@ const OrdersPage = () => {
     }
   };
 
-  useEffect(() => {
-    const fetchOrders = async () => {
-      if (!authLoading && user) {
-        setLoading(true);
-        try {
-          // Get orders from backend API
-          const response = await getUserOrders(1, 50);
-          console.log('🔍 ORDERS API RESPONSE:', JSON.stringify(response, null, 2));
-          
-          // Handle the API response structure based on documentation
-          let backendOrders = [];
-          if (Array.isArray(response)) {
-            // Direct array response from /orders/ endpoint
-            backendOrders = response;
-          } else if (response.data && Array.isArray(response.data)) {
-            backendOrders = response.data;
-          } else if (response.orders && Array.isArray(response.orders)) {
-            backendOrders = response.orders;
-          }
-          
-          console.log('🔍 EXTRACTED ORDERS:', backendOrders);
-          
-          // Convert backend orders to local Order format based on API schema
-          const convertedOrders: Order[] = backendOrders.map((order: any) => {
-            // Use included product data directly from API response
-            const itemsWithDetails = (order.items || []).map((item: any) => {
-              // Use the included product data if available, otherwise fallback to basic info
-              const product = item.product || {};
-              return {
-                productId: item.product_id,
-                name: product.name || `Product ${item.product_id}`,
-                price: item.unit_price || 0,
-                quantity: item.quantity || 0,
-                imageUrl: product.image_urls?.[0] || product.imageUrl || null
-              };
-            });
-
+  // Fetch orders function - extracted to be reusable
+  const fetchOrders = useCallback(async (showLoading = true) => {
+    if (!authLoading && user) {
+      if (showLoading) setLoading(true);
+      try {
+        // Get orders from backend API
+        const response = await getUserOrders(1, 50, true, true, true);
+        
+        // Handle the new API response structure: { statusCode, message, data: { orders, pagination } }
+        let backendOrders = [];
+        
+        if (response.statusCode && response.data) {
+          // New structure with statusCode and data wrapper
+          backendOrders = response.data.orders || [];
+        } else if (Array.isArray(response)) {
+          // Direct array response (fallback)
+          backendOrders = response;
+        } else if (response.data && Array.isArray(response.data)) {
+          // Data wrapper with direct array
+          backendOrders = response.data;
+        } else if (response.orders && Array.isArray(response.orders)) {
+          // Old structure with orders key
+          backendOrders = response.orders;
+        } else if (response.data?.orders && Array.isArray(response.data.orders)) {
+          // Nested data.orders structure
+          backendOrders = response.data.orders;
+        }
+        
+        // Log clean orders data
+        console.log('Orders Data:', response.data || response);
+        
+        // Convert backend orders to local Order format based on API schema
+        const convertedOrders: Order[] = backendOrders.map((order: any) => {
+          // Use included product data directly from API response
+          const itemsWithDetails = (order.items || []).map((item: any) => {
+            // Handle product data - can be in item.product or null if not included
+            const product = item.product || {};
+            
+            // Extract product name - try multiple possible fields
+            const productName = product.name || 
+                               product.title || 
+                               product.product_name ||
+                               `Product ${item.product_id}`;
+            
+            // Extract image URL - try multiple possible fields
+            const imageUrl = product.image_urls?.[0] || 
+                           product.image_url || 
+                           product.imageUrl || 
+                           product.image ||
+                           product.primary_image ||
+                           null;
+            
             return {
-              id: order.id?.toString() || 'unknown',
-              orderNumber: order.id?.toString() || 'unknown',
-              customerName: user.displayName || "Customer",
-              email: user.email || "",
-              totalAmount: order.total_amount || 0,
-              status: order.status?.toUpperCase() || "PENDING",
-              createdAt: order.created_at || new Date().toISOString(),
-              userId: order.user_id || user.uid,
-              items: itemsWithDetails,
-              payment: null,
-              location: null,
-              // Store additional fields for detailed view
-              storeId: order.store_id,
-              updatedAt: order.updated_at,
-              sourceCartId: order.items?.[0]?.source_cart_id,
-              fulfillmentMode: order.fulfillment_mode || 'delivery',
-              deliveryCharge: order.delivery_charge || 0
+              productId: item.product_id,
+              name: productName,
+              price: item.unit_price || 0,
+              quantity: item.quantity || 0,
+              imageUrl: imageUrl
             };
           });
-          
-          setOrders(convertedOrders);
-        } catch (error) {
-          console.error('Error fetching orders:', error);
-          toast.error('Failed to load orders');
-          
-          // Fallback to local store orders
-          const userOrders = cartStore.getOrders().filter(order => order.userId === user.uid);
-          setOrders(userOrders);
-        } finally {
-          setLoading(false);
-        }
-      } else if (!authLoading && !user) {
-        setLoading(false);
-        router.push("/sign-in");
-      }
-    };
 
+          return {
+            id: order.id?.toString() || 'unknown',
+            orderNumber: order.id?.toString() || order.payment_reference || 'unknown',
+            customerName: user.displayName || "Customer",
+            email: user.email || "",
+            totalAmount: order.total_amount || 0,
+            status: order.status?.toUpperCase() || "PENDING",
+            createdAt: order.created_at || new Date().toISOString(),
+            userId: order.user_id || user.uid,
+            items: itemsWithDetails,
+            payment: null,
+            location: null,
+            // Store additional fields for detailed view
+            storeId: order.store_id,
+            updatedAt: order.updated_at,
+            sourceCartId: order.items?.[0]?.source_cart_id,
+            fulfillmentMode: order.fulfillment_mode || 'delivery',
+            deliveryCharge: order.delivery_charge || 0,
+            paymentReference: order.payment_reference,
+            transactionId: order.transaction_id
+          };
+        });
+        
+        setOrders(convertedOrders);
+      } catch (error) {
+        console.error('Error fetching orders:', error);
+        toast.error('Failed to load orders');
+        setOrders([]);
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    } else if (!authLoading && !user) {
+      setLoading(false);
+      router.push("/sign-in");
+    }
+  }, [user, authLoading, router]);
+
+  useEffect(() => {
     fetchOrders();
-  }, [user, authLoading, router, cartStore]);
+    
+    // Check if redirected from checkout with success
+    const success = searchParams.get('success');
+    const orderId = searchParams.get('orderId');
+    
+    if (success === 'true' && orderId) {
+      // Show success message and refresh orders
+      toast.success('Order placed successfully!');
+      // Remove query params from URL
+      router.replace('/orders', { scroll: false });
+      // Refresh orders after a short delay to ensure backend has processed
+      setTimeout(() => {
+        fetchOrders(false); // Don't show loading spinner for refresh
+      }, 1000);
+    }
+  }, [user, authLoading, router, fetchOrders, searchParams]);
 
   // Reorder handlers
   const handleReorderClick = (order: Order) => {
@@ -430,6 +470,14 @@ const OrdersPage = () => {
       />
 
     </div>
+  );
+};
+
+const OrdersPage = () => {
+  return (
+    <Suspense fallback={<Loader />}>
+      <OrdersPageContent />
+    </Suspense>
   );
 };
 

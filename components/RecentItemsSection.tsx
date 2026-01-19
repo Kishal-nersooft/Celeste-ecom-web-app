@@ -91,7 +91,7 @@ const RecentItemsSection = () => {
   return (
     <div className="w-full py-8">
       {/* Header with section name and See All button */}
-      <div className="flex items-center justify-between mb-4">
+      {/* <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-semibold text-gray-600">
           Recently Bought
         </h2>
@@ -103,7 +103,7 @@ const RecentItemsSection = () => {
             See All
           </Link>
         </div>
-      </div>
+      </div> */}
 
       {/* Product Row */}
       <ProductRow

@@ -1909,9 +1909,13 @@ export async function getUserOrders(page: number = 1, limit: number = 20, includ
   if (includeStores) params.append('include_stores', 'true');
   if (includeAddresses) params.append('include_addresses', 'true');
   
+  // Add cache-busting parameter to ensure fresh data
+  params.append('_t', Date.now().toString());
+  
   const response = await fetch(`${getBaseUrl()}/users/me/orders?${params.toString()}`, {
     method: 'GET',
-    headers: authHeaders
+    headers: authHeaders,
+    cache: 'no-store' // Disable caching for real-time updates
   });
   
   if (!response.ok) {
