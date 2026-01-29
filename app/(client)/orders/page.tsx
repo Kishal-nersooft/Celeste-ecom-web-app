@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
 import ReorderDialog from "@/components/ReorderDialog";
 import Loader from "@/components/Loader";
+import useCartStore from "@/store";
 
 type OrderStatusFilter = 'ongoing' | 'completed' | 'cancelled';
 
@@ -26,6 +27,8 @@ const OrdersPageContent = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const cartStore = useCartStore();
+  const paymentSuccessHandled = React.useRef(false);
 
   // Filter orders based on status
   const getFilteredOrders = () => {
@@ -165,24 +168,64 @@ const OrdersPageContent = () => {
     }
   }, [user, authLoading, router]);
 
+  // Handle payment success redirect (separate effect to avoid re-triggering)
   useEffect(() => {
-    fetchOrders();
-    
-    // Check if redirected from checkout with success
+    const paymentSuccess = searchParams.get('paymentSuccess');
+    const paymentRef = searchParams.get('paymentRef');
     const success = searchParams.get('success');
     const orderId = searchParams.get('orderId');
     
-    if (success === 'true' && orderId) {
+    // Handle payment success redirect (only once)
+    if (paymentSuccess === 'true' && paymentRef && !paymentSuccessHandled.current) {
+      paymentSuccessHandled.current = true;
+      
+      // Remove query params from URL immediately (before async operations)
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/orders');
+      }
+      
+      // Show success message immediately (don't wait for cart operations)
+      toast.success('Payment successful! Your order has been placed.');
+      
+      // Handle cart operations in background (non-blocking)
+      const handlePaymentSuccessRedirect = async () => {
+        try {
+          // Create a new cart for future use (don't clear the old cart - it's already used for the order)
+          // The old cart will remain in the carts list but won't be active anymore
+          await cartStore.createNewCart();
+          console.log('✅ New cart created after successful payment');
+        } catch (error) {
+          console.error('Error creating new cart after payment success:', error);
+          // Don't show error toast - cart operations are not critical
+        }
+      };
+      
+      // Run cart operations in background
+      handlePaymentSuccessRedirect();
+      
+      // Refresh orders after a short delay to ensure backend has processed
+      setTimeout(() => {
+        fetchOrders(false); // Don't show loading spinner for refresh
+      }, 1000);
+    } else if (success === 'true' && orderId && !paymentSuccessHandled.current) {
+      paymentSuccessHandled.current = true;
       // Show success message and refresh orders
       toast.success('Order placed successfully!');
       // Remove query params from URL
-      router.replace('/orders', { scroll: false });
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', '/orders');
+      }
       // Refresh orders after a short delay to ensure backend has processed
       setTimeout(() => {
         fetchOrders(false); // Don't show loading spinner for refresh
       }, 1000);
     }
-  }, [user, authLoading, router, fetchOrders, searchParams]);
+  }, [searchParams, cartStore, fetchOrders]);
+
+  // Fetch orders on mount and when user/auth changes
+  useEffect(() => {
+    fetchOrders();
+  }, [user, authLoading, fetchOrders]);
 
   // Reorder handlers
   const handleReorderClick = (order: Order) => {

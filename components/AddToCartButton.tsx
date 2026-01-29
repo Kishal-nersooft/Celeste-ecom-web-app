@@ -64,11 +64,11 @@ const AddToCartButton = ({ product, className }: Props) => {
   const buttonContent = getButtonContent();
 
   return (
-    <div className="h-8">
+    <div className="h-8 flex items-center justify-start">
       {buttonContent === null ? (
         // Show quantity buttons when item is in cart
         <div className="text-xs">
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-start">
             <QuantityButtons product={product} />
           </div>
         </div>

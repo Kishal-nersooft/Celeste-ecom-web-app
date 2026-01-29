@@ -1186,6 +1186,104 @@ export async function getRecentProducts(
   return productsWithPricing;
 }
 
+export async function getSimilarProducts(
+  productId: number | string,
+  limit: number = 10,
+  minSimilarity: number = 0.5,
+  includePricing: boolean = true,
+  includeCategories: boolean = true,
+  includeTags: boolean = true,
+  includeInventory: boolean = true,
+  storeIds?: number[],
+  latitude?: number,
+  longitude?: number,
+  quantity: number = 1
+) {
+  console.log(`🔄 Getting similar products for product ID: ${productId}...`);
+  
+  const params = new URLSearchParams();
+  params.append('limit', limit.toString());
+  params.append('min_similarity', minSimilarity.toString());
+  params.append('include_pricing', includePricing.toString());
+  params.append('include_categories', includeCategories.toString());
+  params.append('include_tags', includeTags.toString());
+  params.append('include_inventory', includeInventory.toString());
+  params.append('quantity', quantity.toString());
+  
+  // Store IDs (if provided)
+  if (storeIds && storeIds.length > 0) {
+    storeIds.forEach(id => params.append('store_id', id.toString()));
+  }
+  
+  // Location params (if provided)
+  if (latitude !== undefined && longitude !== undefined) {
+    params.append('latitude', latitude.toString());
+    params.append('longitude', longitude.toString());
+  }
+  
+  const url = `${getBaseUrl()}/products/${productId}/similar?${params.toString()}`;
+  console.log("🔍 API - Fetching similar products from:", url.split('?')[0]);
+  
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(url, {
+    method: 'GET',
+    cache: 'no-store',
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+      ...authHeaders
+    }
+  });
+  
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("❌ API Error:", errorText);
+    throw new Error(`Failed to fetch similar products: ${response.status} ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+  
+  // Log the full response structure for debugging
+  console.log("📦 Similar products API response structure:", {
+    isArray: Array.isArray(data),
+    keys: Array.isArray(data) ? 'array' : Object.keys(data),
+    responseSample: JSON.stringify(data).substring(0, 200)
+  });
+  
+  // Handle different response structures
+  let products: any[] = [];
+  if (Array.isArray(data)) {
+    products = data;
+  } else if (data.data && Array.isArray(data.data)) {
+    products = data.data;
+  } else if (data.products && Array.isArray(data.products)) {
+    products = data.products;
+  } else if (data.data?.products && Array.isArray(data.data.products)) {
+    products = data.data.products;
+  }
+  
+  console.log(`✅ Found ${products.length} similar products`);
+  
+  if (products.length === 0) {
+    console.warn("⚠️ No similar products returned");
+  }
+  
+  // Ensure products have pricing structure
+  const productsWithPricing = products.map((product: any) => ({
+    ...product,
+    pricing: product.pricing || {
+      base_price: product.base_price || product.price || 0,
+      final_price: product.base_price || product.price || 0,
+      discount_applied: 0,
+      discount_percentage: 0,
+      applied_price_lists: []
+    }
+  }));
+  
+  return productsWithPricing;
+}
+
 // Optimized function specifically for deals - use backend's only_discounted filtering
 export async function getDiscountedProductsOptimized(
   pageSize: number = 50, // Smaller page size for deals
@@ -1759,6 +1857,8 @@ export async function createOrder(orderData: {
   total_amount?: number;
   split_order?: boolean;
   platform?: string;
+  save_card?: boolean;
+  source_token_id?: number;
 }) {
   const authHeaders = await getAuthHeaders();
   console.log('📤 CREATE ORDER - Sending data:', JSON.stringify(orderData, null, 2));
@@ -1787,6 +1887,51 @@ export async function createOrder(orderData: {
     }
     
     throw new Error(`Failed to create order: ${response.status} ${response.statusText}`);
+  }
+  
+  const data = await response.json();
+  return data;
+}
+
+// ==================== PAYMENT API FUNCTIONS ====================
+
+// Get saved payment cards for the current user
+export async function getSavedCards() {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${getBaseUrl()}/payments/saved-cards`, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ Failed to fetch saved cards:', errorText);
+    throw new Error(`Failed to fetch saved cards: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data;
+}
+
+// Check payment status
+export async function checkPaymentStatus(paymentRef: string) {
+  const authHeaders = await getAuthHeaders();
+  // Add cache-busting timestamp to prevent caching
+  const timestamp = Date.now();
+  const response = await fetch(`${getBaseUrl()}/payments/status/${paymentRef}?_t=${timestamp}`, {
+    method: 'GET',
+    headers: {
+      ...authHeaders,
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error('❌ Failed to check payment status:', errorText);
+    throw new Error(`Failed to check payment status: ${response.status} ${response.statusText}`);
   }
   
   const data = await response.json();

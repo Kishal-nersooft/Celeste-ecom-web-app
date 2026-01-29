@@ -82,7 +82,8 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
         if (isParent) {
           // This is a parent category - show all products from all subcategories
           setIsParentCategory(true);
-          setDisplayCategoryName(parentCategories.find((cat: any) => cat.id === parseInt(categoryId))?.name || "");
+          const parentCategoryName = parentCategories.find((cat: any) => cat.id === parseInt(categoryId))?.name || "";
+          setDisplayCategoryName(parentCategoryName);
           
           // Load initial products (18 products)
           const result = await getProductsByParentCategoryWithPagination(
@@ -152,6 +153,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
               console.error("Error fetching current subcategory products:", error);
             }
           }
+          
         }
       } catch (error) {
         console.error("Error fetching category data:", error);

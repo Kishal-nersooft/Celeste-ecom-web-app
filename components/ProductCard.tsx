@@ -74,14 +74,14 @@ const ProductCard = memo(({ product }: { product: Product }) => {
       }`}
     >
       <div
-        className={`border-b overflow-hidden relative h-1/2 ${
+        className={`border-b overflow-hidden relative h-[65%] ${
           isDiscounted ? "border-gray-600" : "border-gray-300"
         }`}
       >
         {/* Discount Tag */}
         {isDiscounted && discountInfo.percentage > 0 && (
           <div className="absolute top-1 left-1 sm:top-2 sm:left-2 z-10">
-            <div className="bg-red-500 text-white text-[8px] sm:text-[9px] md:text-[10px] font-bold px-1 sm:px-1.5 py-0.5 rounded-md">
+            <div className="bg-red-500 text-white text-[7px] sm:text-[8px] md:text-[9px] font-bold px-1 sm:px-1.5 py-0.5 rounded-md">
               {discountInfo.percentage}% off
               {discountInfo.isKnown && (
                 <span className="text-[8px] sm:text-[10px] opacity-75">*</span>
@@ -121,12 +121,12 @@ const ProductCard = memo(({ product }: { product: Product }) => {
         </div>
       </div>
 
-      {/* Add to Cart Button - Right side, vertically centered */}
-      <div className="absolute right-1 sm:right-2 top-1/2 transform -translate-y-1/2 z-20">
+      {/* Add to Cart Button - Right side, positioned at bottom of image area (65%) */}
+      <div className="absolute right-1 sm:right-2 top-[65%] transform -translate-y-1/2 z-20">
         <AddToCartButton product={product} />
       </div>
 
-      <div className="p-1.5 sm:p-2 flex flex-col gap-0.5 sm:gap-1 h-1/2 justify-between pr-6 sm:pr-8">
+      <div className="p-1.5 sm:p-2 flex flex-col gap-0 sm:gap-0.5 h-[35%] justify-between pr-6 sm:pr-8">
         <PriceView
           price={
             product?.pricing?.final_price ||
@@ -139,26 +139,27 @@ const ProductCard = memo(({ product }: { product: Product }) => {
           isDiscounted={isDiscounted}
         />
         <p
-          className={`text-[8px] sm:text-[9px] md:text-[10px] font-bold tracking-wide line-clamp-1 uppercase ${
+          className={`text-[7px] sm:text-[8px] md:text-[9px] font-bold tracking-wide line-clamp-1 uppercase ${
             isDiscounted ? "text-white" : "text-black"
           }`}
         >
           {product?.brand}
         </p>
         <p
-          className={`text-[10px] sm:text-xs md:text-sm tracking-wide font-semibold line-clamp-1 capitalize ${
+          className={`text-[9px] sm:text-[10px] md:text-xs tracking-wide font-semibold line-clamp-2 capitalize ${
             isDiscounted ? "text-white" : "text-black"
           }`}
         >
           {product?.name}
         </p>
-        <p
-          className={`text-[8px] sm:text-[9px] md:text-[10px] tracking-wide line-clamp-1 ${
+        {/* Units field - commented out until database provides units data */}
+        {/* <p
+          className={`text-[7px] sm:text-[8px] md:text-[9px] tracking-wide line-clamp-1 ${
             isDiscounted ? "text-gray-300" : "text-black"
           }`}
         >
           {product?.unit_measure || product?.unit}
-        </p>
+        </p> */}
       </div>
     </div>
   );

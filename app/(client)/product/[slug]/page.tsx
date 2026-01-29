@@ -3,21 +3,29 @@
 import AddToCartButton from "@/components/AddToCartButton";
 import Container from "@/components/Container";
 import PriceView from "@/components/PriceView";
-import SmartBackButton from "@/components/SmartBackButton";
 import FuturePricingDisplay from "@/components/FuturePricingDisplay";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import React, { useEffect, useState } from "react";
-import { FaRegQuestionCircle } from "react-icons/fa";
-import { FiShare2 } from "react-icons/fi";
 import { LuStar } from "react-icons/lu";
-import { RxBorderSplit } from "react-icons/rx";
-import { TbTruckDelivery } from "react-icons/tb";
+import { FaEdit } from "react-icons/fa";
+import { FaArrowRight } from "react-icons/fa";
 import { Product } from "../../../../store";
-import { getProductById, getProductsWithPricing } from "@/lib/api";
-import Loader from "@/components/Loader";
+import { getProductById, getProductsWithPricing, getParentCategoryFromSubcategory, getCategories } from "@/lib/api";
+import ProductPageSkeleton from "@/components/ProductPageSkeleton";
+import Breadcrumb from "@/components/Breadcrumb";
+import SimilarProductsSection from "@/components/SimilarProductsSection";
+import RecentItemsSection from "@/components/RecentItemsSection";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const ProductPage = ({ params }: { params: { slug: string } }) => {
   const { user, loading: authLoading } = useAuth();
@@ -25,6 +33,7 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [breadcrumbItems, setBreadcrumbItems] = useState<{ label: string; href?: string }[]>([]);
   
   const { slug } = params;
 
@@ -74,6 +83,69 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
         });
 
         setProduct(foundProduct);
+
+        // Build breadcrumb from product's category data
+        if (foundProduct) {
+          try {
+            const breadcrumbs: { label: string; href?: string }[] = [];
+            
+            // If product has subcategory ID, get parent category and subcategory
+            if (foundProduct.ecommerce_subcategory_id) {
+              try {
+                // Get parent category from subcategory
+                const parentCategory = await getParentCategoryFromSubcategory(foundProduct.ecommerce_subcategory_id);
+                breadcrumbs.push({
+                  label: parentCategory.name,
+                  href: `/categories/${parentCategory.id}`
+                });
+                
+                // Get subcategory details
+                const allCategories = await getCategories(true, false);
+                const subcategory = allCategories.find((cat: any) => cat.id === foundProduct.ecommerce_subcategory_id);
+                if (subcategory) {
+                  breadcrumbs.push({
+                    label: subcategory.name,
+                    href: `/categories/${subcategory.id}`
+                  });
+                }
+              } catch (error) {
+                console.error("Error fetching category data:", error);
+                // If subcategory fetch fails, try to get parent category directly
+                if (foundProduct.ecommerce_category_id) {
+                  const allCategories = await getCategories(true, false);
+                  const category = allCategories.find((cat: any) => cat.id === foundProduct.ecommerce_category_id);
+                  if (category) {
+                    breadcrumbs.push({
+                      label: category.name,
+                      href: `/categories/${category.id}`
+                    });
+                  }
+                }
+              }
+            } else if (foundProduct.ecommerce_category_id) {
+              // If only parent category ID is available (no subcategory)
+              const allCategories = await getCategories(true, false);
+              const category = allCategories.find((cat: any) => cat.id === foundProduct.ecommerce_category_id);
+              if (category) {
+                breadcrumbs.push({
+                  label: category.name,
+                  href: `/categories/${category.id}`
+                });
+              }
+            }
+            
+            // Add product name as last item (no href)
+            breadcrumbs.push({
+              label: foundProduct.name
+            });
+            
+            setBreadcrumbItems(breadcrumbs);
+          } catch (error) {
+            console.error("Error building breadcrumb:", error);
+            // Set product name only if breadcrumb fetch fails
+            setBreadcrumbItems([{ label: foundProduct.name }]);
+          }
+        }
       } catch (error) {
         console.error("❌ ProductPage - Error fetching product:", error);
         setError("Failed to load product");
@@ -108,7 +180,7 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
   // Handle loading and error states
   // Only wait for location loading if user is logged in
   if (authLoading || (user && isLocationLoading) || loading) {
-    return <Loader />;
+    return <ProductPageSkeleton />;
   }
 
   if (error) {
@@ -130,23 +202,31 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
 
   return (
     <div>
-      {/* Back Button */}
-      <Container className="py-2 sm:py-3 md:py-4">
-        <SmartBackButton className="mb-2 sm:mb-3 md:mb-4" />
-      </Container>
+      {/* Breadcrumb Navigation */}
+      {breadcrumbItems.length > 0 && (
+        <Container className="py-2 sm:py-3 md:py-4">
+          <Breadcrumb items={breadcrumbItems} className="mb-2 sm:mb-3 md:mb-4" />
+        </Container>
+      )}
 
       <Container className="flex flex-col md:flex-row gap-4 sm:gap-6 md:gap-8 lg:gap-10 py-2 sm:py-4 md:py-6 lg:py-8">
         {hasValidImage && (
           <div className="w-full md:w-1/2 h-auto border border-darkBlue/20 shadow-md rounded-md group overflow-hidden relative">
             {/* Discount Tag on Product Image */}
-            {((product?.pricing?.discount_applied && product.pricing.discount_applied > 0) || 
-              (product?.pricing?.discount_percentage && product.pricing.discount_percentage > 0)) && (
+            {(() => {
+              const discountPercentage = product?.pricing?.discount_percentage || 0;
+              const discountApplied = product?.pricing?.discount_applied || 0;
+              const hasDiscount = discountPercentage > 0 || discountApplied > 0;
+              const displayPercentage = discountPercentage > 0 ? discountPercentage : discountApplied;
+              
+              return hasDiscount && displayPercentage > 0 ? (
                 <div className="absolute top-2 left-2 sm:top-3 sm:left-3 md:top-4 md:left-4 z-10">
                   <div className="bg-red-500 text-white text-xs sm:text-sm md:text-base lg:text-lg font-bold px-2 py-1 sm:px-3 sm:py-1.5 md:px-4 md:py-2 rounded-md sm:rounded-lg shadow-lg">
-                    {Math.round(product.pricing?.discount_percentage || 0)}% OFF
+                    {Math.round(displayPercentage)}% OFF
                   </div>
                 </div>
-              )}
+              ) : null;
+            })()}
             <Image
               src={imageUrl}
               alt={product.name || "Product image"}
@@ -164,15 +244,20 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
         )}
         <div className="w-full md:w-1/2 flex flex-col gap-3 sm:gap-4 md:gap-5">
           <div>
-            {/* Discount Tag for Product Page */}
-            {((product?.pricing?.discount_applied && product.pricing.discount_applied > 0) || 
-              (product?.pricing?.discount_percentage && product.pricing.discount_percentage > 0)) && (
+            {/* Discount Tag for Product Page - Only show if there's an actual discount */}
+            {(() => {
+              const discountPercentage = product?.pricing?.discount_percentage || 0;
+              const discountApplied = product?.pricing?.discount_applied || 0;
+              const hasDiscount = discountPercentage > 0 || discountApplied > 0;
+              
+              return hasDiscount ? (
                 <div className="mb-4">
                   {/* <div className="bg-red-500 text-white text-lg font-bold px-4 py-2 rounded-lg inline-block shadow-lg">
                   🎉 {product.pricing.applied_discounts[0].discount_value}% OFF - Limited Time Offer!
                 </div> */}
                 </div>
-              )}
+              ) : null;
+            })()}
 
             <p className="text-sm sm:text-base md:text-lg font-bold text-gray-800 mb-1 uppercase tracking-wide">
               {product?.brand}
@@ -200,8 +285,11 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
           {/* Debug Information - Remove this after debugging */}
 
           {/* Custom Price Display with Discount Styling */}
-          {((product?.pricing?.discount_applied && product.pricing.discount_applied > 0) || 
-            (product?.pricing?.discount_percentage && product.pricing.discount_percentage > 0)) ? (
+          {(() => {
+            const discountPercentage = product?.pricing?.discount_percentage || 0;
+            const discountApplied = product?.pricing?.discount_applied || 0;
+            return discountPercentage > 0 || discountApplied > 0;
+          })() ? (
             <div className="flex items-center gap-3">
               {/* Discount Percentage Badge */}
               {/* <span className="bg-red-500 text-white text-xs px-2 py-1 rounded font-bold">
@@ -270,43 +358,51 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
             {product?.description}
           </p>
           <AddToCartButton product={product} />
-          <div className="flex flex-wrap items-center justify-between gap-1 sm:gap-2 md:gap-2.5 border-b border-b-gray-200 py-3 sm:py-4 md:py-5 -mt-2">
-            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-black hover:text-red-600 hoverEffect">
-              <RxBorderSplit className="text-sm sm:text-base md:text-lg" />
-              <p>Compare color</p>
-            </div>
-            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-black hover:text-red-600 hoverEffect">
-              <FaRegQuestionCircle className="text-sm sm:text-base md:text-lg" />
-              <p>Ask a question</p>
-            </div>
-            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-black hover:text-red-600 hoverEffect">
-              <TbTruckDelivery className="text-sm sm:text-base md:text-lg" />
-              <p>Delivery & Return</p>
-            </div>
-            <div className="flex items-center gap-1.5 sm:gap-2 text-[10px] sm:text-xs md:text-sm text-black hover:text-red-600 hoverEffect">
-              <FiShare2 className="text-sm sm:text-base md:text-lg" />
-              <p>Share</p>
-            </div>
-          </div>
-          <div className="flex flex-col sm:flex-row flex-wrap items-center gap-3 sm:gap-4 md:gap-5">
-            <div className="w-full sm:w-auto sm:flex-1 border border-darkBlue/20 text-center p-2 sm:p-3 hover:border-darkBlue hoverEffect rounded-md">
-              <p className="text-sm sm:text-base font-semibold text-black">
-                Free Shipping
-              </p>
-              <p className="text-xs sm:text-sm text-gray-500">
-                Free shipping over order Rs. 15,000
-              </p>
-            </div>
-            <div className="w-full sm:w-auto sm:flex-1 border border-darkBlue/20 text-center p-2 sm:p-3 hover:border-darkBlue hoverEffect rounded-md">
-              <p className="text-sm sm:text-base font-semibold text-black">
-                Flexible Payment
-              </p>
-              <p className="text-xs sm:text-sm text-gray-500">
-                Pay with Multiple Credit Cards
-              </p>
-            </div>
-          </div>
+          
+          {/* Add note or edit replacement button */}
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button
+                variant="outline"
+                className="w-full sm:w-auto border border-darkBlue/20 hover:border-darkBlue hoverEffect justify-between h-auto py-2 px-3"
+              >
+                <div className="flex items-center justify-start flex-1">
+                  <FaEdit className="text-xs sm:text-sm mr-2 flex-shrink-0" />
+                  <div className="flex flex-col items-start text-left">
+                    <span className="text-xs sm:text-sm">Add note or edit replacement</span>
+                    <span className="text-[10px] sm:text-xs text-gray-500 mt-0.5">Replace only with my approval</span>
+                  </div>
+                </div>
+                <FaArrowRight className="text-xs sm:text-sm ml-2 flex-shrink-0" />
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle className="text-left">Replacement Note</DialogTitle>
+              </DialogHeader>
+              <div className="py-4 text-left">
+                <p className="text-sm sm:text-base text-gray-700 font-medium mb-2">
+                  Add note or edit replacement
+                </p>
+                <p className="text-xs sm:text-sm text-gray-500">
+                  Replace only with my approval
+                </p>
+              </div>
+            </DialogContent>
+          </Dialog>
         </div>
+      </Container>
+
+      {/* Similar Products Section */}
+      {product?.id && (
+        <Container>
+          <SimilarProductsSection productId={product.id} />
+        </Container>
+      )}
+
+      {/* Recently Bought Products Section */}
+      <Container>
+        <RecentItemsSection />
       </Container>
     </div>
   );
