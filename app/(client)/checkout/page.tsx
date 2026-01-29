@@ -111,71 +111,72 @@ const CheckoutPage = () => {
     ensureCartItemsData();
   }, [user, cartStore.cartId, cartStore.items.length]);
 
+  // Fetch preview data function - extracted to be reusable
+  const fetchPreviewData = React.useCallback(async () => {
+    // Don't fetch if user is not authenticated
+    if (!user || loading) {
+      return;
+    }
+
+    if (!contextAddressId || !cartStore.cartId || cartStore.items.length === 0) {
+      return;
+    }
+
+    try {
+      setLoadingPreview(true);
+      console.log('🔍 Fetching preview data for cart:', cartStore.cartId);
+      
+      // Prepare location data based on order type
+      const locationData = selectedOrderType === 'pickup' 
+        ? {
+            address_id: null, // No address needed for pickup
+            mode: selectedOrderType,
+            store_id: selectedStore?.id ? parseInt(selectedStore.id) : null, // Use selected store for pickup
+            delivery_service_level: undefined // No delivery service for pickup
+          }
+        : {
+            address_id: contextAddressId, // Address required for delivery
+            mode: selectedOrderType,
+            store_id: null, // No store for delivery
+            delivery_service_level: selectedDeliveryService // Delivery service for delivery
+          };
+
+      const response = await previewOrder({
+        cart_ids: [cartStore.cartId],
+        location: locationData,
+        split_order: true // Enable split orders by default
+      });
+
+      setPreviewData(response);
+      console.log('✅ Preview data received:', response);
+    } catch (error: any) {
+      console.error('❌ Failed to fetch preview data:', error);
+      
+      // Handle authentication errors specifically
+      if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        console.log('🔄 Authentication required, redirecting to sign-in');
+        router.push('/sign-in');
+        return;
+      }
+      
+      // Handle address validation errors
+      if (error.message?.includes('422') && error.message?.includes('Address') && error.message?.includes('not found')) {
+        console.log('🔄 Address validation error detected, clearing stale data');
+        handleAddressValidationError();
+        toast.error('Address data has been cleared. Please select your address again.');
+        return;
+      }
+      
+      toast.error('Failed to load order details');
+    } finally {
+      setLoadingPreview(false);
+    }
+  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, selectedStore, router]);
+
   // Fetch preview data when address is available
   useEffect(() => {
-  const fetchPreviewData = async () => {
-      // Don't fetch if user is not authenticated
-      if (!user || loading) {
-      return;
-    }
-
-      if (!contextAddressId || !cartStore.cartId || cartStore.items.length === 0) {
-      return;
-    }
-
-      try {
-        setLoadingPreview(true);
-        console.log('🔍 Fetching preview data for cart:', cartStore.cartId);
-        
-        // Prepare location data based on order type
-        const locationData = selectedOrderType === 'pickup' 
-          ? {
-              address_id: null, // No address needed for pickup
-              mode: selectedOrderType,
-              store_id: selectedStore?.id ? parseInt(selectedStore.id) : null, // Use selected store for pickup
-              delivery_service_level: undefined // No delivery service for pickup
-            }
-          : {
-              address_id: contextAddressId, // Address required for delivery
-              mode: selectedOrderType,
-              store_id: null, // No store for delivery
-              delivery_service_level: selectedDeliveryService // Delivery service for delivery
-            };
-
-        const response = await previewOrder({
-          cart_ids: [cartStore.cartId],
-          location: locationData,
-          split_order: true // Enable split orders by default
-        });
-
-        setPreviewData(response);
-        console.log('✅ Preview data received:', response);
-      } catch (error: any) {
-        console.error('❌ Failed to fetch preview data:', error);
-        
-        // Handle authentication errors specifically
-        if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-          console.log('🔄 Authentication required, redirecting to sign-in');
-          router.push('/sign-in');
-          return;
-        }
-        
-        // Handle address validation errors
-        if (error.message?.includes('422') && error.message?.includes('Address') && error.message?.includes('not found')) {
-          console.log('🔄 Address validation error detected, clearing stale data');
-          handleAddressValidationError();
-          toast.error('Address data has been cleared. Please select your address again.');
-          return;
-        }
-        
-        toast.error('Failed to load order details');
-      } finally {
-        setLoadingPreview(false);
-      }
-    };
-
     fetchPreviewData();
-  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, router]);
+  }, [fetchPreviewData]);
 
   // Show multi-store confirmation when preview indicates multiple stores
   useEffect(() => {
@@ -822,6 +823,7 @@ const CheckoutPage = () => {
             localSubtotal={cartStore.getSubTotalPrice()}
             onCheckout={handleCheckout}
             loadingCheckout={loadingCheckout}
+            onQuantityChange={fetchPreviewData}
           />
         </div>
       </div>

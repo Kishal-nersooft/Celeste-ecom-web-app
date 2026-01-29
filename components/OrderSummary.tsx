@@ -13,6 +13,8 @@ import {
   ChevronUp,
   CheckCircle
 } from "lucide-react";
+import QuantityButtons from "./QuantityButtons";
+import useCartStore from "@/store";
 
 interface OrderSummaryProps {
   previewData: any;
@@ -21,6 +23,7 @@ interface OrderSummaryProps {
   localSubtotal: number;
   onCheckout: () => void;
   loadingCheckout: boolean;
+  onQuantityChange?: () => void;
 }
 
 const OrderSummary: React.FC<OrderSummaryProps> = ({
@@ -29,9 +32,11 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   cartItems = [],
   localSubtotal,
   onCheckout,
-  loadingCheckout
+  loadingCheckout,
+  onQuantityChange
 }) => {
   const [isCartExpanded, setIsCartExpanded] = useState(true);
+  const cartStore = useCartStore();
   if (loading) {
     return (
       <Card>
@@ -210,9 +215,11 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                         const hasValidImage = imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== "" && imageUrl.startsWith("http");
                         const unitPrice = (it.final_price ?? it.base_price ?? 0);
                         const lineTotal = (it.total_price ?? (unitPrice * (it.quantity || 0)));
+                        // Find the full product from cart store for QuantityButtons
+                        const fullProduct = cartStore.items.find((ci: any) => ci.product.id === it.product_id)?.product || cartProduct;
                         return (
-                          <div key={`${store.store_id ?? `store-${sIdx}`}-${it.product_id ?? it.id ?? idx}`} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
-                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
+                          <div key={`${store.store_id ?? `store-${sIdx}`}-${it.product_id ?? it.id ?? idx}`} className="flex items-center gap-2 sm:gap-3 p-2 border rounded-lg text-xs sm:text-sm relative">
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
                               {hasValidImage ? (
                                 <Image src={imageUrl as string} alt={productName} width={32} height={32} className="object-cover w-full h-full sm:w-10 sm:h-10" />
                               ) : (
@@ -220,10 +227,23 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                               )}
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="truncate">{productName}</div>
-                              <div className="text-[10px] sm:text-xs text-gray-500">Qty: {it.quantity}</div>
+                              <div className="truncate font-medium">{productName}</div>
+                              <div className="text-[10px] sm:text-xs text-gray-500">Unit: LKR {unitPrice.toFixed(2)}</div>
+                              <div className="text-xs sm:text-sm font-medium mt-1">LKR {lineTotal.toFixed(2)}</div>
                             </div>
-                            <div className="text-xs sm:text-sm font-medium">LKR {lineTotal.toFixed(2)}</div>
+                            {fullProduct && (
+                              <div className="flex-shrink-0">
+                                <QuantityButtons
+                                  product={fullProduct}
+                                  className="text-[10px] sm:text-xs"
+                                  onQuantityChange={() => {
+                                    if (onQuantityChange) {
+                                      onQuantityChange();
+                                    }
+                                  }}
+                                />
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -270,9 +290,11 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                       const finalPrice = backendItem?.final_price || 0;
                       const totalPrice = backendItem?.total_price || (finalPrice * backendItem.quantity);
                       const totalBasePrice = basePrice * backendItem.quantity;
+                      // Find the full product from cart store for QuantityButtons
+                      const fullProduct = cartStore.items.find((ci: any) => ci.product.id === backendItem.product_id)?.product || product;
                       return (
-                        <div key={`${backendItem.product_id ?? index}`} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg">
-                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+                        <div key={`${backendItem.product_id ?? index}`} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg relative">
+                          <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                             {hasValidImage ? (
                               <Image src={imageUrl} alt={productName} width={40} height={40} className="w-full h-full object-cover sm:w-12 sm:h-12" />
                             ) : (
@@ -282,7 +304,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                           <div className="flex-1 min-w-0">
                             <h5 className="font-medium text-xs sm:text-sm truncate">{productName}</h5>
                             <p className="text-[9px] sm:text-[11px] text-gray-500">ID: {backendItem.product_id}</p>
-                            <p className="text-[10px] sm:text-xs text-gray-500">Qty: {backendItem.quantity} • Unit: LKR {finalPrice.toFixed(2)}</p>
+                            <p className="text-[10px] sm:text-xs text-gray-500">Unit: LKR {finalPrice.toFixed(2)}</p>
                             <div className="flex items-center gap-2">
                               {isDiscounted ? (
                                 <>
@@ -294,6 +316,19 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                               )}
                             </div>
                           </div>
+                          {fullProduct && (
+                            <div className="flex-shrink-0">
+                              <QuantityButtons
+                                product={fullProduct}
+                                className="text-[10px] sm:text-xs"
+                                onQuantityChange={() => {
+                                  if (onQuantityChange) {
+                                    onQuantityChange();
+                                  }
+                                }}
+                              />
+                            </div>
+                          )}
                         </div>
                       );
                     })}
