@@ -109,7 +109,7 @@ const StorePageClient: React.FC<{ storeId: string }> = ({ storeId }) => {
         </div>
       </div> */}
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="w-full px-4 md:px-6 lg:px-8 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Left Sidebar - Store Profile */}
           <div className="lg:col-span-1">

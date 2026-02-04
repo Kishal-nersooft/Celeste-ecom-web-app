@@ -68,9 +68,9 @@ const DiscountBanner = () => {
 
   if (loading) {
     return (
-      <div className="w-full max-w-screen-xl mx-auto mt-10 mb-5">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-lg">Loading offers...</div>
+      <div className="w-full my-3">
+        <div className="flex items-center justify-center h-32 sm:h-40 md:h-48 bg-gray-100 rounded-lg animate-pulse">
+          <div className="text-sm text-gray-400">Loading offers...</div>
         </div>
       </div>
     );
@@ -80,36 +80,34 @@ const DiscountBanner = () => {
     <div
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className="w-full max-w-6xl mx-auto mt-4 mb-4 relative"
+      className="w-full my-3 relative"
     >
       <Carousel
         className="w-full"
         plugins={[autoplayPlugin.current]}
         setApi={setApi}
       >
-      <CarouselContent>
-        {banners.map((banner) => (
-          <CarouselItem key={banner.id}>
-            <div className="w-full relative flex items-center justify-center px-4">
-              <div className="w-full h-[450px] relative rounded-xl overflow-hidden">
-                <Image
-                  src={banner.imageUrl}
-                  alt="Discount Banner"
-                  fill
-                  priority
-                  className="object-contain rounded-xl"
-                  style={{ 
-                    borderRadius: '0.75rem',
-                    objectFit: 'contain'
-                  }}
-                />
+        <CarouselContent className="-ml-0">
+          {banners.map((banner) => (
+            <CarouselItem key={banner.id} className="pl-0">
+              <div className="w-full relative">
+                {/* Responsive height: smaller on mobile, larger on desktop */}
+                <div className="w-full h-[140px] sm:h-[180px] md:h-[220px] lg:h-[260px] xl:h-[300px] relative rounded-lg overflow-hidden">
+                  <Image
+                    src={banner.imageUrl}
+                    alt="Discount Banner"
+                    fill
+                    priority
+                    className="object-cover rounded-lg"
+                    sizes="100vw"
+                  />
+                </div>
               </div>
-            </div>
-          </CarouselItem>
-        ))}
-      </CarouselContent>
-        <CarouselPrevious className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 shadow-xl hover:shadow-2xl transition-shadow duration-200" />
-        <CarouselNext className="absolute -right-4 top-1/2 -translate-y-1/2 z-10 shadow-xl hover:shadow-2xl transition-shadow duration-200" />
+            </CarouselItem>
+          ))}
+        </CarouselContent>
+        <CarouselPrevious className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 h-8 w-8 sm:h-9 sm:w-9 shadow-lg hover:shadow-xl transition-shadow duration-200 bg-white/90 hover:bg-white" />
+        <CarouselNext className="absolute right-2 sm:right-3 top-1/2 -translate-y-1/2 z-10 h-8 w-8 sm:h-9 sm:w-9 shadow-lg hover:shadow-xl transition-shadow duration-200 bg-white/90 hover:bg-white" />
       </Carousel>
     </div>
   );

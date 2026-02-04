@@ -192,7 +192,7 @@ const CartPage = () => {
 
   return (
     <Container className="py-4 sm:py-6 md:py-8 lg:py-10">
-      <div className="max-w-6xl mx-auto">
+      <div className="w-full">
         {/* Header */}
         <div className="flex items-center justify-between gap-2 sm:gap-3 md:gap-4 mb-4 sm:mb-6 md:mb-8">
           <div className="flex-1">

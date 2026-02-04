@@ -4,6 +4,7 @@ import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { getParentCategories } from "../lib/api";
 import { Category } from "./Categories";
+import { getCategoryIconPath } from "@/lib/category-icons-config";
 
 interface Props {
   onSelectCategory: (categoryId: number | null, isDeals?: boolean) => void;
@@ -108,45 +109,50 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
             >
               <div
                 className={cn(
-                  "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
+                  "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden",
                   isActive ? "bg-gray-200" : "bg-gray-100"
                 )}
               >
-                {category.image_url ? (
-                  <Image
-                    src={category.image_url as string}
-                    alt={category.name}
-                    width={20}
-                    height={20}
-                    style={{ objectFit: "contain" }}
-                  />
-                ) : isAllCategory ? (
-                  <Image
-                    src="/all_category_icon.png"
-                    alt={category.name}
-                    width={20}
-                    height={20}
-                    style={{ objectFit: "contain" }}
-                  />
-                ) : isDealsCategory ? (
-                  <span
-                    className={cn(
-                      "text-xs font-bold",
-                      isActive ? "text-gray-700" : "text-gray-500"
-                    )}
-                  >
-                    🏷️
-                  </span>
-                ) : (
-                  <span
-                    className={cn(
-                      "text-xs font-medium",
-                      isActive ? "text-gray-700" : "text-gray-500"
-                    )}
-                  >
-                    {category.name.substring(0, 2).toUpperCase()}
-                  </span>
-                )}
+                {(() => {
+                  // Priority 1: Use backend image_url if available
+                  if (category.image_url) {
+                    return (
+                      <Image
+                        src={category.image_url as string}
+                        alt={category.name}
+                        width={20}
+                        height={20}
+                        style={{ objectFit: "contain" }}
+                      />
+                    );
+                  }
+                  
+                  // Priority 2: Use local icon mapping
+                  const localIconPath = getCategoryIconPath(category.name);
+                  if (localIconPath) {
+                    return (
+                      <Image
+                        src={localIconPath}
+                        alt={category.name}
+                        width={20}
+                        height={20}
+                        style={{ objectFit: "contain" }}
+                      />
+                    );
+                  }
+                  
+                  // Priority 3: Fallback to first 2 letters
+                  return (
+                    <span
+                      className={cn(
+                        "text-xs font-medium",
+                        isActive ? "text-gray-700" : "text-gray-500"
+                      )}
+                    >
+                      {category.name.substring(0, 2).toUpperCase()}
+                    </span>
+                  );
+                })()}
               </div>
               <span
                 className={cn(

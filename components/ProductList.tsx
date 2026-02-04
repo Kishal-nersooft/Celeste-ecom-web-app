@@ -6,6 +6,8 @@ import ProductCardSkeleton from "./ProductCardSkeleton";
 import Categories, { Category } from "./Categories";
 import { Product } from "../store";
 import DiscountBanner from "./DiscountBanner";
+import OfferBannerSlider from "./OfferBannerSlider";
+import CategoryRowAdSlot from "./CategoryRowAdSlot";
 import {
   getProducts,
   getProductsWithPricing,
@@ -143,6 +145,9 @@ const ProductList = ({
       {/* Add Categories component - only show on homepage (when storeId is not provided) */}
       {!storeId && <Categories onSelectCategory={handleCategorySelect} />}
 
+      {/* Discount Banner - only show on homepage when "All" category is selected */}
+      {!storeId && selectedCategory === null && !isDeals && <DiscountBanner />}
+
       {title && selectedCategory === null && !isDeals && (
         <div className="pb-5">
           <h2 className="text-2xl font-semibold text-gray-600">All Products</h2>
@@ -233,36 +238,162 @@ const ProductList = ({
                 </div>
               ))
           ) : Object.keys(parentCategoryNames).length > 0 ? (
-            Object.keys(parentCategoryNames).map((parentId) => {
-              const parentCategoryName =
-                parentCategoryNames[parseInt(parentId)] || "Unknown Category";
-              const categoryProducts = parentProducts[parseInt(parentId)] || [];
+            (() => {
+              const parentIds = Object.keys(parentCategoryNames);
+              const isHomepageAll = !storeId;
 
-              console.log(`📦 ProductList - Rendering category ${parentCategoryName}:`, {
-                parentId,
-                categoryProductsCount: categoryProducts.length,
-                loading
-              });
+              // Homepage "All": first 2 category rows with ad on the right (Option A)
+              if (isHomepageAll && parentIds.length >= 2) {
+                const [firstId, secondId, ...restIds] = parentIds;
+                const firstName = parentCategoryNames[parseInt(firstId)] || "Unknown Category";
+                const secondName = parentCategoryNames[parseInt(secondId)] || "Unknown Category";
+                const firstProducts = parentProducts[parseInt(firstId)] || [];
+                const secondProducts = parentProducts[parseInt(secondId)] || [];
 
-              // Set flag to indicate this is a parent category from "All" view
-              if (typeof window !== 'undefined') {
-                (window as any).isParentCategoryFromAll = true;
+                if (typeof window !== "undefined") {
+                  (window as any).isParentCategoryFromAll = true;
+                }
+
+                return (
+                  <>
+                    <div className="flex flex-col md:flex-row md:gap-6 md:items-stretch">
+                      <div className="flex-1 min-w-0">
+                        <ProductRow
+                          products={firstProducts}
+                          categoryName={firstName}
+                          categoryId={firstId}
+                          loading={loading}
+                          loadingMore={loadingMore}
+                          onLoadMore={loadMore}
+                          hasMore={hasMore}
+                          isLoaded={!loading && firstProducts.length > 0}
+                        />
+                        <ProductRow
+                          products={secondProducts}
+                          categoryName={secondName}
+                          categoryId={secondId}
+                          loading={loading}
+                          loadingMore={loadingMore}
+                          onLoadMore={loadMore}
+                          hasMore={hasMore}
+                          isLoaded={!loading && secondProducts.length > 0}
+                        />
+                      </div>
+                      <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
+                        <CategoryRowAdSlot />
+                      </div>
+                    </div>
+                    <OfferBannerSlider />
+                    {/* 3rd category: single full-width row */}
+                    {restIds.length > 0 && (() => {
+                      const thirdId = restIds[0];
+                      const thirdName = parentCategoryNames[parseInt(thirdId)] || "Unknown Category";
+                      const thirdProducts = parentProducts[parseInt(thirdId)] || [];
+                      return (
+                        <ProductRow
+                          key={thirdId}
+                          products={thirdProducts}
+                          categoryName={thirdName}
+                          categoryId={thirdId}
+                          loading={loading}
+                          loadingMore={loadingMore}
+                          onLoadMore={loadMore}
+                          hasMore={hasMore}
+                          isLoaded={!loading && thirdProducts.length > 0}
+                        />
+                      );
+                    })()}
+                    {/* 4th and 5th category rows with ad on the right (same layout as 1st & 2nd) */}
+                    {restIds.length >= 3 && (() => {
+                      const fourthId = restIds[1];
+                      const fifthId = restIds[2];
+                      const fourthName = parentCategoryNames[parseInt(fourthId)] || "Unknown Category";
+                      const fifthName = parentCategoryNames[parseInt(fifthId)] || "Unknown Category";
+                      const fourthProducts = parentProducts[parseInt(fourthId)] || [];
+                      const fifthProducts = parentProducts[parseInt(fifthId)] || [];
+                      return (
+                        <div key={`ad-block-${fourthId}-${fifthId}`} className="flex flex-col md:flex-row md:gap-6 md:items-stretch">
+                          <div className="flex-1 min-w-0">
+                            <ProductRow
+                              products={fourthProducts}
+                              categoryName={fourthName}
+                              categoryId={fourthId}
+                              loading={loading}
+                              loadingMore={loadingMore}
+                              onLoadMore={loadMore}
+                              hasMore={hasMore}
+                              isLoaded={!loading && fourthProducts.length > 0}
+                            />
+                            <ProductRow
+                              products={fifthProducts}
+                              categoryName={fifthName}
+                              categoryId={fifthId}
+                              loading={loading}
+                              loadingMore={loadingMore}
+                              onLoadMore={loadMore}
+                              hasMore={hasMore}
+                              isLoaded={!loading && fifthProducts.length > 0}
+                            />
+                          </div>
+                          <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
+                            <CategoryRowAdSlot />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {/* 6th category onward: full-width rows */}
+                    {restIds.slice(3).map((parentId) => {
+                      const parentCategoryName =
+                        parentCategoryNames[parseInt(parentId)] || "Unknown Category";
+                      const categoryProducts = parentProducts[parseInt(parentId)] || [];
+                      if (typeof window !== "undefined") {
+                        (window as any).isParentCategoryFromAll = true;
+                      }
+                      return (
+                        <ProductRow
+                          key={parentId}
+                          products={categoryProducts}
+                          categoryName={parentCategoryName}
+                          categoryId={parentId}
+                          loading={loading}
+                          loadingMore={loadingMore}
+                          onLoadMore={loadMore}
+                          hasMore={hasMore}
+                          isLoaded={!loading && categoryProducts.length > 0}
+                        />
+                      );
+                    })}
+                  </>
+                );
               }
 
-              return (
-                <ProductRow
-                  key={parentId}
-                  products={categoryProducts}
-                  categoryName={parentCategoryName}
-                  categoryId={parentId}
-                  loading={loading}
-                  loadingMore={loadingMore}
-                  onLoadMore={loadMore}
-                  hasMore={hasMore}
-                  isLoaded={!loading && categoryProducts.length > 0}
-                />
-              );
-            })
+              // Store page or fewer than 2 categories: original layout
+              return parentIds.map((parentId, index) => {
+                const parentCategoryName =
+                  parentCategoryNames[parseInt(parentId)] || "Unknown Category";
+                const categoryProducts = parentProducts[parseInt(parentId)] || [];
+
+                if (typeof window !== "undefined") {
+                  (window as any).isParentCategoryFromAll = true;
+                }
+
+                return (
+                  <React.Fragment key={parentId}>
+                    <ProductRow
+                      products={categoryProducts}
+                      categoryName={parentCategoryName}
+                      categoryId={parentId}
+                      loading={loading}
+                      loadingMore={loadingMore}
+                      onLoadMore={loadMore}
+                      hasMore={hasMore}
+                      isLoaded={!loading && categoryProducts.length > 0}
+                    />
+                    {index === 1 && <OfferBannerSlider />}
+                  </React.Fragment>
+                );
+              });
+            })()
           ) : null}
         </div>
       )}

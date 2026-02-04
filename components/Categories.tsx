@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { getParentCategories } from "../lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCategory } from "../contexts/CategoryContext";
+import { getCategoryIconPath } from "@/lib/category-icons-config";
 
 // New Category interface matching backend schema
 export interface Category {
@@ -176,47 +177,50 @@ const Categories = ({ onSelectCategory }: Props) => {
                         : "bg-gray-100 group-hover:bg-gray-200"
                     )}
                   >
-                    {category.image_url ? (
-                      <Image
-                        src={category.image_url as string}
-                        alt={category.name}
-                        width={30}
-                        height={30}
-                        className="sm:w-9 sm:h-9 md:w-10 md:h-10"
-                        style={{ objectFit: "contain" }}
-                      />
-                    ) : isAllCategory ? (
-                      <Image
-                        src="/all_category_icon.png"
-                        alt={category.name}
-                        width={30}
-                        height={30}
-                        className="sm:w-9 sm:h-9 md:w-10 md:h-10"
-                        style={{ objectFit: "contain" }}
-                      />
-                    ) : isDealsCategory ? (
-                      <span
-                        className={cn(
-                          "text-sm sm:text-base md:text-lg",
-                          isActive
-                            ? "text-white"
-                            : "text-gray-700"
-                        )}
-                      >
-                        🏷️
-                      </span>
-                    ) : (
-                      <span
-                        className={cn(
-                          "text-[8px] sm:text-[10px] md:text-xs text-center font-medium",
-                          isActive
-                            ? "text-white"
-                            : "text-gray-700"
-                        )}
-                      >
-                        {category.name.substring(0, 4)}
-                      </span>
-                    )}
+                    {(() => {
+                      // Priority 1: Use backend image_url if available
+                      if (category.image_url) {
+                        return (
+                          <Image
+                            src={category.image_url as string}
+                            alt={category.name}
+                            width={30}
+                            height={30}
+                            className="sm:w-9 sm:h-9 md:w-10 md:h-10"
+                            style={{ objectFit: "contain" }}
+                          />
+                        );
+                      }
+                      
+                      // Priority 2: Use local icon mapping
+                      const localIconPath = getCategoryIconPath(category.name);
+                      if (localIconPath) {
+                        return (
+                          <Image
+                            src={localIconPath}
+                            alt={category.name}
+                            width={30}
+                            height={30}
+                            className="sm:w-9 sm:h-9 md:w-10 md:h-10"
+                            style={{ objectFit: "contain" }}
+                          />
+                        );
+                      }
+                      
+                      // Priority 3: Fallback to first 4 letters
+                      return (
+                        <span
+                          className={cn(
+                            "text-[8px] sm:text-[10px] md:text-xs text-center font-medium",
+                            isActive
+                              ? "text-white"
+                              : "text-gray-700"
+                          )}
+                        >
+                          {category.name.substring(0, 4)}
+                        </span>
+                      );
+                    })()}
                   </div>
                   <p className={cn(
                     "mt-1 sm:mt-1.5 md:mt-2 text-[10px] sm:text-[11px] md:text-xs font-medium text-center line-clamp-1",

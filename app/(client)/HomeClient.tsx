@@ -6,8 +6,8 @@ import { useCategory } from "@/contexts/CategoryContext";
 import ProductList from "@/components/ProductList";
 import PopularItemsSection from "@/components/PopularItemsSection";
 import RecentItemsSection from "@/components/RecentItemsSection";
-import DiscountBanner from "@/components/DiscountBanner";
 import StoresGrid from "@/components/StoresGrid";
+import DiscountBanner from "@/components/DiscountBanner";
 import LocationLoadingIndicator from "@/components/LocationLoadingIndicator";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import Loader from "@/components/Loader";
@@ -193,6 +193,7 @@ const HomeClient: React.FC<HomeClientProps> = ({
         </>
       ) : (
         // Delivery mode: Show all products as before
+        // Note: DiscountBanner is now positioned inside ProductList (under categories, above products)
         <>
           <ProductList
             title={true}
@@ -203,7 +204,6 @@ const HomeClient: React.FC<HomeClientProps> = ({
           />
           <RecentItemsSection />
           <PopularItemsSection />
-          <DiscountBanner />
         </>
       )}
     </>

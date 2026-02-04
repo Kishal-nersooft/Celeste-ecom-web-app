@@ -31,7 +31,7 @@ const PriceView = ({ price, label, className, originalPrice, discountPercentage,
         ) : (
           <PriceFormatter 
             amount={price} 
-            className={twMerge("text-sm font-bold", className)} 
+            className={twMerge("text-sm font-bold text-black", className)} 
           />
         )}
       </div>
