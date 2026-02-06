@@ -164,6 +164,12 @@ const ProductRow = ({
         return;
       }
 
+      // Recently Bought / Popular Items: go to dedicated pages (same box UI, no sidebar)
+      if (categoryId === "recent") {
+        router.push("/recent-items");
+        return;
+      }
+
       // Check if this is a parent category from "All" view
       const isParentCategoryFromAll = (window as any).isParentCategoryFromAll;
       if (isParentCategoryFromAll) {

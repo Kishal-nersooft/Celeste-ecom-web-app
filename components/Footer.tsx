@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import Container from "./Container";
 import Image from "next/image";
 import payment from "@/images/payment.png";
@@ -66,18 +67,18 @@ const Footer = () => {
             <div className="space-y-1.5 sm:space-y-2 md:space-y-3">
               <h3 className="text-sm sm:text-base md:text-lg lg:text-xl font-semibold mb-3 sm:mb-4 md:mb-6 text-right">Quick Links</h3>
 
-              <a href="#" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
+              <Link href="/our-locations" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
                 Our Locations
-              </a>
-              <a href="#" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
+              </Link>
+              <Link href="/about-us" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
                 About Us
-              </a>
-              <a href="#" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
+              </Link>
+              <Link href="/careers" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
                 Careers
-              </a>
-              <a href="#" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
+              </Link>
+              <Link href="/contact-us" className="block text-gray-300 hover:text-white transition-colors text-[10px] sm:text-xs md:text-sm">
                 Contact Us
-              </a>
+              </Link>
             </div>
           </div>
         </div>
@@ -88,7 +89,7 @@ const Footer = () => {
         <Container className="py-2 sm:py-3 md:py-4">
           <div className="flex items-center justify-center">
             <p className="text-gray-500 text-center text-[9px] sm:text-[10px] md:text-xs lg:text-sm">
-              Copyright © 2024{" "}
+              Copyright © {new Date().getFullYear()}{" "}
               <span className="text-white font-semibold">Celeste</span> all
               rights reserved.
             </p>

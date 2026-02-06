@@ -2,18 +2,20 @@
 
 import React, { useEffect, useState } from "react";
 import Container from "@/components/Container";
-import PopularProductCard from "@/components/PopularProductCard";
+import ProductGrid from "@/components/ProductGrid";
+import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { getPopularProducts } from "@/lib/api";
-import { POPULAR_PRODUCTS_MODE } from "@/lib/popular-products-config";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
 import { Product } from "@/store";
 import Loader from "@/components/Loader";
-import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 
 export default function PopularItemsPage() {
   const { user, loading: authLoading } = useAuth();
   const { deliveryType, defaultAddress, selectedStore } = useLocation();
+  const router = useRouter();
   const [popularProducts, setPopularProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -30,87 +32,46 @@ export default function PopularItemsPage() {
         let longitude: number | undefined;
 
         if (deliveryType === 'pickup') {
-          // For pickup mode, use selected store ID
           if (selectedStore?.id) {
             storeIds = [parseInt(selectedStore.id.toString())];
-            console.log("🛍️ PopularItemsPage: Using pickup mode with store ID:", storeIds[0]);
           } else {
-            // Fallback to default stores if no store selected
             storeIds = [1, 2, 3, 4];
-            console.log("🛍️ PopularItemsPage: Using pickup mode with default stores:", storeIds);
           }
         } else {
-          // For delivery mode, use location coordinates
           if (defaultAddress?.latitude && defaultAddress?.longitude) {
             latitude = parseFloat(defaultAddress.latitude);
             longitude = parseFloat(defaultAddress.longitude);
-            console.log("🚚 PopularItemsPage: Using delivery mode with location:", { latitude, longitude });
           } else {
-            console.log("⚠️ PopularItemsPage: Delivery mode but no location available yet");
             setError("Please select a delivery location to view popular items");
             setLoading(false);
             return;
           }
         }
 
-        // Fetch all popular products using the configured mode (max 100 products)
-        console.log("🔥 PopularItemsPage: Fetching products with mode:", POPULAR_PRODUCTS_MODE);
-        console.log("📋 PopularItemsPage: Request params:", {
-          mode: POPULAR_PRODUCTS_MODE,
+        const products = await getPopularProducts(
+          'trending',
+          100,
+          undefined,
+          undefined,
+          1,
+          true,
+          true,
+          false,
+          true,
+          true,
           storeIds,
           latitude,
-          longitude,
-          deliveryType
-        });
-        
-        let products = await getPopularProducts(
-          POPULAR_PRODUCTS_MODE, // mode from config
-          100, // limit (max allowed)
-          undefined, // timeWindowDays
-          undefined, // categoryIds
-          1, // minInteractions (minimum allowed by API)
-          true, // includePricing
-          true, // includeCategories
-          false, // includeTags
-          true, // includeInventory
-          true, // includePopularityMetrics
-          storeIds, // storeIds (for pickup) or undefined (for delivery)
-          latitude, // latitude (for delivery)
-          longitude // longitude (for delivery)
+          longitude
         );
-        
-        console.log("✅ PopularItemsPage: Received products:", products?.length || 0);
-        
-        // If no products with current mode, try 'trending' as fallback
-        if (products.length === 0 && POPULAR_PRODUCTS_MODE !== 'trending') {
-          console.log("🔄 PopularItemsPage: No products with current mode, trying 'trending' as fallback...");
-          products = await getPopularProducts(
-            'trending', // Fallback to trending
-            100,
-            undefined,
-            undefined,
-            1, // minInteractions
-            true,
-            true,
-            false,
-            true,
-            true,
-            storeIds,
-            latitude,
-            longitude
-          );
-          console.log("✅ PopularItemsPage: Fallback received products:", products?.length || 0);
-        }
         
         if (Array.isArray(products) && products.length > 0) {
           setPopularProducts(products);
         } else {
-          console.warn("⚠️ PopularItemsPage: No products returned from API");
           setPopularProducts([]);
         }
-      } catch (error) {
-        console.error("❌ Error fetching popular products:", error);
-        setError(error instanceof Error ? error.message : 'An error occurred while fetching popular items');
+      } catch (err) {
+        console.error("❌ Error fetching popular products:", err);
+        setError(err instanceof Error ? err.message : 'An error occurred while fetching popular items');
         setPopularProducts([]);
       } finally {
         setLoading(false);
@@ -127,51 +88,53 @@ export default function PopularItemsPage() {
   }
 
   return (
-    <Container className="pb-10">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Popular Items</h1>
-        <p className="text-gray-600">Discover our most popular products</p>
-        
+    <div className="bg-gray-100 min-h-screen">
+      <Container className="py-3 sm:py-4">
+        {/* Header with Go Back Button - same as category page */}
+        <div className="flex items-center mb-3 sm:mb-4">
+          <button
+            onClick={() => router.push("/")}
+            className="flex items-center text-gray-600 hover:text-gray-800 transition-colors mr-3 sm:mr-4"
+          >
+            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
+            <span className="font-medium text-sm sm:text-base truncate">Popular Items</span>
+          </button>
+        </div>
+
         {error && (
-          <div className="mt-4 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
+          <div className="mb-4 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
             <p className="font-semibold">⚠️ {error}</p>
-            {deliveryType === 'delivery' && !defaultAddress && (
+            {deliveryType === "delivery" && !defaultAddress && (
               <p className="text-sm mt-1">
                 Please select a delivery location from the header to view popular items in your area.
               </p>
             )}
           </div>
         )}
-        
-        {popularProducts.length > 0 && (
-          <p className="text-sm text-gray-600 mt-2">
-            {popularProducts.length} popular items available
-          </p>
-        )}
-      </div>
-      
-      {popularProducts.length > 0 ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {popularProducts.map((product) => (
-            <motion.div
-              key={product?.id}
-              layout
-              initial={{ opacity: 0.2 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-            >
-              <PopularProductCard product={product} />
-            </motion.div>
-          ))}
+
+        {/* White box - same as category page, no left sidebar, no "X products found" */}
+        <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
+          <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800 mb-3 sm:mb-4 md:mb-6">
+            Popular Items
+          </h1>
+          {loading ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
+              {Array.from({ length: 12 }).map((_, index) => (
+                <div key={`skeleton-${index}`} className="w-full">
+                  <ProductCardSkeleton />
+                </div>
+              ))}
+            </div>
+          ) : popularProducts.length > 0 ? (
+            <ProductGrid products={popularProducts} />
+          ) : (
+            <div className="text-center py-20">
+              <p className="text-gray-500 text-lg">No popular items found</p>
+            </div>
+          )}
         </div>
-      ) : (
-        !loading && (
-          <div className="text-center py-20">
-            <p className="text-gray-500 text-lg">No popular items found</p>
-          </div>
-        )
-      )}
-    </Container>
+      </Container>
+    </div>
   );
 }
 

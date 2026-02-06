@@ -72,6 +72,16 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   }, [isParentCategory, hasMore, loadingMore, loadMoreProducts]);
 
   useEffect(() => {
+    // Redirect special slugs to dedicated pages (same box UI, no left sidebar)
+    if (categoryId === "recent") {
+      router.replace("/recent-items");
+      return;
+    }
+    if (categoryId === "popular-items") {
+      router.replace("/popular-items");
+      return;
+    }
+
     const fetchCategoryData = async () => {
       try {
         // First, try to determine if this is a parent category or subcategory
@@ -207,6 +217,11 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   };
 
   if (isLoading) {
+    return <Loader />;
+  }
+
+  // Redirect special slugs to dedicated pages (avoid showing category layout + sidebar)
+  if (categoryId === "recent" || categoryId === "popular-items") {
     return <Loader />;
   }
 

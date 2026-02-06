@@ -89,7 +89,7 @@ const RecentItemsSection = () => {
   }
 
   return (
-    <div className="w-full py-8">
+    <div className="w-full pt-8 pb-2">
       {/* Header with section name and See All button */}
       {/* <div className="flex items-center justify-between mb-4">
         <h2 className="text-2xl font-semibold text-gray-600">

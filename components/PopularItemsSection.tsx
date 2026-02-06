@@ -1,13 +1,12 @@
 "use client";
 import React, { useRef, useState, useEffect } from "react";
-import PopularProductCard from "./PopularProductCard";
+import ProductCard from "./ProductCard";
 import { Product } from "../store";
 import { getPopularProducts } from "../lib/api";
-import { POPULAR_PRODUCTS_MODE } from "../lib/popular-products-config";
 import { useLocation } from "../contexts/LocationContext";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 
 const PopularItemsSection = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -27,9 +26,9 @@ const PopularItemsSection = () => {
 
   const scrollLeft = () => {
     if (scrollContainerRef.current) {
-      const cardWidth = 420; // Approximate width of each popular product card + gap
+      const cardWidth = 200; // Match ProductRow: card width + gap
       scrollContainerRef.current.scrollBy({
-        left: -cardWidth,
+        left: -cardWidth * 3,
         behavior: "smooth",
       });
       setTimeout(checkScrollButtons, 300);
@@ -38,9 +37,9 @@ const PopularItemsSection = () => {
 
   const scrollRight = () => {
     if (scrollContainerRef.current) {
-      const cardWidth = 420; // Approximate width of each popular product card + gap
+      const cardWidth = 200; // Match ProductRow: card width + gap
       scrollContainerRef.current.scrollBy({
-        left: cardWidth,
+        left: cardWidth * 3,
         behavior: "smooth",
       });
       setTimeout(checkScrollButtons, 300);
@@ -81,19 +80,18 @@ const PopularItemsSection = () => {
           }
         }
 
-        // Fetch 6 popular products using the configured mode
-        console.log("🔥 PopularItems: Fetching products with mode:", POPULAR_PRODUCTS_MODE);
+        // Fetch first 15 trending products for the popular items row
+        console.log("🔥 PopularItems: Fetching trending products (limit 15)");
         console.log("📋 PopularItems: Request params:", {
-          mode: POPULAR_PRODUCTS_MODE,
           storeIds,
           latitude,
           longitude,
           deliveryType
         });
         
-        let products = await getPopularProducts(
-          POPULAR_PRODUCTS_MODE, // mode from config
-          6, // limit
+        const products = await getPopularProducts(
+          'trending', // trending option
+          15, // limit - first 15 product cards
           undefined, // timeWindowDays
           undefined, // categoryIds
           1, // minInteractions (minimum allowed by API)
@@ -108,27 +106,6 @@ const PopularItemsSection = () => {
         );
         
         console.log("✅ PopularItems: Received products:", products?.length || 0);
-        
-        // If no products with current mode, try 'trending' as fallback
-        if (products.length === 0 && POPULAR_PRODUCTS_MODE !== 'trending') {
-          console.log("🔄 PopularItems: No products with current mode, trying 'trending' as fallback...");
-          products = await getPopularProducts(
-            'trending', // Fallback to trending
-            6,
-            undefined,
-            undefined,
-            1, // minInteractions
-            true,
-            true,
-            false,
-            true,
-            true,
-            storeIds,
-            latitude,
-            longitude
-          );
-          console.log("✅ PopularItems: Fallback received products:", products?.length || 0);
-        }
         
         if (Array.isArray(products) && products.length > 0) {
           setPopularProducts(products);
@@ -162,52 +139,52 @@ const PopularItemsSection = () => {
   }
 
   return (
-    <div className="w-full py-8">
-      {/* Header with section name and See All button */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold text-gray-600">
+    <div className="w-full pt-2 pb-8">
+      {/* Header - same as ProductRow */}
+      <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
+        <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl font-semibold text-gray-600">
           Popular Items
         </h2>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">
           <Link 
             href="/popular-items" 
-            className="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors"
+            className="text-blue-600 hover:text-blue-800 font-medium text-[10px] sm:text-xs md:text-sm transition-colors"
           >
             See All
           </Link>
-          <div className="flex gap-1">
+          <div className="flex gap-0.5 sm:gap-1">
             <button
               onClick={scrollLeft}
               disabled={!canScrollLeft}
-              className={`p-2 rounded-full transition-colors ${
+              className={`p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
                 canScrollLeft
                   ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
                   : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }`}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
             <button
               onClick={scrollRight}
               disabled={!canScrollRight}
-              className={`p-2 rounded-full transition-colors ${
+              className={`p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
                 canScrollRight
                   ? "bg-gray-200 hover:bg-gray-300 text-gray-700"
                   : "bg-gray-100 text-gray-400 cursor-not-allowed"
               }`}
             >
-              <ChevronRight size={16} />
+              <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Scrollable product container */}
+      {/* Scrollable product container - same layout as ProductRow */}
       <div className="relative">
         <div
           ref={scrollContainerRef}
           onScroll={checkScrollButtons}
-          className="flex gap-6 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
+          className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -220,9 +197,9 @@ const PopularItemsSection = () => {
               initial={{ opacity: 0.2 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex-shrink-0 w-[400px]"
+              className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
             >
-              <PopularProductCard product={product} />
+              <ProductCard product={product} />
             </motion.div>
           ))}
         </div>

@@ -15,8 +15,8 @@ export const CATEGORY_ICON_MAP: Record<string, string> = {
   "all": "/all_category_icon.png",
   
   // Deals category (special)
-  "deals": "/category-icons/quick-deals.png",
-  "quick deals": "/category-icons/quick-deals.png",
+  "deals": "/category-icons/deals.png",
+  "quick deals": "/category-icons/quick-deals.png", // 🔥💥 Quick Deals ⚡🛒
   "special offers": "/category-icons/special-offers.png",
   
   // Standard categories
