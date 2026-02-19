@@ -8,7 +8,7 @@ import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon, X } from "lucide-react";
 import toast from "react-hot-toast";
 import Loader from "@/components/Loader";
 
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyB1zVZ0tZ4O1VuOpmDp8ArAq6NZZBjcExI";
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
 
 interface AddressSelectorProps {
@@ -77,7 +77,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
   const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY,
+    googleMapsApiKey: GOOGLE_API_KEY ?? '',
     libraries,
     id: 'google-maps-script-address',
   });

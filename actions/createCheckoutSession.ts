@@ -40,10 +40,10 @@ export async function createCheckoutSession(
       allow_promotion_codes: true,
       payment_method_types: ["card"],
       success_url: `${
-        process.env.NEXT_PUBLIC_BASE_URL || `https://${process.env.VERCEL_URL}`
+        process.env.SITE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
       }/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${
-        process.env.NEXT_PUBLIC_BASE_URL || `https://${process.env.VERCEL_URL}`
+        process.env.SITE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000")
       }/checkout`,
       line_items: items.map((item) => ({
         price_data: {

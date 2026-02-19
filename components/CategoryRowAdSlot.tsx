@@ -1,14 +1,14 @@
 "use client";
 
-import Image from "next/image";
+import Image, { type StaticImageData } from "next/image";
 import React from "react";
 
 // Default ad image (local). Later replace with image URL from backend.
 import defaultAdImage from "@/images/Celeste-Popup-advert.png";
 
-interface CategoryRowAdSlotProps {
-  /** Image URL from backend. Falls back to local default if not provided. */
-  imageUrl?: string | null;
+export interface CategoryRowAdSlotProps {
+  /** Image URL or static import. Falls back to local default if not provided. */
+  imageUrl?: string | StaticImageData | null;
   /** Optional link when ad is clicked */
   linkUrl?: string | null;
   /** Accessible label for the ad */

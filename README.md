@@ -64,8 +64,8 @@ A modern, full-featured ecommerce platform built with Next.js 14, featuring mult
    STRIPE_SECRET_KEY=your_secret_key
    STRIPE_WEBHOOK_SECRET=your_webhook_secret
 
-   # Google Maps API
-   NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_google_maps_key
+   # Google Maps API (Maps/Places in the browser)
+   NEXT_PUBLIC_GOOGLE_API_KEY=your_google_maps_key
 
    # API URLs
    NEXT_PUBLIC_API_URL=your_api_url

@@ -1,6 +1,7 @@
 import { Product } from "../../../../store";
 import { Category } from "@/components/Categories";
 import CategoriesPageClient from "./CategoriesPageClient";
+import { API_BASE_URL } from "@/lib/api";
 
 // Force dynamic rendering
 export const dynamic = 'force-dynamic';
@@ -12,7 +13,7 @@ interface Props {
 // Function to fetch products by category from the backend API
 async function getProductsByCategory(categoryId: string): Promise<Product[]> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/products/?categoryId=${categoryId}&include_pricing=true`, {
+    const response = await fetch(`${API_BASE_URL}/api/v1/products/?categoryId=${categoryId}&include_pricing=true`, {
       cache: 'no-store', // Disable Next.js caching
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -37,7 +38,7 @@ async function getProductsByCategory(categoryId: string): Promise<Product[]> {
 // Function to fetch all categories from the backend API
 async function getAllCategories(): Promise<Category[]> {
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_BACKEND_URL}/api/v1/categories/`);
+    const response = await fetch(`${API_BASE_URL}/api/v1/categories/`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }

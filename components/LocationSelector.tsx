@@ -13,7 +13,7 @@ import AddressSelector from "@/components/AddressSelector";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import Loader from "@/components/Loader";
 
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyB1zVZ0tZ4O1VuOpmDp8ArAq6NZZBjcExI"; // Use NEXT_PUBLIC for client-side access
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"]; // Define libraries array outside the component
 
 // Store interface based on the backend schema
@@ -67,7 +67,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
   const [showDeliveryWarning, setShowDeliveryWarning] = useState(false);
 
   const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY,
+    googleMapsApiKey: GOOGLE_API_KEY ?? '',
     libraries, // Use the externally defined libraries array
     id: 'google-maps-script',
   });

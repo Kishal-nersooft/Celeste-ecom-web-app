@@ -13,7 +13,7 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import { createUserAddress } from "@/lib/api";
 import Loader from "@/components/Loader";
 
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyB1zVZ0tZ4O1VuOpmDp8ArAq6NZZBjcExI";
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
 
 interface CartLocationSelectorProps {
@@ -37,7 +37,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
   // Remove local deliveryType state - use LocationContext instead
 
   const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY,
+    googleMapsApiKey: GOOGLE_API_KEY ?? '',
     libraries,
   });
 

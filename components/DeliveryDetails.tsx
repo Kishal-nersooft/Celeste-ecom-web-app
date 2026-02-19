@@ -11,7 +11,7 @@ import { useLoadScript, GoogleMap, Marker } from "@react-google-maps/api";
 import toast from "react-hot-toast";
 import { useLocation } from "@/contexts/LocationContext";
 
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "AIzaSyB1zVZ0tZ4O1VuOpmDp8ArAq6NZZBjcExI";
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
 const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
 
 interface DeliveryDetailsProps {
@@ -33,7 +33,7 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
   const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
 
   const { isLoaded } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY,
+    googleMapsApiKey: GOOGLE_API_KEY ?? '',
     libraries,
   });
 

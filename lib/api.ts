@@ -1,4 +1,5 @@
-export const API_BASE_URL = process.env.API_BASE_URL || process.env.NEXT_PUBLIC_API_BASE_URL || "https://celeste-api-846811285865.asia-south1.run.app";
+/** Backend API base URL. Set API_BASE_URL in .env (single source of truth). */
+export const API_BASE_URL = process.env.API_BASE_URL || "https://celeste-api-391514911705.asia-south1.run.app";
 export const LOCAL_API_BASE_URL = "/api";
 
 // Import product caching functions

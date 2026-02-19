@@ -7,7 +7,9 @@ import Categories, { Category } from "./Categories";
 import { Product } from "../store";
 import DiscountBanner from "./DiscountBanner";
 import OfferBannerSlider from "./OfferBannerSlider";
-import CategoryRowAdSlot from "./CategoryRowAdSlot";
+import CategoryRowAdSlot, { type CategoryRowAdSlotProps } from "./CategoryRowAdSlot";
+import promotionBanner1 from "@/images/Celeste-Promotio-Banner---1---Website---716x400-px.png";
+import promotionBanner2 from "@/images/Celeste-Promotio-Banner---2---Website---716x400-px.png";
 import {
   getProducts,
   getProductsWithPricing,
@@ -280,7 +282,7 @@ const ProductList = ({
                         />
                       </div>
                       <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
-                        <CategoryRowAdSlot />
+                        <CategoryRowAdSlot imageUrl={promotionBanner1} alt="Promotion Banner 1" />
                       </div>
                     </div>
                     <OfferBannerSlider />
@@ -336,7 +338,7 @@ const ProductList = ({
                             />
                           </div>
                           <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
-                            <CategoryRowAdSlot />
+                            <CategoryRowAdSlot imageUrl={promotionBanner2} alt="Promotion Banner 2" />
                           </div>
                         </div>
                       );

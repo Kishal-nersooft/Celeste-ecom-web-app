@@ -56,6 +56,14 @@ export interface OrderItem {
   imageUrl?: string; // For compatibility with backend
 }
 
+/** Driver info sent by backend when order status is Shipped or later */
+export interface DriverInfo {
+  name?: string;
+  phone?: string;
+  vehicle_number?: string;
+  vehicle?: string;
+}
+
 export interface Order {
   id: string;
   userId: string;
@@ -70,6 +78,8 @@ export interface Order {
   fulfillmentMode?: 'delivery' | 'pickup'; // For compatibility with backend
   deliveryCharge?: number; // For compatibility with backend
   orderNumber?: string; // For compatibility with backend
+  /** Present when status is Shipped or Delivered (from backend) */
+  driver?: DriverInfo;
   createdAt: Date;
   updatedAt: Date;
 }

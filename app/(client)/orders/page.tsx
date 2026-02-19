@@ -1,6 +1,6 @@
 'use client';
 import Container from "@/components/Container";
-import { FileX, Package, CheckCircle, XCircle, Clock, Truck, CheckSquare, X, RotateCcw, Plus, ShoppingBag } from "lucide-react";
+import { FileX, Package, CheckCircle, XCircle, Clock, Truck, CheckSquare, X, RotateCcw, Plus, ShoppingBag, Phone, User } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState, useCallback, Suspense } from "react";
@@ -8,7 +8,7 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Order } from "@/store";
+import { Order, DriverInfo } from "@/store";
 import { getUserOrders } from "@/lib/api";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
@@ -100,9 +100,26 @@ const OrdersPageContent = () => {
         
         // Log clean orders data
         console.log('Orders Data:', response.data || response);
-        
+
+        // Normalize driver data from backend (sent when status is Shipped or later)
+        const mapDriver = (raw: any): DriverInfo | undefined => {
+          const d = raw?.driver ?? raw?.driver_info ?? raw?.assigned_driver ?? raw?.delivery_driver;
+          if (!d || typeof d !== 'object') return undefined;
+          const name = d.name ?? d.driver_name ?? d.full_name;
+          const phone = d.phone ?? d.phone_number ?? d.mobile ?? d.contact_number;
+          const vehicle = d.vehicle_number ?? d.vehicle ?? d.vehicle_no;
+          if (!name && !phone && !vehicle) return undefined;
+          return { name, phone, vehicle_number: vehicle, vehicle };
+        };
+
         // Convert backend orders to local Order format based on API schema
         const convertedOrders: Order[] = backendOrders.map((order: any) => {
+          const statusUpper = (order.status || '').toUpperCase();
+          const driver = mapDriver(order);
+          if ((statusUpper === 'SHIPPED' || statusUpper === 'DELIVERED') && (order.driver ?? order.driver_info ?? order.assigned_driver)) {
+            console.log('Order (Shipped/Delivered) driver payload:', { orderId: order.id, status: order.status, driverPayload: order.driver ?? order.driver_info ?? order.assigned_driver, mapped: driver });
+          }
+
           // Use included product data directly from API response
           const itemsWithDetails = (order.items || []).map((item: any) => {
             // Handle product data - can be in item.product or null if not included
@@ -150,7 +167,8 @@ const OrdersPageContent = () => {
             fulfillmentMode: order.fulfillment_mode || 'delivery',
             deliveryCharge: order.delivery_charge || 0,
             paymentReference: order.payment_reference,
-            transactionId: order.transaction_id
+            transactionId: order.transaction_id,
+            driver
           };
         });
         
@@ -417,6 +435,42 @@ const OrdersPageContent = () => {
                               </div>
                             )}
                           </div>
+
+                          {/* Driver details - shown when status is Shipped or Delivered */}
+                          {(() => {
+                            const statusStr = String(order.status).toUpperCase();
+                            const driver = order.driver;
+                            const showDriver = (statusStr === 'SHIPPED' || statusStr === 'DELIVERED') && driver && (driver.name || driver.phone || driver.vehicle_number || driver.vehicle);
+                            if (!showDriver || !driver) return null;
+                            return (
+                              <div className="mb-3 sm:mb-4 p-3 bg-orange-50 border border-orange-100 rounded-lg">
+                                <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-orange-800 mb-2">
+                                  <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                                  Driver details
+                                </div>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[10px] sm:text-xs text-gray-700">
+                                  {driver.name && (
+                                    <div className="flex items-center gap-1.5">
+                                      <User className="w-3 h-3 shrink-0" />
+                                      <span>{driver.name}</span>
+                                    </div>
+                                  )}
+                                  {driver.phone && (
+                                    <a href={`tel:${driver.phone}`} className="flex items-center gap-1.5 hover:underline">
+                                      <Phone className="w-3 h-3 shrink-0" />
+                                      <span>{driver.phone}</span>
+                                    </a>
+                                  )}
+                                  {(driver.vehicle_number || driver.vehicle) && (
+                                    <div className="flex items-center gap-1.5">
+                                      <Truck className="w-3 h-3 shrink-0" />
+                                      <span>{driver.vehicle_number || driver.vehicle}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })()}
 
                           {/* Order Items */}
                           <div className={`space-y-2 sm:space-y-3 ${order.items && order.items.length > 2 ? 'max-h-40 sm:max-h-48 overflow-y-auto' : ''}`}>
