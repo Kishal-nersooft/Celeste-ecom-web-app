@@ -114,7 +114,7 @@ const OfferBannerSlider: React.FC<OfferBannerSliderProps> = ({
 
   return (
     <div 
-      className="w-full my-4 sm:my-5 md:my-6 overflow-hidden"
+      className="w-full mt-4 mb-8 sm:mt-5 sm:mb-10 md:mt-6 md:mb-12 overflow-hidden"
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
     >

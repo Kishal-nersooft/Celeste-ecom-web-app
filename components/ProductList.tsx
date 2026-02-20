@@ -148,11 +148,9 @@ const ProductList = ({
       {!storeId && <Categories onSelectCategory={handleCategorySelect} />}
 
       {/* Discount Banner - only show on homepage when "All" category is selected */}
-      {!storeId && selectedCategory === null && !isDeals && <DiscountBanner />}
-
-      {title && selectedCategory === null && !isDeals && (
-        <div className="pb-5">
-          <h2 className="text-2xl font-semibold text-gray-600">All Products</h2>
+      {!storeId && selectedCategory === null && !isDeals && (
+        <div className="mt-6 mb-10">
+          <DiscountBanner />
         </div>
       )}
 

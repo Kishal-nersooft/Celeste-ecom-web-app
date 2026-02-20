@@ -223,7 +223,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                     })()}
                   </div>
                   <p className={cn(
-                    "mt-1 sm:mt-1.5 md:mt-2 text-[10px] sm:text-[11px] md:text-xs font-medium text-center line-clamp-1",
+                    "mt-1 sm:mt-1.5 md:mt-2 text-[10px] sm:text-[11px] md:text-xs font-medium text-center line-clamp-2 min-h-[2.5em]",
                     isActive ? "text-black" : "text-gray-500"
                   )}>
                     {category.name}

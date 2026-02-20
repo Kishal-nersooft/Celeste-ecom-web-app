@@ -156,7 +156,7 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
               </div>
               <span
                 className={cn(
-                  "text-sm font-medium truncate flex-1",
+                  "text-sm font-medium line-clamp-2 min-w-0 flex-1 break-words",
                   isActive ? "text-gray-900" : "text-gray-600"
                 )}
               >
