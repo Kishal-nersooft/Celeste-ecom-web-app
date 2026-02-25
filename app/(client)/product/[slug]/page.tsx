@@ -234,7 +234,7 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
               height={700}
               priority
               className="w-full max-h-[300px] sm:max-h-[400px] md:max-h-[500px] lg:max-h-[550px] group-hover:scale-110 hoverEffect rounded-md"
-              style={{ objectFit: "cover" }}
+              style={{ objectFit: "contain" }}
             />
             {/* Future Pricing Display - Bottom left of image area */}
             <div className="absolute bottom-2 left-2 sm:bottom-3 sm:left-3 md:bottom-4 md:left-4 z-10">
