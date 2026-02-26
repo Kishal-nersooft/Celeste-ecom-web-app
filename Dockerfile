@@ -13,6 +13,10 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
+# Build-time args for Next.js public env (inlined into client bundle at build time)
+ARG NEXT_PUBLIC_GOOGLE_API_KEY
+ENV NEXT_PUBLIC_GOOGLE_API_KEY=${NEXT_PUBLIC_GOOGLE_API_KEY}
+
 # Set environment variables for build
 ENV NEXT_TELEMETRY_DISABLED 1
 

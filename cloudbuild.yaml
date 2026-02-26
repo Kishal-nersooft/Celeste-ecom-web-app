@@ -1,7 +1,13 @@
 steps:
-  # Build the container image
+  # Build the container image (NEXT_PUBLIC_* must be set at build time for client bundle)
   - name: "gcr.io/cloud-builders/docker"
-    args: ["build", "-t", "gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_TAG}", "."]
+    args:
+      - "build"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_TAG}"
+      - "--build-arg"
+      - "NEXT_PUBLIC_GOOGLE_API_KEY=${_GOOGLE_MAPS_API_KEY}"
+      - "."
 
   # Push the container image to Container Registry
   - name: "gcr.io/cloud-builders/docker"
@@ -33,10 +39,12 @@ images:
   - "gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_TAG}"
 
 # Substitutions for configurable values
+# Set _GOOGLE_MAPS_API_KEY in your Cloud Build trigger (or Secret Manager) - required for Maps/Places
 substitutions:
   _SERVICE_NAME: "nextjs-web"
   _REGION: "asia-south1"
   _TAG: "latest"
+  _GOOGLE_MAPS_API_KEY: ""
 
 # Options for the build
 options:

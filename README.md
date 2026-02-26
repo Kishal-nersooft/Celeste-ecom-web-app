@@ -191,6 +191,24 @@ The easiest way to deploy is using [Vercel](https://vercel.com):
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=YOUR_REPO_URL)
 
+### Deploy to Google Cloud Run (Docker + Cloud Build)
+
+The app is built with Docker and deployed via `cloudbuild.yaml`. **Google Maps (Places/Maps) requires the API key at build time** because `NEXT_PUBLIC_*` env vars are inlined into the client bundle when you run `next build`. Runtime env vars on Cloud Run do not affect the already-built JavaScript.
+
+1. **Set the Google Maps API key in your Cloud Build trigger**
+   - Open [Cloud Build → Triggers](https://console.cloud.google.com/cloud-build/triggers).
+   - Edit the trigger that runs this build.
+   - Add a **Substitution variable**: name `_GOOGLE_MAPS_API_KEY`, value = your [Google Maps API key](https://developers.google.com/maps/documentation/javascript/get-api-key) (same as `NEXT_PUBLIC_GOOGLE_API_KEY`).
+
+2. **Optional – use Secret Manager (recommended)**
+   - Create a secret: `gcloud secrets create GOOGLE_MAPS_API_KEY --data-file=-` (paste key, then Ctrl+D).
+   - In the trigger, set substitution `_GOOGLE_MAPS_API_KEY` to reference the secret (e.g. use a build step that reads the secret and exports it, or use trigger’s “Secret” type substitution if your project supports it).
+
+3. **Restrict the API key in Google Cloud Console**
+   - In [APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials), open your key.
+   - Under “Application restrictions”, set “HTTP referrers” and add your production domain (e.g. `https://nextjs-web-*.asia-south1.run.app/*` and your custom domain).
+   - Under “API restrictions”, restrict to: Maps JavaScript API, Places API (and Geocoding if used).
+
 ### Manual Deployment
 
 ```bash
