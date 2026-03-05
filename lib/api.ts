@@ -45,6 +45,33 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
   return headers;
 }
 
+/**
+ * Check if user is registered with the backend using an idToken.
+ * Returns the user profile if registered (200), or null if not registered (404/401).
+ * Used after Firebase phone auth to decide whether to show the name/register step.
+ */
+export async function getCurrentUserWithToken(idToken: string, includeAddresses: boolean = false): Promise<{ registered: true; profile: unknown } | { registered: false }> {
+  const response = await fetch(
+    `${getBaseUrl()}/users/me?include_addresses=${includeAddresses}`,
+    {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${idToken}`,
+      },
+    }
+  );
+  if (response.ok) {
+    const profile = await response.json();
+    return { registered: true, profile };
+  }
+  // 404 = user not registered; 401 = invalid/expired or not registered
+  if (response.status === 404 || response.status === 401) {
+    return { registered: false };
+  }
+  throw new Error(`Failed to get user profile: ${response.status} ${response.statusText}`);
+}
+
 // User profile functions
 export async function getUserProfile(includeAddresses: boolean = true) {
   const authHeaders = await getAuthHeaders();
@@ -119,27 +146,24 @@ export async function createUserAddress(addressData: {
   latitude: number;
   longitude: number;
   is_default?: boolean;
-  name?: string;
+  name?: string; // Kept for UI/localStorage; not sent to API per spec
 }) {
   const authHeaders = await getAuthHeaders();
-  console.log('🔐 Creating address with headers:', authHeaders);
-  console.log('📝 Address data being sent:', addressData);
-  
+  // API spec: only address, latitude, longitude, is_default
+  const body = {
+    address: addressData.address,
+    latitude: addressData.latitude,
+    longitude: addressData.longitude,
+    is_default: addressData.is_default ?? false,
+  };
   const response = await fetch(`${getBaseUrl()}/users/me/addresses`, {
     method: 'POST',
     headers: authHeaders,
-    body: JSON.stringify(addressData),
-  });
-
-  console.log('📡 Address creation response:', {
-    status: response.status,
-    statusText: response.statusText,
-    ok: response.ok
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.log('❌ Address creation error response:', errorText);
     
     if (response.status === 401) {
       throw new Error('Authentication required');
@@ -161,11 +185,13 @@ export async function createUserAddress(addressData: {
           const retryResponse = await fetch(`${getBaseUrl()}/users/me/addresses`, {
             method: 'POST',
             headers: authHeaders,
-            body: JSON.stringify(addressData),
+            body: JSON.stringify(body),
           });
           
           if (retryResponse.ok) {
-            return retryResponse.json();
+            const retryData = await retryResponse.json();
+            if (retryData && typeof retryData === 'object' && 'data' in retryData) return retryData.data;
+            return retryData;
           }
         }
       } catch (regError) {
@@ -178,7 +204,6 @@ export async function createUserAddress(addressData: {
   }
 
   const responseData = await response.json();
-  console.log('📦 Address creation response data:', responseData);
   // Handle new backend response format: {statusCode, message, data: {...}}
   // Also support old format: direct object
   if (responseData && typeof responseData === 'object' && 'data' in responseData) {
@@ -300,6 +325,87 @@ export async function setDefaultAddress(addressId: number) {
     return responseData.data;
   }
   return responseData;
+}
+
+// ==================== FAVORITES API ====================
+
+export async function addToFavorites(productId: number): Promise<string> {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${getBaseUrl()}/users/me/favorites`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ product_id: productId }),
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Authentication required');
+    }
+    if (response.status === 422) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.detail ? JSON.stringify(err.detail) : 'Validation error');
+    }
+    throw new Error(`Failed to add to favorites: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return typeof data === 'string' ? data : (data?.data ?? '');
+}
+
+export async function getFavorites(options?: {
+  include_products?: boolean;
+  latitude?: number | null;
+  longitude?: number | null;
+  store_ids?: number[] | null;
+}): Promise<unknown[]> {
+  const authHeaders = await getAuthHeaders();
+  const params = new URLSearchParams();
+  if (options?.include_products !== undefined) {
+    params.set('include_products', String(options.include_products));
+  }
+  if (options?.latitude != null) params.set('latitude', String(options.latitude));
+  if (options?.longitude != null) params.set('longitude', String(options.longitude));
+  if (options?.store_ids?.length) {
+    options.store_ids.forEach((id) => params.append('store_ids', String(id)));
+  }
+  const qs = params.toString();
+  const url = `${getBaseUrl()}/users/me/favorites${qs ? `?${qs}` : ''}`;
+  const response = await fetch(url, {
+    method: 'GET',
+    headers: authHeaders,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Authentication required');
+    }
+    throw new Error(`Failed to fetch favorites: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return Array.isArray(data) ? data : (data?.data ?? []);
+}
+
+export async function removeFromFavorites(productId: number): Promise<string> {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${getBaseUrl()}/users/me/favorites/${productId}`, {
+    method: 'DELETE',
+    headers: authHeaders,
+  });
+
+  if (!response.ok) {
+    if (response.status === 401) {
+      throw new Error('Authentication required');
+    }
+    if (response.status === 422) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err?.detail ? JSON.stringify(err.detail) : 'Validation error');
+    }
+    throw new Error(`Failed to remove from favorites: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return typeof data === 'string' ? data : (data?.data ?? '');
 }
 
 // Alternative: Dynamic port detection for server-side (if needed)

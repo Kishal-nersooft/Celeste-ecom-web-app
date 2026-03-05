@@ -5,6 +5,7 @@ import { LuStar } from "react-icons/lu";
 import PriceView from "./PriceView";
 import Link from "next/link";
 import AddToCartButton from "./AddToCartButton";
+import FavoriteButton from "./FavoriteButton";
 import FuturePricingDisplay from "./FuturePricingDisplay";
 import { Product } from "../store";
 import { useCategory } from "../contexts/CategoryContext";
@@ -78,6 +79,9 @@ const ProductCard = memo(({ product }: { product: Product }) => {
           isDiscounted ? "border-gray-600" : "border-gray-300"
         }`}
       >
+        {/* Favorite heart - top right */}
+        <FavoriteButton productId={product.id} />
+
         {/* Discount Tag */}
         {isDiscounted && discountInfo.percentage > 0 && (
           <div className="absolute top-1 left-1 sm:top-2 sm:left-2 z-10">

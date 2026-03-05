@@ -56,7 +56,7 @@ export const Header = () => {
               </Link>
             </div>
 
-            {/* Right: Cart and Sign Up */}
+            {/* Right: Cart and Login */}
             <div className="flex items-center gap-2">
               {user && (
                 <CartPreviewPanel>
@@ -79,10 +79,10 @@ export const Header = () => {
                 <Loader />
               ) : user ? null : (
                 <Link 
-                  href="/sign-up" 
+                  href="/login" 
                   className="px-2 py-1 bg-gray-200 text-black font-bold rounded-full text-[10px] hover:bg-gray-300 transition-colors duration-200 shadow-sm hover:shadow-md"
                 >
-                  Sign Up
+                  Login
                 </Link>
               )}
             </div>
@@ -173,20 +173,12 @@ export const Header = () => {
                 </Link> */}
               </div>
             ) : (
-              <div className="flex items-center gap-3">
-                <Link 
-                  href="/sign-in" 
+              <Link 
+                  href="/login" 
                   className="px-4 py-2 bg-gray-200 text-black font-bold rounded-full text-sm hover:bg-gray-300 transition-colors duration-200 shadow-sm hover:shadow-md"
                 >
-                  Sign In
+                  Login
                 </Link>
-                <Link 
-                  href="/sign-up" 
-                  className="px-4 py-2 bg-gray-200 text-black font-bold rounded-full text-sm hover:bg-gray-300 transition-colors duration-200 shadow-sm hover:shadow-md"
-                >
-                  Sign Up
-                </Link>
-              </div>
             )}
           </div>
         </div>

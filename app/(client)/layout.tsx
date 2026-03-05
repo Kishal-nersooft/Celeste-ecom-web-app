@@ -8,6 +8,7 @@ import { Toaster } from "react-hot-toast";
 import { FirebaseAuthProvider } from "@/components/FirebaseAuthProvider";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { CategoryProvider } from "@/contexts/CategoryContext";
+import { FavoritesProvider } from "@/contexts/FavoritesContext";
 
 const poppins = localFont({
   src: "../fonts/Poppins.woff2",
@@ -37,6 +38,7 @@ export default async function RootLayout({
         <FirebaseAuthProvider>
           <LocationProvider>
             <CategoryProvider>
+              <FavoritesProvider>
               <Header />
               <div className="main-content pt-36 lg:pt-20">{children}</div>
               <Footer />
@@ -49,6 +51,7 @@ export default async function RootLayout({
                   },
                 }}
               />
+              </FavoritesProvider>
             </CategoryProvider>
           </LocationProvider>
         </FirebaseAuthProvider>

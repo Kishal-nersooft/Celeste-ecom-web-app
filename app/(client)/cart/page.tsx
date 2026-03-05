@@ -30,7 +30,7 @@ const CartPage = () => {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/sign-in");
+      router.push("/login?returnUrl=" + encodeURIComponent("/cart"));
     }
   }, [user, loading, router]);
 

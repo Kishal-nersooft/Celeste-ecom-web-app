@@ -57,7 +57,7 @@ const ProfilePage = () => {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/sign-in");
+      router.push("/login?returnUrl=" + encodeURIComponent("/profile"));
     }
   }, [user, loading, router]);
 

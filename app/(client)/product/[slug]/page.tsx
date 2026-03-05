@@ -1,6 +1,7 @@
 "use client";
 
 import AddToCartButton from "@/components/AddToCartButton";
+import FavoriteButton from "@/components/FavoriteButton";
 import Container from "@/components/Container";
 import PriceView from "@/components/PriceView";
 import FuturePricingDisplay from "@/components/FuturePricingDisplay";
@@ -227,6 +228,8 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
                 </div>
               ) : null;
             })()}
+            {/* Favorites button - top right of image */}
+            <FavoriteButton productId={product.id} className="!top-2 !right-2 sm:!top-3 sm:!right-3 md:!top-4 md:!right-4 !p-2" />
             <Image
               src={imageUrl}
               alt={product.name || "Product image"}

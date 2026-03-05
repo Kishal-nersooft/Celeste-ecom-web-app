@@ -21,6 +21,7 @@ interface SavedAddress {
   latitude: number;
   longitude: number;
   is_default: boolean;
+  active?: boolean;
   name?: string;
   ondemand_delivery_available?: boolean;
   created_at: string;
@@ -39,49 +40,35 @@ const SavedAddressPage = () => {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/sign-in");
+      router.push("/login?returnUrl=" + encodeURIComponent("/saved-address"));
     }
   }, [user, loading, router]);
 
-  // Load saved addresses from backend
+  // Load saved addresses from backend – show all addresses (no filtering)
   useEffect(() => {
     const loadAddresses = async () => {
       if (user) {
         setLoadingAddresses(true);
         try {
           const addresses = await getUserAddresses();
-          // Ensure addresses is always an array
           if (Array.isArray(addresses)) {
-            // Load locally stored name mappings (in case backend doesn't return names)
-            const storedNames = typeof window !== 'undefined' 
-              ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-              : {};
-            
-            // Merge locally stored names with backend addresses
-            const addressesWithNames = addresses.map((addr: SavedAddress) => {
-              // If backend doesn't have name but we have it stored locally, use it
-              if (!addr.name && storedNames[addr.id]) {
-                return { ...addr, name: storedNames[addr.id] };
-              }
-              return addr;
-            });
-            
-            // Filter to only show manually saved addresses (with names) and the default address
-            // This excludes auto-saved locations from LocationSelector
-            const filteredAddresses = addressesWithNames.filter((addr: SavedAddress) => {
-              // Show if it has a name (manually saved) OR if it's the default address
-              return addr.name || addr.is_default;
-            });
-            setSavedAddresses(filteredAddresses);
+            const storedNames =
+              typeof window !== "undefined"
+                ? JSON.parse(localStorage.getItem("addressNames") || "{}")
+                : {};
+            const addressesWithNames = addresses.map((addr: SavedAddress) => ({
+              ...addr,
+              name: addr.name ?? storedNames[addr.id],
+            }));
+            setSavedAddresses(addressesWithNames);
           } else {
-            console.error('Invalid addresses format:', addresses);
             setSavedAddresses([]);
-            toast.error('Failed to load addresses: Invalid response format');
+            toast.error("Failed to load addresses: Invalid response format");
           }
         } catch (error) {
-          console.error('Error loading addresses:', error);
+          console.error("Error loading addresses:", error);
           setSavedAddresses([]);
-          toast.error('Failed to load addresses');
+          toast.error("Failed to load addresses");
         } finally {
           setLoadingAddresses(false);
         }
@@ -91,93 +78,69 @@ const SavedAddressPage = () => {
     loadAddresses();
   }, [user]);
 
+  const MAX_ADDRESSES = 10;
+
   const handleAddAddress = async (addressData: {
     name: string;
     fullAddress: string;
     coordinates: { lat: number; lng: number };
     city?: string;
   }) => {
-    // Count only manually saved addresses (with names) - limit is 3
-    const manuallySavedCount = savedAddresses.filter(addr => addr.name).length;
-    const MAX_MANUAL_ADDRESSES = 3;
-    
-    if (manuallySavedCount >= MAX_MANUAL_ADDRESSES) {
-      toast.error(`You can only save up to ${MAX_MANUAL_ADDRESSES} addresses. Please delete an existing address first.`);
+    if (savedAddresses.length >= MAX_ADDRESSES) {
+      toast.error(`You can save up to ${MAX_ADDRESSES} addresses. Delete one to add another.`);
       return;
     }
-    
+
+    const isFirstAddress = savedAddresses.length === 0;
     try {
-      // Always send is_default: true when adding a new address (backend will return ondemand_delivery_available)
       const newAddress = await addUserAddress({
         address: addressData.fullAddress,
         latitude: addressData.coordinates.lat,
         longitude: addressData.coordinates.lng,
-        is_default: true,
-        name: addressData.name
+        is_default: isFirstAddress,
+        name: addressData.name,
       });
-      
-      console.log('✅ New address created:', newAddress);
-      
-      // Check if ondemand delivery is not available
+
       if (newAddress?.ondemand_delivery_available === false) {
         setShowDeliveryWarning(true);
       }
-      
-      // Store the name locally in case backend doesn't return it
-      if (newAddress?.id && addressData.name && typeof window !== 'undefined') {
-        const storedNames = JSON.parse(localStorage.getItem('addressNames') || '{}');
+
+      if (newAddress?.id && addressData.name && typeof window !== "undefined") {
+        const storedNames = JSON.parse(localStorage.getItem("addressNames") || "{}");
         storedNames[newAddress.id] = addressData.name;
-        localStorage.setItem('addressNames', JSON.stringify(storedNames));
+        localStorage.setItem("addressNames", JSON.stringify(storedNames));
       }
-      
-      // Update LocationContext if this is the first address or if it's set as default
-      if (newAddress) {
+
+      if (newAddress && isFirstAddress) {
         setDefaultAddressContext(newAddress);
         setAddressId(newAddress.id);
         setSelectedLocation(newAddress.address);
-        
-        // Save to localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('selectedAddressId', newAddress.id.toString());
-          localStorage.setItem('defaultAddress', JSON.stringify(newAddress));
-          localStorage.setItem('selectedLocation', newAddress.address);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("selectedAddressId", newAddress.id.toString());
+          localStorage.setItem("defaultAddress", JSON.stringify(newAddress));
+          localStorage.setItem("selectedLocation", newAddress.address);
         }
       }
-      
-      // Reload addresses from backend
+
       const addresses = await getUserAddresses();
       if (Array.isArray(addresses)) {
-        // Load locally stored name mappings
-        const storedNames = typeof window !== 'undefined' 
-          ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-          : {};
-        
-        // Merge locally stored names with backend addresses
-        const addressesWithNames = addresses.map((addr: SavedAddress) => {
-          // If backend doesn't have name but we have it stored locally, use it
-          if (!addr.name && storedNames[addr.id]) {
-            return { ...addr, name: storedNames[addr.id] };
-          }
-          // If this is the newly created address and it doesn't have a name, add it
-          if (newAddress && newAddress.id === addr.id && !addr.name && addressData.name) {
-            return { ...addr, name: addressData.name };
-          }
-          return addr;
-        });
-        
-        // Filter to only show manually saved addresses (with names) and the default address
-        const filteredAddresses = addressesWithNames.filter((addr: SavedAddress) => {
-          // Show if it has a name (manually saved) OR if it's the default address
-          return addr.name || addr.is_default;
-        });
-        setSavedAddresses(filteredAddresses);
+        const storedNames =
+          typeof window !== "undefined"
+            ? JSON.parse(localStorage.getItem("addressNames") || "{}")
+            : {};
+        setSavedAddresses(
+          addresses.map((addr: SavedAddress) => ({
+            ...addr,
+            name: addr.name ?? storedNames[addr.id],
+          }))
+        );
       } else {
         setSavedAddresses([]);
       }
       toast.success("Address saved successfully!");
     } catch (error) {
-      console.error('Error adding address:', error);
-      toast.error('Failed to save address');
+      console.error("Error adding address:", error);
+      toast.error("Failed to save address");
     }
   };
 
@@ -199,157 +162,112 @@ const SavedAddressPage = () => {
         address: addressData.fullAddress,
         latitude: addressData.coordinates.lat,
         longitude: addressData.coordinates.lng,
-        name: addressData.name
+        name: addressData.name,
       });
-      
-      // Store the name locally in case backend doesn't return it
-      if (addressData.name && typeof window !== 'undefined') {
-        const storedNames = JSON.parse(localStorage.getItem('addressNames') || '{}');
+
+      if (addressData.name && typeof window !== "undefined") {
+        const storedNames = JSON.parse(localStorage.getItem("addressNames") || "{}");
         storedNames[editingAddress.id] = addressData.name;
-        localStorage.setItem('addressNames', JSON.stringify(storedNames));
+        localStorage.setItem("addressNames", JSON.stringify(storedNames));
       }
-      
-      // Reload addresses from backend
+
       const addresses = await getUserAddresses();
       if (Array.isArray(addresses)) {
-        // Load locally stored name mappings
-        const storedNames = typeof window !== 'undefined' 
-          ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-          : {};
-        
-        // Merge locally stored names with backend addresses
-        const addressesWithNames = addresses.map((addr: SavedAddress) => {
-          if (!addr.name && storedNames[addr.id]) {
-            return { ...addr, name: storedNames[addr.id] };
-          }
-          return addr;
-        });
-        
-        // Filter to only show manually saved addresses (with names) and the default address
-        const filteredAddresses = addressesWithNames.filter((addr: SavedAddress) => {
-          return addr.name || addr.is_default;
-        });
-        setSavedAddresses(filteredAddresses);
+        const storedNames =
+          typeof window !== "undefined"
+            ? JSON.parse(localStorage.getItem("addressNames") || "{}")
+            : {};
+        setSavedAddresses(
+          addresses.map((addr: SavedAddress) => ({
+            ...addr,
+            name: addr.name ?? storedNames[addr.id],
+          }))
+        );
       } else {
         setSavedAddresses([]);
       }
       setEditingAddress(null);
       toast.success("Address updated successfully!");
     } catch (error) {
-      console.error('Error updating address:', error);
-      toast.error('Failed to update address');
+      console.error("Error updating address:", error);
+      toast.error("Failed to update address");
     }
   };
 
   const handleDeleteAddress = async (addressId: number) => {
     try {
       await deleteUserAddress(addressId);
-      
-      // Remove name from local storage
-      if (typeof window !== 'undefined') {
-        const storedNames = JSON.parse(localStorage.getItem('addressNames') || '{}');
+
+      if (typeof window !== "undefined") {
+        const storedNames = JSON.parse(localStorage.getItem("addressNames") || "{}");
         delete storedNames[addressId];
-        localStorage.setItem('addressNames', JSON.stringify(storedNames));
+        localStorage.setItem("addressNames", JSON.stringify(storedNames));
       }
-      
-      // Reload addresses from backend
+
       const addresses = await getUserAddresses();
       if (Array.isArray(addresses)) {
-        // Load locally stored name mappings
-        const storedNames = typeof window !== 'undefined' 
-          ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-          : {};
-        
-        // Merge locally stored names with backend addresses
-        const addressesWithNames = addresses.map((addr: SavedAddress) => {
-          if (!addr.name && storedNames[addr.id]) {
-            return { ...addr, name: storedNames[addr.id] };
-          }
-          return addr;
-        });
-        
-        // Filter to only show manually saved addresses (with names) and the default address
-        const filteredAddresses = addressesWithNames.filter((addr: SavedAddress) => {
-          return addr.name || addr.is_default;
-        });
-        setSavedAddresses(filteredAddresses);
+        const storedNames =
+          typeof window !== "undefined"
+            ? JSON.parse(localStorage.getItem("addressNames") || "{}")
+            : {};
+        setSavedAddresses(
+          addresses.map((addr: SavedAddress) => ({
+            ...addr,
+            name: addr.name ?? storedNames[addr.id],
+          }))
+        );
       } else {
         setSavedAddresses([]);
       }
       toast.success("Address deleted successfully!");
     } catch (error) {
-      console.error('Error deleting address:', error);
-      toast.error('Failed to delete address');
+      console.error("Error deleting address:", error);
+      toast.error("Failed to delete address");
     }
   };
 
   const handleSetDefault = async (addressId: number) => {
     try {
       await setDefaultAddress(addressId);
-      
-      // Immediately update local state to reflect the change (optimistic update)
-      setSavedAddresses((prevAddresses) => {
-        return prevAddresses.map((addr) => ({
-          ...addr,
-          is_default: addr.id === addressId
-        }));
-      });
-      
-      // Find the address that was set as default
+
+      setSavedAddresses((prev) =>
+        prev.map((addr) => ({ ...addr, is_default: addr.id === addressId }))
+      );
+
       const addresses = await getUserAddresses();
       if (Array.isArray(addresses)) {
-        const defaultAddr = addresses.find((addr: SavedAddress) => addr.id === addressId);
-        
-        // Update LocationContext to reflect the new default address
+        const defaultAddr = addresses.find((a: SavedAddress) => a.id === addressId);
         if (defaultAddr) {
           setDefaultAddressContext(defaultAddr);
           setAddressId(defaultAddr.id);
           setSelectedLocation(defaultAddr.address);
-          
-          // Save to localStorage
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('selectedAddressId', defaultAddr.id.toString());
-            localStorage.setItem('defaultAddress', JSON.stringify(defaultAddr));
-            localStorage.setItem('selectedLocation', defaultAddr.address);
+          if (typeof window !== "undefined") {
+            localStorage.setItem("selectedAddressId", defaultAddr.id.toString());
+            localStorage.setItem("defaultAddress", JSON.stringify(defaultAddr));
+            localStorage.setItem("selectedLocation", defaultAddr.address);
           }
-          
-          // Check if ondemand delivery is not available
           if (defaultAddr.ondemand_delivery_available === false) {
             setShowDeliveryWarning(true);
           }
         }
-        
-        // Load locally stored name mappings
-        const storedNames = typeof window !== 'undefined' 
-          ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-          : {};
-        
-        // Merge locally stored names with backend addresses
-        // Also ensure only one address has is_default = true
-        const addressesWithNames = addresses.map((addr: SavedAddress) => {
-          const addrWithName = !addr.name && storedNames[addr.id] 
-            ? { ...addr, name: storedNames[addr.id] }
-            : addr;
-          
-          // Ensure is_default is correctly set (only the selected one should be true)
-          return {
-            ...addrWithName,
-            is_default: addr.id === addressId
-          };
-        });
-        
-        // Filter to only show manually saved addresses (with names) and the default address
-        const filteredAddresses = addressesWithNames.filter((addr: SavedAddress) => {
-          return addr.name || addr.is_default;
-        });
-        setSavedAddresses(filteredAddresses);
+        const storedNames =
+          typeof window !== "undefined"
+            ? JSON.parse(localStorage.getItem("addressNames") || "{}")
+            : {};
+        setSavedAddresses(
+          addresses.map((addr: SavedAddress) => ({
+            ...addr,
+            name: addr.name ?? storedNames[addr.id],
+            is_default: addr.id === addressId,
+          }))
+        );
       } else {
         setSavedAddresses([]);
       }
       toast.success("Default address updated!");
     } catch (error) {
-      console.error('Error setting default address:', error);
-      toast.error('Failed to set default address');
+      console.error("Error setting default address:", error);
+      toast.error("Failed to set default address");
     }
   };
 
@@ -366,6 +284,9 @@ const SavedAddressPage = () => {
     }
     setIsAddressSelectorOpen(false);
   };
+
+  const getDisplayLabel = (addr: SavedAddress, index: number) =>
+    addr.name || (addr.is_default ? "Default address" : `Address #${index + 1}`);
 
   const getAddressIcon = (address: string) => {
     const lowerAddress = address.toLowerCase();
@@ -399,28 +320,23 @@ const SavedAddressPage = () => {
       <div className="flex justify-between items-center mb-8">
         <div>
           <Title className="!text-3xl">Saved Addresses</Title>
-          {savedAddresses.filter(addr => addr.name).length > 0 && (
+          {savedAddresses.length > 0 && (
             <p className="text-sm text-gray-500 mt-1">
-              {savedAddresses.filter(addr => addr.name).length} of 3 addresses saved
+              {savedAddresses.length} of {MAX_ADDRESSES} addresses
             </p>
           )}
         </div>
-        <Button 
+        <Button
           onClick={() => {
-            // Check limit before opening address selector
-            const manuallySavedCount = savedAddresses.filter(addr => addr.name).length;
-            const MAX_MANUAL_ADDRESSES = 3;
-            
-            if (manuallySavedCount >= MAX_MANUAL_ADDRESSES) {
-              toast.error(`You can only save up to ${MAX_MANUAL_ADDRESSES} addresses. Please delete an existing address first.`);
+            if (savedAddresses.length >= MAX_ADDRESSES) {
+              toast.error(`You can save up to ${MAX_ADDRESSES} addresses. Delete one to add another.`);
               return;
             }
-            
             setEditingAddress(null);
             setIsAddressSelectorOpen(true);
           }}
           className="flex items-center gap-2"
-          disabled={savedAddresses.filter(addr => addr.name).length >= 3}
+          disabled={savedAddresses.length >= MAX_ADDRESSES}
         >
           <PlusIcon className="h-4 w-4" />
           Add New Address
@@ -445,14 +361,14 @@ const SavedAddressPage = () => {
         </div>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {savedAddresses.map((address) => (
+          {savedAddresses.map((address, index) => (
             <Card key={address.id} className="relative">
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-2">
                     {getAddressIcon(address.address)}
                     <CardTitle className="text-lg">
-                      {address.name || (address.is_default ? "Default Address" : `Address ${address.id}`)}
+                      {getDisplayLabel(address, index)}
                     </CardTitle>
                   </div>
                   <div className="flex gap-1">

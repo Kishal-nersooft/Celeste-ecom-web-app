@@ -102,6 +102,11 @@ export const SidePanel = () => {
                 <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
                 My Carts
               </Link>
+              <Link href="/favorites" className="flex items-center gap-2 text-sm sm:text-lg font-medium hover:text-blue-600"
+                onClick={() => setIsOpen(false)}>
+                <HeartIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                Favorites
+              </Link>
               <Link href="/saved-address" className="flex items-center gap-2 text-sm sm:text-lg font-medium hover:text-blue-600"
                 onClick={() => setIsOpen(false)}>
                 <MapPinIcon className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -118,18 +123,11 @@ export const SidePanel = () => {
             </>
           )}
           {!user && (
-            <>
-              <Link href="/sign-in" className="flex items-center gap-2 text-sm sm:text-lg font-medium hover:text-blue-600"
-                onClick={() => setIsOpen(false)}>
-                <UserIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                Login
-              </Link>
-              <Link href="/sign-up" className="flex items-center gap-2 text-sm sm:text-lg font-medium hover:text-blue-600"
-                onClick={() => setIsOpen(false)}>
-                <UserIcon className="h-4 w-4 sm:h-5 sm:w-5" />
-                Register
-              </Link>
-            </>
+            <Link href="/login" className="flex items-center gap-2 text-sm sm:text-lg font-medium hover:text-blue-600"
+              onClick={() => setIsOpen(false)}>
+              <UserIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+              Login
+            </Link>
           )}
         </nav>
       </SheetContent>

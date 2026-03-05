@@ -77,7 +77,7 @@ const CheckoutPage = () => {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/sign-in");
+      router.push("/login?returnUrl=" + encodeURIComponent("/checkout"));
     }
   }, [user, loading, router]);
 
@@ -154,8 +154,8 @@ const CheckoutPage = () => {
       
       // Handle authentication errors specifically
       if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-        console.log('🔄 Authentication required, redirecting to sign-in');
-        router.push('/sign-in');
+        console.log('🔄 Authentication required, redirecting to login');
+        router.push("/login?returnUrl=" + encodeURIComponent("/checkout"));
         return;
       }
       

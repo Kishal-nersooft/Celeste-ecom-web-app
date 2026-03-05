@@ -16,14 +16,11 @@ const NoAccessToCart = () => {
         </CardHeader>
         <CardContent className="text-center space-y-4">
           <p className="text-gray-600">
-            You need to be logged in to view your cart. Please sign in or create an account.
+            You need to be logged in to view your cart. Please log in to continue.
           </p>
           <div className="flex justify-center gap-4">
             <Button asChild>
-              <Link href="/sign-in">Sign In</Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/sign-up">Sign Up</Link>
+              <Link href="/login">Login</Link>
             </Button>
           </div>
         </CardContent>

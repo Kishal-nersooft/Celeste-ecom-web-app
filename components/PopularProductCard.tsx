@@ -1,9 +1,9 @@
 import Image from "next/image";
 import React from "react";
-import { LuHeart } from "react-icons/lu";
 import Link from "next/link";
 import { Product } from "../store";
 import PriceFormatter from "./PriceFormatter";
+import FavoriteButton from "./FavoriteButton";
 
 interface PopularProductCardProps {
   product: Product;
@@ -42,9 +42,7 @@ const PopularProductCard = ({ product }: PopularProductCardProps) => {
       </div>
 
       {/* Favorite button */}
-      <button className="absolute top-4 right-4 z-20 bg-white rounded-full p-2 shadow-md hover:bg-gray-100 transition-colors">
-        <LuHeart className="h-4 w-4 text-black" />
-      </button>
+      <FavoriteButton productId={product.id} className="!top-4 !right-4" />
 
       <div className="flex h-full">
         {/* Left section - Text and controls */}

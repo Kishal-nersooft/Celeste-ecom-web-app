@@ -81,7 +81,7 @@ const AddToCartButton = ({ product, className }: Props) => {
             // Check if user is logged in
             if (!user && !authLoading) {
               toast.error("Please login to add items to cart");
-              router.push("/sign-in");
+              router.push("/login?returnUrl=" + encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/"));
               return;
             }
             

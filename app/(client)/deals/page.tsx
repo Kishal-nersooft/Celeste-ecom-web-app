@@ -82,12 +82,12 @@ export default function DealsPage() {
         
         {!user && (
           <div className="mt-4 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
-            <p className="font-semibold">Sign in to see personalized discounts!</p>
+            <p className="font-semibold">Log in to see personalized discounts!</p>
             <p className="text-sm mt-1">
               Some deals may only be visible to authenticated users.
             </p>
-            <Link href="/sign-in" className="text-blue-600 hover:underline mt-2 inline-block">
-              Sign In Now
+            <Link href="/login" className="text-blue-600 hover:underline mt-2 inline-block">
+              Log in
             </Link>
           </div>
         )}

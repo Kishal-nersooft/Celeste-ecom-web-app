@@ -36,7 +36,7 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
         if (container) {
           window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
             size: 'invisible',
-            callback: () => console.log('reCAPTCHA solved'),
+            callback: () => {},
             'expired-callback': () => {
               console.log('reCAPTCHA expired');
               reinitializeRecaptcha();
@@ -74,9 +74,7 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
         try {
           window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
             size: 'invisible',
-            callback: () => {
-              console.log('reCAPTCHA solved');
-            },
+            callback: () => {},
             'expired-callback': () => {
               console.log('reCAPTCHA expired');
               // Reset the verifier when expired
@@ -249,9 +247,7 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
 
   return (
     <div className="w-full max-w-md space-y-4">
-      {/* reCAPTCHA container */}
-      <div id="recaptcha-container"></div>
-
+      {/* reCAPTCHA container is rendered by the parent (e.g. login page) so it stays in DOM when step changes and avoids "Cannot read properties of null (reading 'style')" */}
       {step === 'phone' ? (
         <form onSubmit={sendOTP} className="space-y-4">
           <div>

@@ -20,10 +20,10 @@ export default function RecentItemsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Redirect to sign-in if not authenticated
+  // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      router.push("/sign-in");
+      router.push("/login?returnUrl=" + encodeURIComponent("/recent-items"));
     }
   }, [user, authLoading, router]);
 

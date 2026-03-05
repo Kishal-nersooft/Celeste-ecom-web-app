@@ -182,7 +182,7 @@ const OrdersPageContent = () => {
       }
     } else if (!authLoading && !user) {
       setLoading(false);
-      router.push("/sign-in");
+      router.push("/login?returnUrl=" + encodeURIComponent("/orders"));
     }
   }, [user, authLoading, router]);
 
