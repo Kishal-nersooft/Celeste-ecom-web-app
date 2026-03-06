@@ -10,7 +10,7 @@ import { useLocation } from "@/contexts/LocationContext";
 import Image from "next/image";
 import { notFound } from "next/navigation";
 import React, { useEffect, useState } from "react";
-import { LuStar } from "react-icons/lu";
+import { LuStar, LuShare2 } from "react-icons/lu";
 import { FaEdit } from "react-icons/fa";
 import { FaArrowRight } from "react-icons/fa";
 import { Product } from "../../../../store";
@@ -27,6 +27,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import toast from "react-hot-toast";
 
 const ProductPage = ({ params }: { params: { slug: string } }) => {
   const { user, loading: authLoading } = useAuth();
@@ -201,14 +202,58 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
   const hasValidImage =
     imageUrl && imageUrl.trim() !== "" && imageUrl.startsWith("http");
 
+  const handleShare = async () => {
+    const url = typeof window !== "undefined" ? window.location.href : "";
+    const title = product?.name || "Product";
+    const text = product?.description ? `${product.name} - ${product.description}` : product?.name;
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.share) {
+        await navigator.share({
+          title,
+          text,
+          url,
+        });
+        toast.success("Link shared!");
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copied to clipboard");
+      }
+    } catch (err) {
+      if ((err as Error).name !== "AbortError") {
+        try {
+          await navigator.clipboard.writeText(url);
+          toast.success("Link copied to clipboard");
+        } catch {
+          toast.error("Failed to share");
+        }
+      }
+    }
+  };
+
   return (
     <div>
-      {/* Breadcrumb Navigation */}
-      {breadcrumbItems.length > 0 && (
-        <Container className="py-2 sm:py-3 md:py-4">
-          <Breadcrumb items={breadcrumbItems} className="mb-2 sm:mb-3 md:mb-4" />
-        </Container>
-      )}
+      {/* Top bar: breadcrumb left, favorites button right */}
+      <Container className="py-2 sm:py-3 md:py-4">
+        <div className="flex justify-between items-center gap-2 mb-2 sm:mb-3 md:mb-4">
+          {breadcrumbItems.length > 0 ? (
+            <Breadcrumb items={breadcrumbItems} />
+          ) : (
+            <div />
+          )}
+          <div className="relative flex-shrink-0 flex items-center gap-3">
+            <FavoriteButton productId={product.id} className="!relative !top-0 !right-0 !p-2.5" />
+            <button
+              type="button"
+              onClick={handleShare}
+              aria-label="Share product"
+              className="p-2.5 rounded-full shadow-md bg-white/90 text-gray-500 hover:bg-white hover:text-gray-700 transition-colors duration-200"
+            >
+              <LuShare2 className="h-4 w-4 sm:h-5 sm:w-5" />
+            </button>
+          </div>
+        </div>
+      </Container>
 
       <Container className="flex flex-col md:flex-row gap-4 sm:gap-6 md:gap-8 lg:gap-10 py-2 sm:py-4 md:py-6 lg:py-8">
         {hasValidImage && (
@@ -228,8 +273,6 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
                 </div>
               ) : null;
             })()}
-            {/* Favorites button - top right of image */}
-            <FavoriteButton productId={product.id} className="!top-2 !right-2 sm:!top-3 sm:!right-3 md:!top-4 md:!right-4 !p-2" />
             <Image
               src={imageUrl}
               alt={product.name || "Product image"}
