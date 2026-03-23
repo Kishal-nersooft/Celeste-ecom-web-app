@@ -18,10 +18,15 @@ export async function GET(request: NextRequest) {
     try {
       const response = await fetch(`${API_BASE_URL}/categories/?${params.toString()}`, {
         method: 'GET',
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
+          'Expires': '0',
         },
-        redirect: 'follow'
+        redirect: 'follow',
+        next: { revalidate: 0 },
       });
 
       if (!response.ok) {
@@ -29,7 +34,11 @@ export async function GET(request: NextRequest) {
       }
 
       const data = await response.json();
-      return NextResponse.json(data);
+      return NextResponse.json(data, {
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+        },
+      });
     } catch (apiError) {
       console.error('External API error, using fallback data:', apiError);
       
@@ -74,7 +83,12 @@ export async function GET(request: NextRequest) {
         ]
       };
       
-      return NextResponse.json(mockData);
+      return NextResponse.json(mockData, {
+        status: 200,
+        headers: {
+          'Cache-Control': 'no-store, max-age=0',
+        },
+      });
     }
   } catch (error) {
     console.error('Error fetching categories:', error);

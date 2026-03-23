@@ -11,6 +11,7 @@ import { Category } from "@/components/Categories";
 import { getSubcategories, getProductsBySubcategoryWithPricing, getParentCategoryFromSubcategory, getProductsByParentCategoryWithPagination, getParentCategories } from "@/lib/api";
 import { ArrowLeft } from "lucide-react";
 import Loader from "@/components/Loader";
+import Image from "next/image";
 
 interface Props {
   categoryId: string;
@@ -35,6 +36,71 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [totalProducts, setTotalProducts] = useState<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const getSubcategoryImageUrl = (subcategory: any): string | null => {
+    if (!subcategory) return null;
+
+    const normalizeImageUrl = (url: string): string => {
+      // Normalize Google Drive image links to the "drive.google.com/uc?export=view&id=..."
+      try {
+        const u = new URL(url);
+        const id = u.searchParams.get("id");
+        if (!id) return url;
+
+        if (u.hostname === "drive.google.com") {
+          return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
+        }
+
+        if (u.hostname === "drive.usercontent.google.com") {
+          return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
+        }
+      } catch {
+        // ignore parsing errors
+      }
+      return url;
+    };
+
+    const candidates: Array<any> = [
+      subcategory.image_url,
+      subcategory.imageUrl,
+      subcategory.image,
+      subcategory.image_url_web,
+      subcategory.image_url_mobile,
+    ];
+
+    for (const c of candidates) {
+      if (typeof c === "string" && c.trim().length > 0)
+        return normalizeImageUrl(c);
+    }
+
+    const arrayKeys = [
+      "image_urls",
+      "imageUrls",
+      "image_urls_web",
+      "image_urls_mobile",
+    ];
+
+    for (const key of arrayKeys) {
+      const arr = subcategory?.[key];
+      if (!Array.isArray(arr) || arr.length === 0) continue;
+
+      const first = arr[0];
+      if (typeof first === "string" && first.trim().length > 0) return first;
+      if (first && typeof first === "object") {
+        const objCandidates = [
+          first.image_url,
+          first.imageUrl,
+          first.url,
+          first.image,
+        ];
+        for (const oc of objCandidates) {
+          if (typeof oc === "string" && oc.trim().length > 0) return normalizeImageUrl(oc);
+        }
+      }
+    }
+
+    return null;
+  };
 
   // Load more products for parent category
   const loadMoreProducts = useCallback(async () => {
@@ -226,6 +292,11 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   }
 
   const productCount = products?.length ?? 0;
+  const selectedSubcategory = selectedSubcategoryId
+    ? subcategories.find((s) => s.id === selectedSubcategoryId) ?? null
+    : null;
+  const selectedSubcategoryImageUrl =
+    getSubcategoryImageUrl(selectedSubcategory);
 
   return (
     <div className="bg-gray-100 min-h-screen">
@@ -309,12 +380,34 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
             {/* Right Side - Products Grid */}
             <div className="flex-1 p-3 sm:p-4 md:p-6 flex flex-col min-h-0 overflow-hidden">
               <div className="mb-3 sm:mb-4 flex-shrink-0">
-                <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800">
-                  {selectedSubcategoryId 
-                    ? subcategories.find(s => s.id === selectedSubcategoryId)?.name || "Products"
-                    : displayCategoryName || "All Products"
-                  }
-                </h1>
+                <div className="flex items-center gap-2">
+                  {selectedSubcategoryImageUrl ? (
+                    <div className="relative w-[44px] h-[44px] overflow-hidden rounded-full">
+                      <Image
+                        src={selectedSubcategoryImageUrl}
+                        alt={selectedSubcategory?.name || "Subcategory"}
+                        fill
+                        sizes="44px"
+                        className="rounded-full object-contain"
+                        style={{ objectFit: "contain" }}
+                        priority={false}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="rounded-full flex items-center justify-center bg-gray-200 text-gray-700 font-medium"
+                      style={{ width: 44, height: 44 }}
+                      aria-label="Subcategory placeholder"
+                    >
+                      {(selectedSubcategory?.name?.charAt(0) || "").toUpperCase()}
+                    </div>
+                  )}
+                  <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800">
+                    {selectedSubcategoryId
+                      ? selectedSubcategory?.name || "Products"
+                      : displayCategoryName || "All Products"}
+                  </h1>
+                </div>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1">
                   {productCount} {productCount === 1 ? 'product' : 'products'} found
                 </p>

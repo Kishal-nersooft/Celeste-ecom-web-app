@@ -16,6 +16,10 @@ const nextConfig = {
         protocol: "https",
         hostname: "d1kemjnwqducuu.cloudfront.net",
       },
+      {
+        protocol: "https",
+        hostname: "drive.usercontent.google.com",
+      },
     ],
   },
 };
