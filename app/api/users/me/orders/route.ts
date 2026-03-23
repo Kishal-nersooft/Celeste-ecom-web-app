@@ -13,6 +13,7 @@ export async function GET(request: NextRequest) {
     const includeProducts = searchParams.get('include_products') || 'true';
     const includeStores = searchParams.get('include_stores') || 'true';
     const includeAddresses = searchParams.get('include_addresses') || 'true';
+    const includeRider = searchParams.get('include_rider') || 'true';
     
     // Build query parameters for the backend API
     const backendParams = new URLSearchParams({
@@ -20,7 +21,8 @@ export async function GET(request: NextRequest) {
       limit,
       include_products: includeProducts,
       include_stores: includeStores,
-      include_addresses: includeAddresses
+      include_addresses: includeAddresses,
+      include_rider: includeRider
     });
     
     // Use the general orders endpoint with all parameters

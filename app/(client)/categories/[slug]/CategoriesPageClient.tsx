@@ -19,7 +19,7 @@ interface Props {
 
 const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   const router = useRouter();
-  const [products, setProducts] = useState<Product[]>(fallbackProducts);
+  const [products, setProducts] = useState<Product[]>(() => fallbackProducts ?? []);
   const [displayCategoryName, setDisplayCategoryName] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
@@ -225,6 +225,8 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
     return <Loader />;
   }
 
+  const productCount = products?.length ?? 0;
+
   return (
     <div className="bg-gray-100 min-h-screen">
       <Container className="py-3 sm:py-4">
@@ -249,7 +251,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
                 {displayCategoryName} - All Products
               </h1>
               <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">
-                {totalProducts > 0 ? `${products.length} of ${totalProducts}` : products.length} {products.length === 1 ? 'product' : 'products'} found
+                {totalProducts > 0 ? `${productCount} of ${totalProducts}` : productCount} {productCount === 1 ? 'product' : 'products'} found
               </p>
             </div>
             
@@ -314,7 +316,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
                   }
                 </h1>
                 <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                  {products.length} {products.length === 1 ? 'product' : 'products'} found
+                  {productCount} {productCount === 1 ? 'product' : 'products'} found
                 </p>
               </div>
               

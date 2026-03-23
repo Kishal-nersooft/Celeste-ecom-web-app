@@ -1964,6 +1964,8 @@ export async function createOrder(orderData: {
   total_amount?: number;
   split_order?: boolean;
   platform?: string;
+  /** When true, user pays with a new card (hosted session). When false, use saved card + source_token_id. */
+  saved_card?: boolean;
   save_card?: boolean;
   source_token_id?: number;
 }) {
@@ -2151,7 +2153,7 @@ export async function verifyOrderPayment(orderId: string, paymentData: {
 }
 
 // Get all orders for the current user
-export async function getUserOrders(page: number = 1, limit: number = 20, includeProducts: boolean = true, includeStores: boolean = true, includeAddresses: boolean = true) {
+export async function getUserOrders(page: number = 1, limit: number = 20, includeProducts: boolean = true, includeStores: boolean = true, includeAddresses: boolean = true, includeRider: boolean = true) {
   const authHeaders = await getAuthHeaders();
   const params = new URLSearchParams();
   params.append('page', page.toString());
@@ -2160,6 +2162,7 @@ export async function getUserOrders(page: number = 1, limit: number = 20, includ
   if (includeProducts) params.append('include_products', 'true');
   if (includeStores) params.append('include_stores', 'true');
   if (includeAddresses) params.append('include_addresses', 'true');
+  if (includeRider) params.append('include_rider', 'true');
   
   // Add cache-busting parameter to ensure fresh data
   params.append('_t', Date.now().toString());

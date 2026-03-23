@@ -19,15 +19,11 @@ interface SavedCard {
 interface PaymentMethodProps {
   selectedCardId?: number | null;
   onCardSelect?: (cardId: number | null) => void;
-  onSaveCardChange?: (save: boolean) => void;
-  saveCard?: boolean;
 }
 
 const PaymentMethod: React.FC<PaymentMethodProps> = ({
   selectedCardId,
   onCardSelect,
-  onSaveCardChange,
-  saveCard = false,
 }) => {
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,20 +118,6 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
                 <CheckCircle className="h-5 w-5 text-blue-600" />
               )}
             </div>
-
-            {selectedCardId === null && onSaveCardChange && (
-              <label className="flex items-center space-x-2 p-3 cursor-pointer hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={saveCard}
-                  onChange={(e) => onSaveCardChange(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">
-                  Save this card for future purchases
-                </span>
-              </label>
-            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -162,19 +144,6 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
                 Add Card & Continue
               </Button>
             </div>
-            {onSaveCardChange && (
-              <label className="flex items-center space-x-2 p-3 cursor-pointer hover:bg-gray-50 rounded-lg border border-gray-200 transition-colors">
-                <input
-                  type="checkbox"
-                  checked={saveCard}
-                  onChange={(e) => onSaveCardChange(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                />
-                <span className="text-sm text-gray-700">
-                  Save this card for future purchases
-                </span>
-              </label>
-            )}
           </div>
         )}
         </CardContent>

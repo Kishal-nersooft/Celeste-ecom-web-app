@@ -2,8 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "../globals.css";
 import { Poppins } from "next/font/google";
-import { Header } from "@/components/Header";
-import Footer from "@/components/Footer";
+import { ConditionalClientChrome } from "@/components/ConditionalClientChrome";
 import { Toaster } from "react-hot-toast";
 import { FirebaseAuthProvider } from "@/components/FirebaseAuthProvider";
 import { LocationProvider } from "@/contexts/LocationContext";
@@ -39,9 +38,7 @@ export default async function RootLayout({
           <LocationProvider>
             <CategoryProvider>
               <FavoritesProvider>
-              <Header />
-              <div className="main-content pt-36 lg:pt-20">{children}</div>
-              <Footer />
+              <ConditionalClientChrome>{children}</ConditionalClientChrome>
               <Toaster
                 position="bottom-right"
                 toastOptions={{

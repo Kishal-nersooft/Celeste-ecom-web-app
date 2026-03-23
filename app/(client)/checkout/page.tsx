@@ -58,16 +58,22 @@ const CheckoutPage = () => {
   const [confirmStoreId, setConfirmStoreId] = useState<number | null>(null);
   // Payment gateway state
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
-  const [saveCard, setSaveCard] = useState(false);
   const [paymentSessionData, setPaymentSessionData] = useState<any>(null);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-  // Payment window state
+  // Payment window state (ref = synchronous access for polling / closed checks; state for effects)
   const [paymentWindow, setPaymentWindow] = useState<Window | null>(null);
-  const [showPaymentInProgress, setShowPaymentInProgress] = useState(false);
-  const [showPaymentCancelled, setShowPaymentCancelled] = useState(false);
+  const paymentWindowRef = React.useRef<Window | null>(null);
+  /** Set true before closing the gateway tab after a successful payment (avoids treating that close as user cancel; state updates are async). */
+  const paymentSucceededClosingRef = React.useRef(false);
+  /** Single payment popup: loading spinner → cancelled message when gateway tab is closed */
+  const [paymentModal, setPaymentModal] = useState<'none' | 'loading' | 'cancelled'>('none');
   const [currentPaymentRef, setCurrentPaymentRef] = useState<string | null>(null);
+  /** Backend returns HTML for 3DS challenge when status is needs_3ds (e.g. saved-card OTP). */
+  const [threeDsHtml, setThreeDsHtml] = useState<string | null>(null);
   // Store polling control to stop it when needed
-  const pollingControlRef = React.useRef<{ stop: () => void } | null>(null);
+  const pollingControlRef = React.useRef<{
+    stop: (opts?: { switchToCancelled?: boolean }) => void;
+  } | null>(null);
   const { selectedLocation, setSelectedLocation, addressId: contextAddressId, defaultAddress, deliveryType, setDeliveryType, selectedStore } = useLocation();
   
   const cartStore = useCartStore();
@@ -227,55 +233,44 @@ const CheckoutPage = () => {
     }
   };
 
-  // Monitor payment window for close events with "Are you sure?" confirmation
+  // When the payment gateway tab is closed before success, stop polling and switch the same modal to "cancelled"
   useEffect(() => {
     if (!paymentWindow) return;
 
     const checkWindowClosed = setInterval(() => {
-      if (paymentWindow.closed) {
+      const win = paymentWindowRef.current;
+      if (win && win.closed) {
         clearInterval(checkWindowClosed);
-        // Window was closed - check if payment is still processing
-        if (isProcessingPayment && !showPaymentCancelled) {
-          // Stop polling immediately when window is closed (before showing confirmation)
-          if (pollingControlRef.current) {
-            pollingControlRef.current.stop();
-            pollingControlRef.current = null;
-          }
-          
-          // Show confirmation before showing cancellation
-          const confirmed = window.confirm(
-            'Are you sure you want to close the payment window? Your payment will be cancelled and the order will not be placed.'
-          );
-          
-          if (confirmed) {
-            setShowPaymentCancelled(true);
-            setShowPaymentInProgress(false);
-            setIsProcessingPayment(false);
-            setPaymentWindow(null);
-          }
-          // If user cancels confirmation, polling remains stopped
-          // User can retry payment by clicking checkout again
+        if (paymentSucceededClosingRef.current) {
+          paymentSucceededClosingRef.current = false;
+          setPaymentWindow(null);
+          paymentWindowRef.current = null;
+          return;
         }
+        pollingControlRef.current?.stop({ switchToCancelled: true });
+        pollingControlRef.current = null;
+        setPaymentWindow(null);
+        paymentWindowRef.current = null;
       }
-    }, 1000); // Check every second
+    }, 1000);
 
     return () => clearInterval(checkWindowClosed);
-  }, [paymentWindow, isProcessingPayment, showPaymentCancelled, currentPaymentRef]);
+  }, [paymentWindow]);
 
-  // Start polling for payment status with exponential backoff to minimize API calls
+  const PAYMENT_STATUS_POLL_MS = 2000;
+
+  // Poll GET /payments/status/{ref} every 2s until success, failure, window closed, or timeout
   const startPaymentStatusPolling = (paymentRef: string) => {
     setIsProcessingPayment(true);
-    let pollCount = 0;
-    let pollInterval: NodeJS.Timeout | null = null;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
     let safetyTimeout: NodeJS.Timeout | null = null;
     let isPollingActive = true;
-    const maxPollAttempts = 20; // Maximum 20 polls to prevent excessive calls
-    
-    // Stop function that can be called externally
-    const stopPolling = () => {
+    const maxPollAttempts = 300; // 2s * 300 ≈ 10 minutes
+
+    const stopPolling = (opts?: { keepModalOpen?: boolean; switchToCancelled?: boolean }) => {
       isPollingActive = false;
       if (pollInterval) {
-        clearTimeout(pollInterval);
+        clearInterval(pollInterval);
         pollInterval = null;
       }
       if (safetyTimeout) {
@@ -283,168 +278,112 @@ const CheckoutPage = () => {
         safetyTimeout = null;
       }
       setIsProcessingPayment(false);
-      setShowPaymentInProgress(false);
-    };
-    
-    // Store stop function in ref so it can be called from window close handler
-    pollingControlRef.current = { stop: stopPolling };
-    
-    // Exponential backoff: 3s → 6s → 12s → 24s → 30s (max)
-    const getPollDelay = (attempt: number): number => {
-      const baseDelay = 3000; // Start with 3 seconds after initial delay
-      const maxDelay = 30000; // Max 30 seconds
-      const exponentialDelay = baseDelay * Math.pow(2, Math.min(attempt, 3)); // Cap at 2^3 = 24s
-      const delay = Math.min(exponentialDelay, maxDelay);
-      // Add jitter (±20%) to prevent synchronized requests
-      const jitter = delay * 0.2 * (Math.random() * 2 - 1);
-      return Math.round(delay + jitter);
-    };
-    
-    const pollStatus = async () => {
-      if (!isPollingActive) return;
-      
-      // Stop if payment window is closed (user cancelled)
-      if (paymentWindow && paymentWindow.closed) {
-        stopPolling();
+      if (opts?.keepModalOpen) {
         return;
       }
-      
-      // Stop if max attempts reached
+      if (opts?.switchToCancelled) {
+        setPaymentModal('cancelled');
+      } else {
+        setPaymentModal('none');
+      }
+    };
+
+    pollingControlRef.current = {
+      stop: (opts) => stopPolling(opts),
+    };
+
+    let pollCount = 0;
+
+    const pollStatus = async () => {
+      if (!isPollingActive) return;
+
+      const win = paymentWindowRef.current;
+      if (win && win.closed) {
+        stopPolling({ switchToCancelled: true });
+        setPaymentWindow(null);
+        paymentWindowRef.current = null;
+        return;
+      }
+
       if (pollCount >= maxPollAttempts) {
         stopPolling();
+        setThreeDsHtml(null);
         toast.error('Payment status check timed out. Please check your orders page.');
         setLoadingCheckout(false);
         return;
       }
-      
+
       pollCount++;
-      const currentDelay = getPollDelay(pollCount - 1);
-      
+
       try {
         const statusResponse = await checkPaymentStatus(paymentRef);
-        
-        // Handle different response structures
-        const status = statusResponse?.data?.status || 
-                      statusResponse?.status || 
-                      (statusResponse?.data && typeof statusResponse.data === 'string' ? statusResponse.data : null);
-        
-        // Normalize status to lowercase for comparison
+
+        const status =
+          statusResponse?.data?.status ??
+          statusResponse?.status ??
+          (statusResponse?.data && typeof statusResponse.data === 'string' ? statusResponse.data : null);
+
         const normalizedStatus = String(status).toLowerCase().trim();
-        
+
         if (normalizedStatus === 'success') {
-          stopPolling();
-          
-          // Close payment window if still open
-          if (paymentWindow && !paymentWindow.closed) {
-            paymentWindow.close();
+          stopPolling({ keepModalOpen: true });
+
+          const w = paymentWindowRef.current;
+          if (w && !w.closed) {
+            paymentSucceededClosingRef.current = true;
+            w.close();
           }
-          
-          // Redirect to orders page after 3 seconds
+          paymentWindowRef.current = null;
+          setPaymentWindow(null);
+          setThreeDsHtml(null);
+
           setTimeout(() => {
-            router.push(`/orders?paymentSuccess=true&paymentRef=${paymentRef}`);
+            setPaymentModal('none');
+            router.push(`/orders?paymentSuccess=true&paymentRef=${encodeURIComponent(paymentRef)}`);
             toast.success('Payment successful! Your order has been placed.');
-          }, 3000);
+          }, 500);
         } else if (normalizedStatus === 'failed' || normalizedStatus === 'declined') {
           stopPolling();
+          setThreeDsHtml(null);
           toast.error('Payment was declined. Please try again.');
           setLoadingCheckout(false);
-        } else {
-          // Status is still 'initiated', 'pending', or other - continue polling with exponential backoff
-          if (isPollingActive) {
-            pollInterval = setTimeout(pollStatus, currentDelay);
-          }
         }
-      } catch (error) {
-        // On error, continue polling but with same delay (don't increase backoff on errors)
-        if (isPollingActive && pollCount < maxPollAttempts) {
-          pollInterval = setTimeout(pollStatus, currentDelay);
-        } else {
-          stopPolling();
-        }
+      } catch {
+        if (!isPollingActive) return;
       }
     };
-    
-    // Start first poll after 10 seconds (give user time to start payment and prevent unnecessary calls)
-    const initialTimeout = setTimeout(() => {
-      if (isPollingActive) {
-        pollStatus();
-      }
-    }, 10000);
-    
-    // Store initial timeout so it can be cleared if needed
-    pollInterval = initialTimeout;
 
-    // Stop polling after 10 minutes as final safety
+    pollInterval = setInterval(() => {
+      void pollStatus();
+    }, PAYMENT_STATUS_POLL_MS);
+
+    void pollStatus();
+
     safetyTimeout = setTimeout(() => {
       stopPolling();
+      setThreeDsHtml(null);
     }, 600000);
   };
 
-  // Open payment in new tab
+  // Open payment in a same-origin page so the Mastercard SDK loads correctly (no document.write).
   const openPaymentInNewTab = (sessionId: string, paymentRef: string) => {
-    // Create a new window/tab
-    const newWindow = window.open('', '_blank', 'width=800,height=600');
-    
+    const url = `${typeof window !== "undefined" ? window.location.origin : ""}/checkout/payment?${new URLSearchParams({
+      sessionId: sessionId,
+      paymentRef: paymentRef,
+      embedded: "1",
+    }).toString()}`;
+    // Do not pass noopener in the features string — with noopener, window.open() returns null
+    // (tab still opens) so we never show the in-page modal or track window.closed.
+    const newWindow = window.open(url, "_blank", "width=800,height=700");
     if (!newWindow) {
-      toast.error('Please allow popups to complete payment');
+      toast.error("Please allow popups to complete payment");
       return null;
     }
-
-    // Write HTML content to the new window with Mastercard checkout
-    newWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Complete Payment</title>
-          <style>
-            body {
-              margin: 0;
-              padding: 0;
-              font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-              display: flex;
-              justify-content: center;
-              align-items: center;
-              min-height: 100vh;
-              background: #f5f5f5;
-            }
-            .container {
-              text-align: center;
-              padding: 20px;
-            }
-            .loading {
-              font-size: 18px;
-              color: #666;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="loading">Loading payment gateway...</div>
-          </div>
-          <script src="https://cbcmpgs.gateway.mastercard.com/static/checkout/checkout.min.js"></script>
-          <script>
-            window.onload = function() {
-              if (window.Checkout) {
-                try {
-                  window.Checkout.configure({
-                    session: {
-                      id: '${sessionId}'
-                    }
-                  });
-                  window.Checkout.showPaymentPage();
-                } catch (error) {
-                  document.body.innerHTML = '<div class="container"><div style="color: red;">Failed to load payment gateway. Please close this window and try again.</div></div>';
-                }
-              } else {
-                document.body.innerHTML = '<div class="container"><div style="color: red;">Payment gateway not loaded. Please close this window and try again.</div></div>';
-              }
-            };
-          </script>
-        </body>
-      </html>
-    `);
-    newWindow.document.close();
-
+    try {
+      newWindow.opener = null;
+    } catch {
+      /* cross-origin or already detached */
+    }
     return newWindow;
   };
 
@@ -546,9 +485,11 @@ const CheckoutPage = () => {
         total_amount: fulfillableStores.length > 1 ? (backendData.overall_total || 0) : (primaryStore.total || backendData.overall_total || 0),
         // Platform identifier for backend analytics
         platform: "web",
-        // Payment gateway options
-        save_card: saveCard,
-        ...(selectedCardId && { source_token_id: selectedCardId }),
+        // Payment: new card → saved_card true; saved card → saved_card false + source_token_id
+        saved_card: selectedCardId === null,
+        // Gateway handles save-card UX; we always allow it for new-card checkout
+        save_card: selectedCardId === null,
+        ...(selectedCardId != null && { source_token_id: selectedCardId }),
       };
 
       console.log('📤 Creating checkout session:', checkoutData);
@@ -556,24 +497,30 @@ const CheckoutPage = () => {
       console.log('✅ Checkout session created:', checkoutResponse);
 
       // Extract payment info from response
-      const paymentInfo = checkoutResponse.payment_info || checkoutResponse.data?.payment_info || checkoutResponse;
+      const paymentInfo =
+        checkoutResponse?.data?.payment_info ??
+        checkoutResponse?.payment_info ??
+        checkoutResponse;
 
-      if (!paymentInfo.session_id) {
-        throw new Error('Payment session information not received from server');
-      }
-
-      if (!paymentInfo.payment_reference) {
+      if (!paymentInfo?.payment_reference) {
         throw new Error('Payment reference not received from server');
       }
 
-      console.log('💳 Payment session info:', {
+      const payStatus = String(paymentInfo.status ?? '').toLowerCase().trim();
+      const threeDsChallenge =
+        payStatus === 'needs_3ds' ||
+        (typeof paymentInfo.three_ds_html === 'string' && paymentInfo.three_ds_html.length > 0);
+
+      console.log('💳 Payment info:', {
         session_id: paymentInfo.session_id,
         payment_reference: paymentInfo.payment_reference,
-        merchant_id: paymentInfo.merchant_id
+        merchant_id: paymentInfo.merchant_id,
+        status: paymentInfo.status,
+        three_ds: threeDsChallenge,
       });
 
-      // Store payment session data in sessionStorage for callback verification
-      if (typeof window !== 'undefined') {
+      // Store payment session data for callback verification (when session exists)
+      if (typeof window !== 'undefined' && paymentInfo.session_id) {
         sessionStorage.setItem('payment_session', JSON.stringify({
           session_id: paymentInfo.session_id,
           payment_reference: paymentInfo.payment_reference,
@@ -582,24 +529,36 @@ const CheckoutPage = () => {
         }));
       }
 
-      // Open payment in new tab
+      setCurrentPaymentRef(paymentInfo.payment_reference);
+      setLoadingCheckout(false);
+
+      // 3DS / OTP challenge (e.g. saved card): render gateway HTML inline, poll until paid
+      if (threeDsChallenge && paymentInfo.three_ds_html) {
+        setThreeDsHtml(paymentInfo.three_ds_html);
+        setPaymentModal('none');
+        startPaymentStatusPolling(paymentInfo.payment_reference);
+        return;
+      }
+
+      // Hosted checkout session (new card): open payment page in new tab
+      if (!paymentInfo.session_id) {
+        throw new Error('Payment session information not received from server');
+      }
+
       const newPaymentWindow = openPaymentInNewTab(paymentInfo.session_id, paymentInfo.payment_reference);
-      
+
       if (!newPaymentWindow) {
         toast.error('Failed to open payment window. Please allow popups and try again.');
         setLoadingCheckout(false);
         return;
       }
 
-      // Store payment window reference
+      paymentSucceededClosingRef.current = false;
+      paymentWindowRef.current = newPaymentWindow;
       setPaymentWindow(newPaymentWindow);
-      setCurrentPaymentRef(paymentInfo.payment_reference);
-      
-      // Show "payment in progress" modal
-      setShowPaymentInProgress(true);
-      setLoadingCheckout(false);
 
-      // Start polling for payment status after 10 seconds (prevents unnecessary calls)
+      setPaymentModal('loading');
+
       if (paymentInfo.payment_reference) {
         startPaymentStatusPolling(paymentInfo.payment_reference);
       }
@@ -755,8 +714,6 @@ const CheckoutPage = () => {
           <PaymentMethod
             selectedCardId={selectedCardId}
             onCardSelect={setSelectedCardId}
-            onSaveCardChange={setSaveCard}
-            saveCard={saveCard}
           />
         </div>
 
@@ -880,70 +837,103 @@ const CheckoutPage = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Payment In Progress Modal */}
-      <Dialog open={showPaymentInProgress} onOpenChange={(open) => {
-        if (!open && isProcessingPayment) {
-          // Don't allow closing while payment is processing
-          return;
-        }
-        setShowPaymentInProgress(open);
-      }}>
-        <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+      {/* 3DS / bank OTP challenge (inline HTML from gateway, e.g. saved-card flow) */}
+      <Dialog
+        open={!!threeDsHtml}
+        onOpenChange={(open) => {
+          if (!open && threeDsHtml) {
+            pollingControlRef.current?.stop();
+            pollingControlRef.current = null;
+            setThreeDsHtml(null);
+            setCurrentPaymentRef(null);
+            toast.error('Payment verification was cancelled.');
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col gap-2">
           <DialogHeader>
-            <DialogTitle>Payment in Progress</DialogTitle>
+            <DialogTitle>Verify your payment</DialogTitle>
             <DialogDescription>
-              Please complete your payment in the new window that opened.
+              Complete the verification below. This page will update when your payment finishes.
             </DialogDescription>
           </DialogHeader>
-          <div className="py-4">
-            <div className="flex items-center justify-center mb-4">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
-            </div>
-            <p className="text-center text-sm text-gray-600">
-              Do not close this page. We will automatically redirect you once payment is complete.
-            </p>
-          </div>
+          {threeDsHtml && (
+            <iframe
+              title="Payment verification"
+              className="w-full min-h-[70vh] flex-1 rounded-md border border-gray-200 bg-white"
+              srcDoc={threeDsHtml}
+              sandbox="allow-scripts allow-forms allow-same-origin allow-popups"
+            />
+          )}
         </DialogContent>
       </Dialog>
 
-      {/* Payment Cancelled Dialog */}
-      <Dialog open={showPaymentCancelled} onOpenChange={setShowPaymentCancelled}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Payment Cancelled</DialogTitle>
-            <DialogDescription>
-              The payment window was closed before completing the payment.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-sm text-gray-600 mb-4">
-              Your order has not been placed. You can try again by clicking the "Place Order" button.
-            </p>
-            <p className="text-xs text-gray-500">
-              Note: Your cart items are still saved. No charges have been made.
-            </p>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => {
-              setShowPaymentCancelled(false);
-              setCurrentPaymentRef(null);
-            }}>
-              OK
-            </Button>
-            <Button 
-              variant="default"
-              onClick={() => {
-                setShowPaymentCancelled(false);
-                setCurrentPaymentRef(null);
-                // Retry payment
-                if (currentPaymentRef) {
-                  handleCheckout();
-                }
-              }}
-            >
-              Try Again
-            </Button>
-          </DialogFooter>
+      {/* Payment gateway: same dialog transitions from loading → cancelled when the payment tab is closed */}
+      <Dialog
+        open={paymentModal !== 'none'}
+        onOpenChange={(open) => {
+          if (!open && paymentModal === 'loading' && isProcessingPayment) {
+            return;
+          }
+          if (!open) {
+            setPaymentModal('none');
+            setCurrentPaymentRef(null);
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-md"
+          onInteractOutside={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => {
+            if (paymentModal === 'loading' && isProcessingPayment) e.preventDefault();
+          }}
+        >
+          {paymentModal === 'loading' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Payment in progress</DialogTitle>
+                <DialogDescription>
+                  Please complete your payment in the new window that opened.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <div className="flex items-center justify-center mb-4">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" />
+                </div>
+                <p className="text-center text-sm text-gray-600">
+                  Do not close this page. We will update this when your payment finishes.
+                </p>
+              </div>
+            </>
+          )}
+          {paymentModal === 'cancelled' && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Payment was cancelled</DialogTitle>
+                <DialogDescription>
+                  The payment window was closed before the payment completed.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <p className="text-sm text-gray-600 mb-4">
+                  Your order has not been placed. You can tap Place Order again when you are ready.
+                </p>
+                <p className="text-xs text-gray-500">
+                  Your cart is unchanged. No charge has been made.
+                </p>
+              </div>
+              <DialogFooter>
+                <Button
+                  onClick={() => {
+                    setPaymentModal('none');
+                    setCurrentPaymentRef(null);
+                  }}
+                >
+                  OK
+                </Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
     </Container>

@@ -8,7 +8,7 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Order, DriverInfo } from "@/store";
+import { Order, DriverInfo, RiderInfo } from "@/store";
 import { getUserOrders } from "@/lib/api";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
@@ -76,7 +76,7 @@ const OrdersPageContent = () => {
       if (showLoading) setLoading(true);
       try {
         // Get orders from backend API
-        const response = await getUserOrders(1, 50, true, true, true);
+        const response = await getUserOrders(1, 50, true, true, true, true);
         
         // Handle the new API response structure: { statusCode, message, data: { orders, pagination } }
         let backendOrders = [];
@@ -112,12 +112,25 @@ const OrdersPageContent = () => {
           return { name, phone, vehicle_number: vehicle, vehicle };
         };
 
+        // Normalize rider data from backend (sent when status is Shipped and include_rider=true)
+        const mapRider = (raw: any): RiderInfo | undefined => {
+          const r = raw?.rider;
+          if (!r || typeof r !== 'object') return undefined;
+          const name = r.name;
+          const phone = r.phone ?? r.phone_number;
+          const vehicle_type = r.vehicle_type;
+          const vehicle_registration_number = r.vehicle_registration_number;
+          if (!name && !phone && !vehicle_type && !vehicle_registration_number) return undefined;
+          return { name, phone, vehicle_type, vehicle_registration_number };
+        };
+
         // Convert backend orders to local Order format based on API schema
         const convertedOrders: Order[] = backendOrders.map((order: any) => {
           const statusUpper = (order.status || '').toUpperCase();
           const driver = mapDriver(order);
-          if ((statusUpper === 'SHIPPED' || statusUpper === 'DELIVERED') && (order.driver ?? order.driver_info ?? order.assigned_driver)) {
-            console.log('Order (Shipped/Delivered) driver payload:', { orderId: order.id, status: order.status, driverPayload: order.driver ?? order.driver_info ?? order.assigned_driver, mapped: driver });
+          const rider = mapRider(order);
+          if ((statusUpper === 'SHIPPED' || statusUpper === 'DELIVERED') && (order.rider ?? order.driver ?? order.driver_info ?? order.assigned_driver)) {
+            console.log('Order (Shipped/Delivered) rider/driver payload:', { orderId: order.id, status: order.status, rider: order.rider, driverPayload: order.driver ?? order.driver_info ?? order.assigned_driver, mappedRider: rider, mappedDriver: driver });
           }
 
           // Use included product data directly from API response
@@ -168,7 +181,8 @@ const OrdersPageContent = () => {
             deliveryCharge: order.delivery_charge || 0,
             paymentReference: order.payment_reference,
             transactionId: order.transaction_id,
-            driver
+            driver,
+            rider
           };
         });
         
@@ -436,37 +450,71 @@ const OrdersPageContent = () => {
                             )}
                           </div>
 
-                          {/* Driver details - shown when status is Shipped or Delivered */}
+                          {/* Rider/Driver details - shown when status is Shipped or Delivered */}
                           {(() => {
                             const statusStr = String(order.status).toUpperCase();
+                            const rider = order.rider;
                             const driver = order.driver;
-                            const showDriver = (statusStr === 'SHIPPED' || statusStr === 'DELIVERED') && driver && (driver.name || driver.phone || driver.vehicle_number || driver.vehicle);
-                            if (!showDriver || !driver) return null;
+                            const hasRider = rider && (rider.name || rider.phone || rider.vehicle_type || rider.vehicle_registration_number);
+                            const hasDriver = driver && (driver.name || driver.phone || driver.vehicle_number || driver.vehicle);
+                            const showDetails = (statusStr === 'SHIPPED' || statusStr === 'DELIVERED') && (hasRider || hasDriver);
+                            if (!showDetails) return null;
                             return (
                               <div className="mb-3 sm:mb-4 p-3 bg-orange-50 border border-orange-100 rounded-lg">
                                 <div className="flex items-center gap-2 text-xs sm:text-sm font-medium text-orange-800 mb-2">
                                   <Truck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                                  Driver details
+                                  {hasRider ? 'Rider details' : 'Driver details'}
                                 </div>
                                 <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-[10px] sm:text-xs text-gray-700">
-                                  {driver.name && (
-                                    <div className="flex items-center gap-1.5">
-                                      <User className="w-3 h-3 shrink-0" />
-                                      <span>{driver.name}</span>
-                                    </div>
-                                  )}
-                                  {driver.phone && (
-                                    <a href={`tel:${driver.phone}`} className="flex items-center gap-1.5 hover:underline">
-                                      <Phone className="w-3 h-3 shrink-0" />
-                                      <span>{driver.phone}</span>
-                                    </a>
-                                  )}
-                                  {(driver.vehicle_number || driver.vehicle) && (
-                                    <div className="flex items-center gap-1.5">
-                                      <Truck className="w-3 h-3 shrink-0" />
-                                      <span>{driver.vehicle_number || driver.vehicle}</span>
-                                    </div>
-                                  )}
+                                  {hasRider ? (
+                                    <>
+                                      {rider!.name && (
+                                        <div className="flex items-center gap-1.5">
+                                          <User className="w-3 h-3 shrink-0" />
+                                          <span>{rider!.name}</span>
+                                        </div>
+                                      )}
+                                      {rider!.phone && (
+                                        <a href={`tel:${rider!.phone}`} className="flex items-center gap-1.5 hover:underline">
+                                          <Phone className="w-3 h-3 shrink-0" />
+                                          <span>{rider!.phone}</span>
+                                        </a>
+                                      )}
+                                      {rider!.vehicle_type && (
+                                        <div className="flex items-center gap-1.5">
+                                          <Truck className="w-3 h-3 shrink-0" />
+                                          <span className="capitalize">{rider!.vehicle_type}</span>
+                                        </div>
+                                      )}
+                                      {rider!.vehicle_registration_number && (
+                                        <div className="flex items-center gap-1.5">
+                                          <span className="text-gray-500">Reg:</span>
+                                          <span>{rider!.vehicle_registration_number}</span>
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : driver ? (
+                                    <>
+                                      {driver.name && (
+                                        <div className="flex items-center gap-1.5">
+                                          <User className="w-3 h-3 shrink-0" />
+                                          <span>{driver.name}</span>
+                                        </div>
+                                      )}
+                                      {driver.phone && (
+                                        <a href={`tel:${driver.phone}`} className="flex items-center gap-1.5 hover:underline">
+                                          <Phone className="w-3 h-3 shrink-0" />
+                                          <span>{driver.phone}</span>
+                                        </a>
+                                      )}
+                                      {(driver.vehicle_number || driver.vehicle) && (
+                                        <div className="flex items-center gap-1.5">
+                                          <Truck className="w-3 h-3 shrink-0" />
+                                          <span>{driver.vehicle_number || driver.vehicle}</span>
+                                        </div>
+                                      )}
+                                    </>
+                                  ) : null}
                                 </div>
                               </div>
                             );

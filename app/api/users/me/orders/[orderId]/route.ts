@@ -9,7 +9,7 @@ export async function GET(
   { params }: { params: { orderId: string } }
 ) {
   try {
-    const response = await fetch(`${API_BASE_URL}/orders/${params.orderId}`, {
+    const response = await fetch(`${API_BASE_URL}/orders/${params.orderId}?include_rider=true`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

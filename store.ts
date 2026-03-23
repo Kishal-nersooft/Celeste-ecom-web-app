@@ -64,6 +64,14 @@ export interface DriverInfo {
   vehicle?: string;
 }
 
+/** Rider info sent by backend when order status is Shipped (include_rider=true) */
+export interface RiderInfo {
+  name?: string;
+  phone?: string;
+  vehicle_type?: string;
+  vehicle_registration_number?: string;
+}
+
 export interface Order {
   id: string;
   userId: string;
@@ -80,6 +88,8 @@ export interface Order {
   orderNumber?: string; // For compatibility with backend
   /** Present when status is Shipped or Delivered (from backend) */
   driver?: DriverInfo;
+  /** Present when status is Shipped and include_rider=true (from backend) */
+  rider?: RiderInfo;
   createdAt: Date;
   updatedAt: Date;
 }

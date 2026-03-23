@@ -13,7 +13,7 @@ interface Props {
 // Function to fetch products by category from the backend API
 async function getProductsByCategory(categoryId: string): Promise<Product[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/products/?categoryId=${categoryId}&include_pricing=true`, {
+    const response = await fetch(`${API_BASE_URL}/products/?categoryId=${categoryId}&include_pricing=true`, {
       cache: 'no-store', // Disable Next.js caching
       headers: {
         'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -38,7 +38,7 @@ async function getProductsByCategory(categoryId: string): Promise<Product[]> {
 // Function to fetch all categories from the backend API
 async function getAllCategories(): Promise<Category[]> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/v1/categories/`);
+    const response = await fetch(`${API_BASE_URL}/categories/`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
