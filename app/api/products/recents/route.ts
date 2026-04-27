@@ -33,6 +33,15 @@ export async function GET(request: NextRequest) {
         redirect: 'follow'
       });
 
+      // If the user isn't authenticated in dev, the backend may return 401/403 for "me" scoped recents.
+      // Treat that as "no recent products" instead of surfacing a noisy 502.
+      if (response.status === 401 || response.status === 403) {
+        return NextResponse.json(
+          { statusCode: 200, message: 'Success', data: [] },
+          { status: 200 }
+        );
+      }
+
       if (!response.ok) {
         throw new Error(`API responded with status: ${response.status}`);
       }
