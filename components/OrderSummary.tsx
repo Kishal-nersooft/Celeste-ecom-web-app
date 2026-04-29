@@ -5,16 +5,26 @@ import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { 
   ShoppingCart, 
   Truck, 
   Receipt,
   ChevronDown,
   ChevronUp,
-  CheckCircle
+  CheckCircle,
+  ShieldCheck
 } from "lucide-react";
 import QuantityButtons from "./QuantityButtons";
 import useCartStore from "@/store";
+import paymentGatewaySolutions from "@/images/Payment Gateway Solutions-03.jpg";
 
 interface OrderSummaryProps {
   previewData: any;
@@ -36,7 +46,66 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   onQuantityChange
 }) => {
   const [isCartExpanded, setIsCartExpanded] = useState(true);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [isTermsOpen, setIsTermsOpen] = useState(false);
   const cartStore = useCartStore();
+
+  const TermsDialog = (
+    <Dialog open={isTermsOpen} onOpenChange={setIsTermsOpen}>
+      <DialogContent className="sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="text-base sm:text-lg">Terms & Conditions</DialogTitle>
+          <DialogDescription className="text-xs sm:text-sm">
+            Please review and accept to continue.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-[55vh] overflow-auto rounded-lg border bg-white p-3 sm:p-4 text-xs sm:text-sm text-gray-700 leading-relaxed">
+          <p className="font-medium text-gray-900">Sample terms (placeholder)</p>
+          <p className="mt-2">
+            By placing this order, you confirm that the information you provided is accurate and that you are
+            authorized to use the selected payment method. Delivery timelines are estimates and may vary due to
+            external factors. If items become unavailable, we may adjust your order total accordingly.
+          </p>
+          <p className="mt-2">
+            Payments are processed securely by our payment partners. We do not store full card details on our
+            servers. Refunds and cancellations are subject to our policy and may require verification.
+          </p>
+          <p className="mt-2">
+            If you have questions, please contact support before completing your purchase.
+          </p>
+        </div>
+
+        <div className="rounded-lg border bg-gray-50 p-3">
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              id="terms-dialog"
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+            />
+            <span className="text-[10px] sm:text-xs text-gray-700 leading-snug">
+              I agree to the Terms & Conditions.
+            </span>
+          </label>
+        </div>
+
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => setIsTermsOpen(false)}>
+            Close
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setIsTermsOpen(false)}
+            disabled={!acceptedTerms}
+          >
+            Confirm
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
   if (loading) {
     return (
       <Card>
@@ -81,9 +150,34 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             </div>
             
             {/* Checkout Button */}
+            <div className="rounded-lg border bg-gray-50 p-3">
+              <label className="flex items-start gap-2 cursor-pointer select-none">
+                <input
+                  id="terms-no-preview"
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => setAcceptedTerms(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+                />
+                <span className="text-[10px] sm:text-xs text-gray-700 leading-snug">
+                  I agree to the{" "}
+                  <button
+                    type="button"
+                    className="font-medium text-gray-900 underline underline-offset-2 hover:text-black"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsTermsOpen(true);
+                    }}
+                  >
+                    Terms & Conditions
+                  </button>
+                  .
+                </span>
+              </label>
+            </div>
             <button
               onClick={onCheckout}
-              disabled={loadingCheckout || cartItems.length === 0}
+              disabled={loadingCheckout || cartItems.length === 0 || !acceptedTerms}
               className="w-full bg-blue-600 text-white py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm"
             >
               {loadingCheckout ? (
@@ -103,6 +197,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             )}
           </div>
         </CardContent>
+        {TermsDialog}
       </Card>
     );
   }
@@ -410,9 +505,34 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         </div>
 
         {/* Checkout Button - Black background with bold text */}
+        <div className="rounded-lg border bg-gray-50 p-3">
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input
+              id="terms"
+              type="checkbox"
+              checked={acceptedTerms}
+              onChange={(e) => setAcceptedTerms(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+            />
+            <span className="text-[10px] sm:text-xs text-gray-700 leading-snug">
+              I agree to the{" "}
+              <button
+                type="button"
+                className="font-medium text-gray-900 underline underline-offset-2 hover:text-black"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setIsTermsOpen(true);
+                }}
+              >
+                Terms & Conditions
+              </button>
+              .
+            </span>
+          </label>
+        </div>
         <button
           onClick={onCheckout}
-          disabled={loadingCheckout || cartItems.length === 0}
+          disabled={loadingCheckout || cartItems.length === 0 || !acceptedTerms}
           className="w-full bg-black text-white py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg font-bold hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm"
         >
           {loadingCheckout ? (
@@ -424,6 +544,22 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             `Place Order - LKR ${(isMultiStore ? overall_total : final_total).toFixed(2)}`
           )}
         </button>
+
+        {/* Trust / security block */}
+        <div className="pt-2">
+          <div className="flex items-center justify-center gap-2 text-[10px] sm:text-xs font-medium text-gray-700">
+            <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-700" />
+            Secured By
+          </div>
+          <div className="mt-2 flex justify-center">
+            <Image
+              src={paymentGatewaySolutions}
+              alt="Payment gateway security"
+              className="h-auto w-full max-w-[320px] rounded-md border bg-white"
+              priority={false}
+            />
+          </div>
+        </div>
         
         {cartItems.length === 0 && (
           <p className="text-center text-gray-500 text-xs sm:text-sm">
@@ -431,6 +567,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           </p>
         )}
       </CardContent>
+      {TermsDialog}
     </Card>
   );
 };

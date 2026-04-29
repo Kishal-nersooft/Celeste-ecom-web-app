@@ -5,14 +5,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { MapPin, Truck, ShoppingBag, AlertCircle } from "lucide-react";
+import { MapPin, Truck, ShoppingBag, AlertCircle, Sparkles, Clock, Zap } from "lucide-react";
 import CartLocationSelector from "./CartLocationSelector";
-import { useLoadScript, GoogleMap, Marker } from "@react-google-maps/api";
-import toast from "react-hot-toast";
 import { useLocation } from "@/contexts/LocationContext";
-
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
-const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
 
 interface DeliveryDetailsProps {
   onLocationChange: (location: string) => void;
@@ -29,24 +24,9 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
 }) => {
   // Use LocationContext for order type
   const { deliveryType: selectedOrderType, setDeliveryType } = useLocation();
-  const [mapCenter, setMapCenter] = useState({ lat: 6.9271, lng: 79.8612 }); // Colombo, Sri Lanka
-  const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
-
-  const { isLoaded } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY ?? '',
-    libraries,
-  });
 
   const handleLocationSelect = (location: string) => {
     onLocationChange(location);
-    
-    // Update map center based on selected location
-    // This is a simplified version - in a real app, you'd geocode the location
-    if (location !== "Location") {
-      // For demo purposes, we'll just center on Colombo
-      setMapCenter({ lat: 6.9271, lng: 79.8612 });
-      setMarkerPosition({ lat: 6.9271, lng: 79.8612 });
-    }
   };
 
   const handleOrderTypeChange = (value: string) => {
@@ -94,23 +74,6 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
                   Change
                 </Button>
               </div>
-              
-              {/* Map Preview */}
-              {isLoaded && (
-                <div className="h-48 w-full rounded-lg overflow-hidden border">
-                  <GoogleMap
-                    mapContainerStyle={{ width: "100%", height: "100%" }}
-                    center={mapCenter}
-                    zoom={15}
-                    options={{
-                      disableDefaultUI: true,
-                      zoomControl: true,
-                    }}
-                  >
-                    {markerPosition && <Marker position={markerPosition} />}
-                  </GoogleMap>
-                </div>
-              )}
             </div>
           )}
         </div>
@@ -121,9 +84,9 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
           <RadioGroup
             value={selectedOrderType}
             onValueChange={handleOrderTypeChange}
-            className="space-y-2 sm:space-y-3"
+            className="grid grid-cols-2 gap-2 sm:gap-3"
           >
-            <div className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
               <RadioGroupItem value="delivery" id="delivery" />
               <Label htmlFor="delivery" className="flex items-center gap-2 sm:gap-3 cursor-pointer flex-1">
                 <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
@@ -134,7 +97,7 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
               </Label>
             </div>
             
-            <div className="flex items-center space-x-2 sm:space-x-3 p-2 sm:p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
+            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
               <RadioGroupItem value="pickup" id="pickup" />
               <Label htmlFor="pickup" className="flex items-center gap-2 sm:gap-3 cursor-pointer flex-1">
                 <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
@@ -151,56 +114,138 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
         {selectedOrderType === 'delivery' && onDeliveryServiceChange && (
           <div className="space-y-2 sm:space-y-3">
             <Label className="text-xs sm:text-sm font-medium">Delivery Service</Label>
-            <p className="text-[10px] sm:text-xs text-gray-500 -mt-1">Choose your delivery speed</p>
+            {/* <p className="text-[10px] sm:text-xs text-gray-500 -mt-1">Choose your delivery speed</p> */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
               <Button
                 variant={selectedDeliveryService === 'premium' ? 'default' : 'outline'}
                 onClick={() => onDeliveryServiceChange('premium')}
-                className={`h-auto min-h-[60px] sm:min-h-[70px] flex flex-col items-center justify-center py-2 sm:py-3 px-3 transition-all duration-200 ${
+                className={`h-auto min-h-[64px] sm:min-h-[74px] w-full justify-start px-3 py-2.5 sm:px-4 sm:py-3 transition-all duration-200 ${
                   selectedDeliveryService === 'premium'
                     ? 'bg-black text-white hover:bg-gray-800 shadow-md border-2 border-black'
-                    : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
+                    : 'bg-white text-gray-800 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm'
                 }`}
               >
-                <div className={`text-xs sm:text-sm font-semibold mb-0.5 text-center ${selectedDeliveryService === 'premium' ? 'text-white' : 'text-gray-900'}`}>
-                  Premium
-                </div>
-                <div className={`text-[10px] sm:text-xs text-center ${selectedDeliveryService === 'premium' ? 'text-gray-200' : 'text-gray-500'}`}>
-                  Faster delivery
+                <div className="flex w-full items-start gap-2.5 sm:gap-3">
+                  <div
+                    className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
+                      selectedDeliveryService === 'premium'
+                        ? 'border-white/15 bg-white/10'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <Sparkles
+                      className={`h-4 w-4 ${
+                        selectedDeliveryService === 'premium' ? 'text-white' : 'text-amber-600'
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className={`text-xs sm:text-sm font-semibold ${
+                          selectedDeliveryService === 'premium' ? 'text-white' : 'text-gray-900'
+                        }`}
+                      >
+                        Premium
+                      </div>
+                      {selectedDeliveryService === 'premium' && (
+                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] sm:text-xs font-medium text-white/90">
+                          Recommended
+                        </span>
+                      )}
+                    </div>
+                    <div
+                      className={`mt-0.5 text-[10px] sm:text-xs leading-snug ${
+                        selectedDeliveryService === 'premium' ? 'text-gray-200' : 'text-gray-500'
+                      }`}
+                    >
+                      Faster delivery
+                    </div>
+                  </div>
                 </div>
               </Button>
               
               <Button
                 variant={selectedDeliveryService === 'standard' ? 'default' : 'outline'}
                 onClick={() => onDeliveryServiceChange('standard')}
-                className={`h-auto min-h-[60px] sm:min-h-[70px] flex flex-col items-center justify-center py-2 sm:py-3 px-3 transition-all duration-200 ${
+                className={`h-auto min-h-[64px] sm:min-h-[74px] w-full justify-start px-3 py-2.5 sm:px-4 sm:py-3 transition-all duration-200 ${
                   selectedDeliveryService === 'standard'
                     ? 'bg-black text-white hover:bg-gray-800 shadow-md border-2 border-black'
-                    : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
+                    : 'bg-white text-gray-800 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm'
                 }`}
               >
-                <div className={`text-xs sm:text-sm font-semibold mb-0.5 text-center ${selectedDeliveryService === 'standard' ? 'text-white' : 'text-gray-900'}`}>
-                  Standard
-                </div>
-                <div className={`text-[10px] sm:text-xs text-center ${selectedDeliveryService === 'standard' ? 'text-gray-200' : 'text-gray-500'}`}>
-                  Regular delivery
+                <div className="flex w-full items-start gap-2.5 sm:gap-3">
+                  <div
+                    className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
+                      selectedDeliveryService === 'standard'
+                        ? 'border-white/15 bg-white/10'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <Clock
+                      className={`h-4 w-4 ${
+                        selectedDeliveryService === 'standard' ? 'text-white' : 'text-slate-600'
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <div
+                      className={`text-xs sm:text-sm font-semibold ${
+                        selectedDeliveryService === 'standard' ? 'text-white' : 'text-gray-900'
+                      }`}
+                    >
+                      Standard
+                    </div>
+                    <div
+                      className={`mt-0.5 text-[10px] sm:text-xs leading-snug ${
+                        selectedDeliveryService === 'standard' ? 'text-gray-200' : 'text-gray-500'
+                      }`}
+                    >
+                      Regular delivery
+                    </div>
+                  </div>
                 </div>
               </Button>
               
               <Button
                 variant={selectedDeliveryService === 'priority' ? 'default' : 'outline'}
                 onClick={() => onDeliveryServiceChange('priority')}
-                className={`h-auto min-h-[60px] sm:min-h-[70px] flex flex-col items-center justify-center py-2 sm:py-3 px-3 transition-all duration-200 ${
+                className={`h-auto min-h-[64px] sm:min-h-[74px] w-full justify-start px-3 py-2.5 sm:px-4 sm:py-3 transition-all duration-200 ${
                   selectedDeliveryService === 'priority'
                     ? 'bg-black text-white hover:bg-gray-800 shadow-md border-2 border-black'
-                    : 'bg-white text-gray-700 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300'
+                    : 'bg-white text-gray-800 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm'
                 }`}
               >
-                <div className={`text-xs sm:text-sm font-semibold mb-0.5 text-center ${selectedDeliveryService === 'priority' ? 'text-white' : 'text-gray-900'}`}>
-                  Priority
-                </div>
-                <div className={`text-[10px] sm:text-xs text-center ${selectedDeliveryService === 'priority' ? 'text-gray-200' : 'text-gray-500'}`}>
-                  Fastest delivery
+                <div className="flex w-full items-start gap-2.5 sm:gap-3">
+                  <div
+                    className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
+                      selectedDeliveryService === 'priority'
+                        ? 'border-white/15 bg-white/10'
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <Zap
+                      className={`h-4 w-4 ${
+                        selectedDeliveryService === 'priority' ? 'text-white' : 'text-fuchsia-600'
+                      }`}
+                    />
+                  </div>
+                  <div className="min-w-0 text-left">
+                    <div
+                      className={`text-xs sm:text-sm font-semibold ${
+                        selectedDeliveryService === 'priority' ? 'text-white' : 'text-gray-900'
+                      }`}
+                    >
+                      Priority
+                    </div>
+                    <div
+                      className={`mt-0.5 text-[10px] sm:text-xs leading-snug ${
+                        selectedDeliveryService === 'priority' ? 'text-gray-200' : 'text-gray-500'
+                      }`}
+                    >
+                      Fastest delivery
+                    </div>
+                  </div>
                 </div>
               </Button>
             </div>

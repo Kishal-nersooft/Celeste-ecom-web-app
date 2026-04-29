@@ -1,11 +1,15 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CreditCard, CheckCircle, Loader2 } from "lucide-react";
 import { getSavedCards } from "@/lib/api";
 import toast from "react-hot-toast";
+import visaLogo from "@/images/Payment images/Visa_Brandmark_Blue_RGB_2021.png";
+import mastercardLogo from "@/images/Payment images/ma_symbol_opt_73_3x.png";
+import unionpayLogo from "@/images/Payment images/Unionpay-96.png";
 
 interface SavedCard {
   id: number;
@@ -50,9 +54,40 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
   return (
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
-            <CreditCard className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
-            Payment Method
+          <CardTitle className="flex items-center justify-between gap-3 text-sm sm:text-base md:text-lg">
+            <span className="flex items-center gap-2">
+              <CreditCard className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
+              Payment Method
+            </span>
+            <span className="flex items-center gap-1.5 sm:gap-2">
+              <span className="inline-flex h-8 w-12 items-center justify-center rounded-md border bg-white px-2">
+                <Image
+                  src={visaLogo}
+                  alt="Visa"
+                  width={44}
+                  height={16}
+                  className="h-4 w-auto object-contain"
+                />
+              </span>
+              <span className="inline-flex h-8 w-12 items-center justify-center rounded-md border bg-white px-2">
+                <Image
+                  src={mastercardLogo}
+                  alt="Mastercard"
+                  width={44}
+                  height={16}
+                  className="h-4 w-auto object-contain"
+                />
+              </span>
+              <span className="inline-flex h-8 w-12 items-center justify-center rounded-md border bg-white px-2">
+                <Image
+                  src={unionpayLogo}
+                  alt="UnionPay"
+                  width={44}
+                  height={16}
+                  className="h-4 w-auto object-contain"
+                />
+              </span>
+            </span>
           </CardTitle>
         </CardHeader>
         <CardContent>

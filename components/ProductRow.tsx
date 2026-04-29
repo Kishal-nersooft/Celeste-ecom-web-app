@@ -55,6 +55,9 @@ const ProductRow = ({
   React.useEffect(() => {
     if (!onScrollIntoView || isLoaded) return;
 
+    const el = rowRef.current;
+    if (!el || !(el instanceof Element)) return;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -69,14 +72,10 @@ const ProductRow = ({
       }
     );
 
-    if (rowRef.current) {
-      observer.observe(rowRef.current);
-    }
+    observer.observe(el);
 
     return () => {
-      if (rowRef.current) {
-        observer.unobserve(rowRef.current);
-      }
+      observer.unobserve(el);
     };
   }, [onScrollIntoView, isLoaded]);
 
