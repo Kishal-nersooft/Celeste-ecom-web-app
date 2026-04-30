@@ -15,6 +15,7 @@ import { clearStaleAddressData, validateAddressOwnership, handleAddressValidatio
 import QuantityMismatchAlert from "@/components/QuantityMismatchAlert";
 import OrderSummary from "@/components/OrderSummary";
 import PaymentMethod from "@/components/PaymentMethod";
+import QuantityButtons from "@/components/QuantityButtons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -54,7 +55,6 @@ const CheckoutPage = () => {
   const [splitDecisionMade, setSplitDecisionMade] = useState(false);
   const [splitOrderSelected, setSplitOrderSelected] = useState<boolean>(false);
   const [editorMode, setEditorMode] = useState(false);
-  const [markedStores, setMarkedStores] = useState<Set<number>>(new Set());
   const [confirmStoreId, setConfirmStoreId] = useState<number | null>(null);
   // Payment gateway state
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
@@ -433,6 +433,15 @@ const CheckoutPage = () => {
       const backendData = previewData?.data || previewData;
       const fulfillableStores = backendData?.fulfillable_stores || [];
       const primaryStore = fulfillableStores?.[0] || {};
+
+      // If user opted to adjust (multi-store "No, I'll adjust"), block checkout until only one store remains.
+      if (editorMode && fulfillableStores.length > 1 && splitOrderSelected === false) {
+        toast.error("Please delete items from other stores until only one store remains.");
+        return;
+      }
+
+      const shouldSplitOrders =
+        splitDecisionMade ? splitOrderSelected : fulfillableStores.length > 1;
       
       // Check for quantity mismatches using new structure
       const mismatched = [];
@@ -478,11 +487,13 @@ const CheckoutPage = () => {
       const checkoutData = {
         cart_ids: [cartStore.cartId],
         location: orderLocationData,
-        split_order: fulfillableStores.length > 1 ? true : false,
+        split_order: shouldSplitOrders ? true : false,
         // Pricing
-        subtotal: fulfillableStores.length > 1 ? undefined : (primaryStore.subtotal || 0),
-        delivery_charge: fulfillableStores.length > 1 ? undefined : (primaryStore.delivery_cost || 0),
-        total_amount: fulfillableStores.length > 1 ? (backendData.overall_total || 0) : (primaryStore.total || backendData.overall_total || 0),
+        subtotal: shouldSplitOrders ? undefined : (primaryStore.subtotal || 0),
+        delivery_charge: shouldSplitOrders ? undefined : (primaryStore.delivery_cost || 0),
+        total_amount: shouldSplitOrders
+          ? (backendData.overall_total || 0)
+          : (primaryStore.total || backendData.overall_total || 0),
         // Platform identifier for backend analytics
         platform: "web",
         // Payment: new card → saved_card true; saved card → saved_card false + source_token_id
@@ -588,81 +599,110 @@ const CheckoutPage = () => {
   const backendData = previewData?.data || previewData;
   const fulfillableStores = backendData?.fulfillable_stores || [];
 
+  const handleEnterEditMode = () => {
+    if ((fulfillableStores?.length || 0) < 2) return;
+    setEditorMode(true);
+    setShowMultiStoreDialog(false);
+  };
+
+  const handleDiscardAdjustDecision = () => {
+    // This does not restore deleted items — it only discards the "I'll adjust" decision
+    // and brings back the multi-store choice popup.
+    setEditorMode(false);
+    setConfirmStoreId(null);
+    setSplitOrderSelected(false);
+    setSplitDecisionMade(false);
+    setShowMultiStoreDialog(true);
+  };
+
   const handlePromptDeleteStore = (storeId: number) => {
     setConfirmStoreId(storeId);
   };
 
-  const handleConfirmDeleteStore = () => {
+  const handleConfirmDeleteStore = async () => {
     if (confirmStoreId == null) return;
-    setMarkedStores(prev => new Set(prev).add(confirmStoreId));
-    setConfirmStoreId(null);
+    if (!cartStore.cartId) {
+      setConfirmStoreId(null);
+      toast.error("Cart ID is required.");
+      return;
+    }
+
+    try {
+      setLoadingPreview(true);
+
+      const store = fulfillableStores.find((s: any) => s.store_id === confirmStoreId);
+      const deletions: Promise<any>[] = [];
+
+      for (const item of (store?.items || [])) {
+        const productId = item.product_id ?? item.product?.id;
+        if (!productId) {
+          console.warn("⚠️ Skipping delete for item with missing product id:", item);
+          continue;
+        }
+        const qty =
+          typeof item.quantity === "number" && item.quantity > 0
+            ? item.quantity
+            : cartStore.items.find((ci: any) => ci?.product?.id === productId)?.quantity;
+
+        // Keep local cart (CartPreviewPanel) in sync immediately, without triggering store's debounced backend delete
+        await cartStore.deleteCartProduct(productId, { skipBackendSync: true });
+
+        // Backend supports optional quantity param. Prefer removing the full quantity for this store item.
+        deletions.push(removeFromCart(cartStore.cartId, productId, qty));
+      }
+
+      await Promise.allSettled(deletions);
+      setConfirmStoreId(null);
+
+      // Re-sync cart from backend to avoid any divergence (shared carts, partial removals, etc.)
+      await cartStore.switchCart(cartStore.cartId);
+
+      // Refresh preview with split_order: false (single-store intent) so the UI updates immediately.
+      const refreshLocationData =
+        selectedOrderType === "pickup"
+          ? {
+              address_id: null,
+              mode: selectedOrderType,
+              store_id: selectedStore?.id ? parseInt(selectedStore.id) : null,
+              delivery_service_level: undefined,
+            }
+          : {
+              address_id: contextAddressId!,
+              mode: selectedOrderType,
+              store_id: null,
+              delivery_service_level: selectedDeliveryService,
+            };
+
+      const refreshed = await previewOrder({
+        cart_ids: [cartStore.cartId],
+        location: refreshLocationData,
+        split_order: false,
+      });
+
+      setPreviewData(refreshed);
+      const stores = (refreshed?.data || refreshed)?.fulfillable_stores || [];
+
+      // If the user deleted items down to a single store, exit edit mode.
+      if (stores.length === 1) {
+        setEditorMode(false);
+        toast.success("Ready to place single-store order");
+      } else if (stores.length > 1) {
+        // Keep edit mode so the user can delete from other stores too.
+        setEditorMode(true);
+        setShowMultiStoreDialog(false);
+      } else {
+        setEditorMode(false);
+      }
+    } catch (e) {
+      console.error(e);
+      toast.error("Failed to delete items from this store.");
+    } finally {
+      setLoadingPreview(false);
+    }
   };
 
   const handleCancelDeleteStore = () => {
     setConfirmStoreId(null);
-  };
-
-  const handleSaveEditor = async () => {
-    try {
-      setLoadingPreview(true);
-      // If any stores are marked, remove their items from cart
-      if (markedStores.size > 0) {
-        const deletions: Promise<any>[] = [];
-        for (const storeId of markedStores) {
-          const store = fulfillableStores.find((s: any) => s.store_id === storeId);
-          if (!store) continue;
-          for (const item of (store.items || [])) {
-            const productId = item.product_id ?? item.product?.id;
-            if (!productId) {
-              console.warn('⚠️ Skipping delete for item with missing product id:', item);
-              continue;
-            }
-            // Call backend delete immediately (no debounce)
-            deletions.push(removeFromCart(cartStore.cartId!, productId));
-          }
-        }
-        await Promise.allSettled(deletions);
-        // Clear marks after deletion
-        setMarkedStores(new Set());
-      }
-
-      // Prepare location data for refresh based on order type
-      const refreshLocationData = selectedOrderType === 'pickup' 
-        ? {
-            address_id: null, // No address needed for pickup
-            mode: selectedOrderType,
-            store_id: selectedStore?.id ? parseInt(selectedStore.id) : null, // Use selected store for pickup
-            delivery_service_level: undefined // No delivery service for pickup
-          }
-        : {
-            address_id: contextAddressId!, // Address required for delivery
-            mode: selectedOrderType,
-            store_id: null, // No store for delivery
-            delivery_service_level: selectedDeliveryService // Delivery service for delivery
-          };
-
-      // Refresh preview with split_order: false (single-store intent)
-      const refreshed = await previewOrder({
-        cart_ids: [cartStore.cartId!],
-        location: refreshLocationData,
-        split_order: false
-      });
-      setPreviewData(refreshed);
-      const stores = (refreshed?.data || refreshed)?.fulfillable_stores || [];
-      if (stores.length === 1) {
-        setEditorMode(false);
-        toast.success('Ready to place single-store order');
-      } else if (stores.length > 1) {
-        // If still multiple stores and nothing marked this round, prompt split decision again
-        setShowMultiStoreDialog(true);
-        setSplitDecisionMade(false);
-      }
-    } catch (e) {
-      console.error(e);
-      toast.error('Failed to refresh order details');
-    } finally {
-      setLoadingPreview(false);
-    }
   };
 
   if (loading) {
@@ -722,20 +762,40 @@ const CheckoutPage = () => {
           {editorMode && fulfillableStores.length > 0 && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-sm sm:text-base md:text-lg">Edit Items by Store</CardTitle>
+                <CardTitle className="flex items-center justify-between gap-2 text-sm sm:text-base md:text-lg">
+                  <span>Edit Items by Store</span>
+                  {fulfillableStores.length > 1 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handleDiscardAdjustDecision}
+                      disabled={loadingPreview}
+                      className="text-xs sm:text-sm"
+                    >
+                      Discard changes
+                    </Button>
+                  )}
+                </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                   {fulfillableStores.map((store: any) => {
-                    const isMarked = markedStores.has(store.store_id);
                     return (
-                    <div key={store.store_id} className={`border rounded-lg p-2 sm:p-3 space-y-1.5 sm:space-y-2 ${isMarked ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <div key={store.store_id} className="border rounded-lg p-2 sm:p-3 space-y-1.5 sm:space-y-2">
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2">
                           {store.store_name}
-                          {isMarked && (<span className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded bg-gray-200 text-gray-700">Removed</span>)}
                         </div>
-                        <Button variant="destructive" size="sm" onClick={() => handlePromptDeleteStore(store.store_id)} disabled={isMarked} className="text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5">Delete All</Button>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() => handlePromptDeleteStore(store.store_id)}
+                          disabled={loadingPreview}
+                          className="text-xs sm:text-sm px-2 sm:px-3 py-1 sm:py-1.5"
+                        >
+                          Delete All
+                        </Button>
                       </div>
                       <div className="text-[10px] sm:text-xs text-gray-500">{store.items?.length || 0} items • Subtotal LKR {(store.subtotal || 0).toFixed(2)}</div>
                       <div className="max-h-56 overflow-y-auto space-y-2">
@@ -746,6 +806,7 @@ const CheckoutPage = () => {
                           const imageUrl = beProduct?.image_urls?.[0] || beProduct?.imageUrl || cartProduct?.image_urls?.[0] || cartProduct?.imageUrl;
                           const hasValidImage = imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== '' && imageUrl.startsWith('http');
                           const unitPrice = (it.final_price ?? it.base_price ?? 0);
+                          const fullProduct = cartStore.items.find((ci: any) => ci.product.id === it.product_id)?.product || cartProduct || beProduct;
                           return (
                             <div key={`${store.store_id}-${it.product_id ?? it.id ?? idx}`} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
@@ -760,15 +821,23 @@ const CheckoutPage = () => {
                                 <div className="text-[10px] sm:text-xs text-gray-500">Qty: {it.quantity}</div>
                               </div>
                               <div className="text-xs sm:text-sm font-medium">LKR {unitPrice.toFixed(2)}</div>
+                              {fullProduct && (
+                                <div className="flex-shrink-0">
+                                  <QuantityButtons
+                                    product={fullProduct}
+                                    className="text-[10px] sm:text-xs"
+                                    onQuantityChange={() => {
+                                      void fetchPreviewData();
+                                    }}
+                                  />
+                                </div>
+                              )}
                             </div>
                           );
                         })}
                       </div>
                     </div>
                   );})}
-                </div>
-                <div className="mt-3 sm:mt-4 flex justify-end">
-                  <Button onClick={handleSaveEditor} disabled={loadingPreview} className="text-xs sm:text-sm">Save</Button>
                 </div>
               </CardContent>
             </Card>
@@ -781,6 +850,8 @@ const CheckoutPage = () => {
             onCheckout={handleCheckout}
             loadingCheckout={loadingCheckout}
             onQuantityChange={fetchPreviewData}
+            onEditMultiStore={handleEnterEditMode}
+            editMultiStoreDisabled={editorMode}
           />
         </div>
       </div>

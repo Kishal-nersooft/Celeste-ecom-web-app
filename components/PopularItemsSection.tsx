@@ -142,7 +142,7 @@ const PopularItemsSection = () => {
     <div className="w-full pt-2 pb-8">
       {/* Header - same as ProductRow */}
       <div className="flex items-center justify-between mb-2 sm:mb-3 md:mb-4">
-        <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl font-semibold text-gray-600">
+        <h2 className="text-sm sm:text-base md:text-lg lg:text-xl xl:text-2xl font-semibold text-black">
           Popular Items
         </h2>
         <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2">

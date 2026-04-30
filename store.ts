@@ -126,7 +126,10 @@ interface CartState {
   addItem: (product: Product) => Promise<void>;
   removeItem: (productId: number) => Promise<void>;
   updateItemQuantity: (productId: number, newQuantity: number) => Promise<void>;
-  deleteCartProduct: (productId: number) => Promise<void>;
+  deleteCartProduct: (
+    productId: number,
+    opts?: { skipBackendSync?: boolean; quantity?: number }
+  ) => Promise<void>;
   clearCart: () => Promise<void>;
   getTotalPrice: () => number;
   getSubTotalPrice: () => number;
@@ -369,7 +372,7 @@ const useCartStore = create<CartState>()(
         }, 300);
       },
 
-      deleteCartProduct: async (productId: number) => {
+      deleteCartProduct: async (productId: number, opts?: { skipBackendSync?: boolean; quantity?: number }) => {
         // Remove item completely locally
         const newItems = get().items.filter(item => item && item.product && item.product.id !== productId);
         set({ items: newItems });
@@ -392,7 +395,9 @@ const useCartStore = create<CartState>()(
           )
         }));
 
-        // Debounced backend sync
+        // Debounced backend sync (optional)
+        if (opts?.skipBackendSync) return;
+
         debounce('deleteProduct', async () => {
           const currentState = get();
           if (!currentState.activeCartId) return;
@@ -400,7 +405,7 @@ const useCartStore = create<CartState>()(
           try {
             set({ isSyncing: true });
             const { removeFromCart } = await import('./lib/api');
-            await removeFromCart(currentState.activeCartId, productId);
+            await removeFromCart(currentState.activeCartId, productId, opts?.quantity);
             console.log('✅ Product deletion synced to backend');
           } catch (error) {
             console.error('❌ Failed to sync product deletion:', error);

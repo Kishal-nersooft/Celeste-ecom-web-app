@@ -174,7 +174,7 @@ const SubcategorySelector = ({
                       key={index}
                       className={cn(
                         "text-[8px] sm:text-[9px] md:text-[10px] font-medium block leading-tight",
-                        isActive ? "text-green-700" : "text-gray-700"
+                        "text-black"
                       )}
                     >
                       {line.length > 8 ? line.substring(0, 8) + '...' : line}

@@ -305,7 +305,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
         <div className="flex items-center mb-3 sm:mb-4">
           <button
             onClick={handleGoBack}
-            className="flex items-center text-gray-600 hover:text-gray-800 transition-colors mr-3 sm:mr-4"
+            className="flex items-center text-black hover:text-black transition-colors mr-3 sm:mr-4"
           >
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
             <span className="font-medium text-sm sm:text-base truncate">
@@ -318,7 +318,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
           /* Parent Category Layout - Full Width Grid */
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
             <div className="mb-3 sm:mb-4 md:mb-6">
-              <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800">
+              <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-black">
                 {displayCategoryName} - All Products
               </h1>
               <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">
@@ -402,7 +402,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
                       {(selectedSubcategory?.name?.charAt(0) || "").toUpperCase()}
                     </div>
                   )}
-                  <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800">
+                  <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-black">
                     {selectedSubcategoryId
                       ? selectedSubcategory?.name || "Products"
                       : displayCategoryName || "All Products"}

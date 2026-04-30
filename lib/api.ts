@@ -1805,6 +1805,11 @@ export async function removeFromCart(cartId: number, productId: number, quantity
     });
     
     if (!response.ok) {
+      // Idempotency: if the item is already gone, treat it as a successful remove
+      if (response.status === 404) {
+        console.log(`ℹ️ Item already removed (404) for productId=${productId} in cartId=${cartId}`);
+        return true;
+      }
       throw new Error(`Failed to remove from cart: ${response.status} ${response.statusText}`);
     }
     

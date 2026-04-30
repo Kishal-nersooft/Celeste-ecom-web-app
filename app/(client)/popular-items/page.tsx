@@ -94,7 +94,7 @@ export default function PopularItemsPage() {
         <div className="flex items-center mb-3 sm:mb-4">
           <button
             onClick={() => router.push("/")}
-            className="flex items-center text-gray-600 hover:text-gray-800 transition-colors mr-3 sm:mr-4"
+            className="flex items-center text-black hover:text-black transition-colors mr-3 sm:mr-4"
           >
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
             <span className="font-medium text-sm sm:text-base truncate">Popular Items</span>
@@ -114,7 +114,7 @@ export default function PopularItemsPage() {
 
         {/* White box - same as category page, no left sidebar, no "X products found" */}
         <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
-          <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800 mb-3 sm:mb-4 md:mb-6">
+          <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-black mb-3 sm:mb-4 md:mb-6">
             Popular Items
           </h1>
           {loading ? (

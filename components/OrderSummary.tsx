@@ -34,6 +34,8 @@ interface OrderSummaryProps {
   onCheckout: () => void;
   loadingCheckout: boolean;
   onQuantityChange?: () => void;
+  onEditMultiStore?: () => void;
+  editMultiStoreDisabled?: boolean;
 }
 
 const OrderSummary: React.FC<OrderSummaryProps> = ({
@@ -43,7 +45,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   localSubtotal,
   onCheckout,
   loadingCheckout,
-  onQuantityChange
+  onQuantityChange,
+  onEditMultiStore,
+  editMultiStoreDisabled = false,
 }) => {
   const [isCartExpanded, setIsCartExpanded] = useState(true);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -238,9 +242,23 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
-          <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
-          Order Summary
+        <CardTitle className="flex items-center justify-between gap-2 text-sm sm:text-base md:text-lg">
+          <span className="flex items-center gap-2">
+            <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5" />
+            Order Summary
+          </span>
+          {isMultiStore && onEditMultiStore && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onEditMultiStore}
+              disabled={editMultiStoreDisabled}
+              className="text-xs sm:text-sm disabled:opacity-50"
+            >
+              Edit
+            </Button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4">

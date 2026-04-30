@@ -72,6 +72,10 @@ const CategorySelector = ({ categories }: Props) => {
                 <CommandItem
                   key={category?._id}
                   value={category?.title}
+                  className={cn(
+                    "text-black",
+                    value === category._id ? "font-bold" : "font-medium"
+                  )}
                   onSelect={() => {
                     setValue(value === category?._id ? "" : category?._id);
                     router.push(`/categories/${category.slug?.current}`);
