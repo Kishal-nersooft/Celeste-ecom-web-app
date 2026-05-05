@@ -114,7 +114,11 @@ const ProfilePage = () => {
   ];
 
   // Extract first name from email or display name
-  const displayName = user.displayName || user.email?.split('@')[0] || 'User';
+  const displayName =
+    userProfile?.name ||
+    user.displayName ||
+    user.email?.split("@")[0] ||
+    "User";
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -143,7 +147,11 @@ const ProfilePage = () => {
   const handleCancel = () => {
     // Reset form data to original values
     setFormData({
-      personalInfo: user.displayName || user.email?.split('@')[0] || 'User',
+      personalInfo:
+        userProfile?.name ||
+        user.displayName ||
+        user.email?.split("@")[0] ||
+        "User",
       phoneNumber: user.phoneNumber || "+948153516",
       email: user.email || "ChamithW@gmail.com",
       language: "English"

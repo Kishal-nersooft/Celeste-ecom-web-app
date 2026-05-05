@@ -86,6 +86,10 @@ export interface Order {
   fulfillmentMode?: 'delivery' | 'pickup'; // For compatibility with backend
   deliveryCharge?: number; // For compatibility with backend
   orderNumber?: string; // For compatibility with backend
+  /** True when the order is for a scheduled delivery/pickup window */
+  isScheduled?: boolean;
+  /** UTC ISO instant for scheduled fulfillment (from backend `scheduled_at`) */
+  scheduledAt?: string;
   /** Present when status is Shipped or Delivered (from backend) */
   driver?: DriverInfo;
   /** Present when status is Shipped and include_rider=true (from backend) */

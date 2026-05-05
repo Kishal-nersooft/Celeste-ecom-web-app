@@ -4,6 +4,23 @@ import React, { Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Header } from "@/components/Header";
 import Footer from "@/components/Footer";
+import Link from "next/link";
+
+function CheckoutBreadcrumb() {
+  return (
+    <div className="px-4 sm:px-6 lg:px-8">
+      <Link
+        href="/"
+        className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+      >
+        <span aria-hidden className="text-base leading-none">
+          ←
+        </span>
+        <span className="underline underline-offset-4">Back to Home</span>
+      </Link>
+    </div>
+  );
+}
 
 function ChromeInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -20,6 +37,22 @@ function ChromeInner({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const isCheckoutRoute = pathname === "/checkout" || pathname.startsWith("/checkout/");
+
+  if (isCheckoutRoute) {
+    return (
+      <>
+        <div className="main-content pt-6">
+          <div className="py-2">
+            <CheckoutBreadcrumb />
+          </div>
+          {children}
+        </div>
+        <Footer />
+      </>
+    );
+  }
+
   return (
     <>
       <Header />
@@ -33,11 +66,7 @@ export function ConditionalClientChrome({ children }: { children: React.ReactNod
   return (
     <Suspense
       fallback={
-        <>
-          <Header />
-          <div className="main-content pt-36 lg:pt-20">{children}</div>
-          <Footer />
-        </>
+        <div className="min-h-screen bg-gray-50">{children}</div>
       }
     >
       <ChromeInner>{children}</ChromeInner>

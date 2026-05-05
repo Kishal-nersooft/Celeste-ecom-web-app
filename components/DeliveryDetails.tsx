@@ -1,26 +1,43 @@
 "use client";
 
-import React, { useState } from "react";
+import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { MapPin, Truck, ShoppingBag, AlertCircle, Sparkles, Clock, Zap } from "lucide-react";
+import {
+  MapPin,
+  Truck,
+  ShoppingBag,
+  AlertCircle,
+  Sparkles,
+  Clock,
+  Zap,
+  DoorOpen,
+  UserRound,
+  Building2,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 import CartLocationSelector from "./CartLocationSelector";
 import { useLocation } from "@/contexts/LocationContext";
+import type { CheckoutDeliveryOption } from "@/lib/api";
 
 interface DeliveryDetailsProps {
   onLocationChange: (location: string) => void;
   selectedLocation: string;
   selectedDeliveryService?: 'standard' | 'premium' | 'priority';
   onDeliveryServiceChange?: (service: 'standard' | 'premium' | 'priority') => void;
+  selectedDeliveryOption: CheckoutDeliveryOption;
+  onDeliveryOptionChange: (option: CheckoutDeliveryOption) => void;
 }
 
 const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
   onLocationChange,
   selectedLocation,
   selectedDeliveryService = 'standard',
-  onDeliveryServiceChange
+  onDeliveryServiceChange,
+  selectedDeliveryOption,
+  onDeliveryOptionChange,
 }) => {
   // Use LocationContext for order type
   const { deliveryType: selectedOrderType, setDeliveryType } = useLocation();
@@ -248,6 +265,73 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
                   </div>
                 </div>
               </Button>
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <Label className="text-xs font-bold sm:text-sm">How should we deliver?</Label>
+              <RadioGroup
+                value={selectedDeliveryOption}
+                onValueChange={(v) => onDeliveryOptionChange(v as CheckoutDeliveryOption)}
+                className="grid grid-cols-3 gap-1.5 sm:gap-2"
+              >
+                <div
+                  className={cn(
+                    "flex min-w-0 items-center gap-1 rounded-md border border-gray-200 px-1.5 py-1 sm:gap-1.5 sm:px-2 sm:py-1.5",
+                    selectedDeliveryOption === "leave_at_door" ? "bg-gray-100" : "hover:bg-gray-50"
+                  )}
+                >
+                  <RadioGroupItem
+                    value="leave_at_door"
+                    id="delivery_option_leave_at_door"
+                    className="h-3.5 w-3.5 shrink-0 border-gray-400 text-gray-900 [&_svg]:h-2 [&_svg]:w-2"
+                  />
+                  <Label
+                    htmlFor="delivery_option_leave_at_door"
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 font-bold sm:gap-1.5"
+                  >
+                    <DoorOpen className="h-3.5 w-3.5 shrink-0 text-amber-600 sm:h-4 sm:w-4" aria-hidden />
+                    <span className="truncate text-[10px] font-bold leading-tight sm:text-xs">Leave at door</span>
+                  </Label>
+                </div>
+                <div
+                  className={cn(
+                    "flex min-w-0 items-center gap-1 rounded-md border border-gray-200 px-1.5 py-1 sm:gap-1.5 sm:px-2 sm:py-1.5",
+                    selectedDeliveryOption === "meet_outside" ? "bg-gray-100" : "hover:bg-gray-50"
+                  )}
+                >
+                  <RadioGroupItem
+                    value="meet_outside"
+                    id="delivery_option_meet_outside"
+                    className="h-3.5 w-3.5 shrink-0 border-gray-400 text-gray-900 [&_svg]:h-2 [&_svg]:w-2"
+                  />
+                  <Label
+                    htmlFor="delivery_option_meet_outside"
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 font-bold sm:gap-1.5"
+                  >
+                    <UserRound className="h-3.5 w-3.5 shrink-0 text-blue-600 sm:h-4 sm:w-4" aria-hidden />
+                    <span className="truncate text-[10px] font-bold leading-tight sm:text-xs">Meet outside</span>
+                  </Label>
+                </div>
+                <div
+                  className={cn(
+                    "flex min-w-0 items-center gap-1 rounded-md border border-gray-200 px-1.5 py-1 sm:gap-1.5 sm:px-2 sm:py-1.5",
+                    selectedDeliveryOption === "at_reception" ? "bg-gray-100" : "hover:bg-gray-50"
+                  )}
+                >
+                  <RadioGroupItem
+                    value="at_reception"
+                    id="delivery_option_at_reception"
+                    className="h-3.5 w-3.5 shrink-0 border-gray-400 text-gray-900 [&_svg]:h-2 [&_svg]:w-2"
+                  />
+                  <Label
+                    htmlFor="delivery_option_at_reception"
+                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 font-bold sm:gap-1.5"
+                  >
+                    <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-600 sm:h-4 sm:w-4" aria-hidden />
+                    <span className="truncate text-[10px] font-bold leading-tight sm:text-xs">At reception</span>
+                  </Label>
+                </div>
+              </RadioGroup>
             </div>
           </div>
         )}

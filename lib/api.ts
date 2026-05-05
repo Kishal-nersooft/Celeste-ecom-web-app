@@ -1887,6 +1887,9 @@ export async function getCheckoutCarts() {
   return data;
 }
 
+/** Backend `DeliveryOption` enum values (snake_case). */
+export type CheckoutDeliveryOption = 'leave_at_door' | 'meet_outside' | 'at_reception';
+
 // Preview multi-cart order
 export async function previewOrder(orderData: {
   cart_ids: number[];
@@ -1895,6 +1898,8 @@ export async function previewOrder(orderData: {
     address_id?: number | null;
     store_id?: number | null;
     delivery_service_level?: string;
+    /** Handoff preference when `mode` is `delivery`. */
+    delivery_option?: CheckoutDeliveryOption;
   };
   split_order?: boolean;
 }) {
@@ -1961,6 +1966,8 @@ export async function createOrder(orderData: {
     address_id?: number | null;
     store_id?: number | null;
     delivery_service_level?: string;
+    /** Handoff preference when `mode` is `delivery`. */
+    delivery_option?: CheckoutDeliveryOption;
   };
   delivery_charge?: number;
   service_charge?: number;
@@ -1969,6 +1976,9 @@ export async function createOrder(orderData: {
   total_amount?: number;
   split_order?: boolean;
   platform?: string;
+  is_scheduled?: boolean;
+  /** UTC ISO string with `Z` suffix (e.g. 2026-04-26T14:00:00Z). */
+  scheduled_at?: string;
   /** When true, user pays with a new card (hosted session). When false, use saved card + source_token_id. */
   saved_card?: boolean;
   save_card?: boolean;
@@ -2025,6 +2035,23 @@ export async function getSavedCards() {
 
   const data = await response.json();
   return data;
+}
+
+/** Start MPGS hosted session to add a saved card (no body). Returns API wrapper with `data.session_id`, `data.reference`, etc. */
+export async function createSavedCardMpgsSession() {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards/mpgs`, {
+    method: "POST",
+    headers: authHeaders,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("❌ Failed to create saved-card MPGS session:", errorText);
+    throw new Error(`Failed to start add card session: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json();
 }
 
 // Check payment status

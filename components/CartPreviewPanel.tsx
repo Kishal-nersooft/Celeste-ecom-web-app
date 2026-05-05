@@ -255,7 +255,7 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
               </div>
 
               {/* Go to Checkout Button */}
-              <Link href="/checkout" onClick={() => setIsOpen(false)}>
+              <Link href="/checkout?suggest=1" onClick={() => setIsOpen(false)}>
                 <Button className="w-full mt-2 sm:mt-3 md:mt-4 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 py-2">
                   <span className="hidden sm:inline">Go to Checkout</span>
                   <span className="sm:hidden">Checkout</span>

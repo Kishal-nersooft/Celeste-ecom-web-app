@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
 
     console.log('🌐 POST /auth/register - Connecting to real backend API...');
 
+    // Note: API_BASE_URL already includes `/api/v1` in this project env.
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: {

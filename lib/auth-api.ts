@@ -18,6 +18,7 @@ export interface RegisterUserResponse {
  */
 export async function registerUser(data: RegisterUserRequest): Promise<RegisterUserResponse> {
   try {
+    // Note: API_BASE_URL already includes `/api/v1` in this project env.
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: {

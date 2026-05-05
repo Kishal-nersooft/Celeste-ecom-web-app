@@ -7,8 +7,10 @@ import {
   ConfirmationResult,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
+import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import toast from 'react-hot-toast';
 
 interface PhoneAuthProps {
@@ -18,7 +20,7 @@ interface PhoneAuthProps {
 }
 
 export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: PhoneAuthProps) {
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState<string | undefined>(undefined);
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [loading, setLoading] = useState(false);
@@ -106,17 +108,17 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
   const sendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!phoneNumber) {
-      toast.error('Please enter a phone number');
+      toast.error('Please enter your phone number');
+      return;
+    }
+
+    if (!isValidPhoneNumber(phoneNumber)) {
+      toast.error('Please enter a valid phone number');
       return;
     }
 
     setLoading(true);
     try {
-      // Format phone number (add +94 for Sri Lanka if not present)
-      const formattedPhone = phoneNumber.startsWith('+') 
-        ? phoneNumber 
-        : `+94${phoneNumber.replace(/^0/, '')}`;
-
       // Validate reCAPTCHA verifier exists
       if (!window.recaptchaVerifier) {
         throw new Error('reCAPTCHA verifier not initialized. Please refresh the page and try again.');
@@ -129,7 +131,8 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
       }
 
       const appVerifier = window.recaptchaVerifier;
-      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
+      // `phoneNumber` is already in E.164 format from react-phone-number-input (e.g. +9477xxxxxxx)
+      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
       
       setConfirmationResult(confirmation);
       setStep('otp');
@@ -211,10 +214,6 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
     
     setLoading(true);
     try {
-      const formattedPhone = phoneNumber.startsWith('+') 
-        ? phoneNumber 
-        : `+94${phoneNumber.replace(/^0/, '')}`;
-
       // Validate reCAPTCHA verifier exists
       if (!window.recaptchaVerifier) {
         throw new Error('reCAPTCHA verifier not initialized. Please refresh the page and try again.');
@@ -227,7 +226,7 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
       }
 
       const appVerifier = window.recaptchaVerifier;
-      const confirmation = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
+      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
       
       setConfirmationResult(confirmation);
       toast.success('OTP resent successfully!');
@@ -254,15 +253,16 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Phone Number
             </label>
-            <Input
-              type="tel"
-              placeholder="Enter your phone number (e.g., 0771234567)"
+            <PhoneInput
+              international
+              defaultCountry="LK"
+              placeholder="Enter phone number"
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              required
+              onChange={setPhoneNumber}
+              inputComponent={Input as any}
             />
             <p className="text-xs text-gray-500 mt-1">
-              Enter your phone number with country code (e.g., +94771234567)
+              Select your country and enter your number (e.g., +94771234567)
             </p>
           </div>
           <Button type="submit" className="w-full" disabled={loading}>
@@ -275,22 +275,26 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Enter OTP
             </label>
-            <Input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="Enter 6-digit OTP"
-              value={otp}
-              onChange={(e) => {
-                // Only allow digits
-                const value = e.target.value.replace(/\D/g, '');
-                setOtp(value.slice(0, 6)); // Limit to 6 digits
-              }}
-              maxLength={6}
-              required
-            />
+            <div className="flex justify-center">
+              <InputOTP
+                maxLength={6}
+                value={otp}
+                onChange={(value) => setOtp((value ?? "").replace(/\D/g, "").slice(0, 6))}
+                containerClassName="justify-center"
+                autoFocus
+              >
+                <InputOTPGroup>
+                  <InputOTPSlot index={0} />
+                  <InputOTPSlot index={1} />
+                  <InputOTPSlot index={2} />
+                  <InputOTPSlot index={3} />
+                  <InputOTPSlot index={4} />
+                  <InputOTPSlot index={5} />
+                </InputOTPGroup>
+              </InputOTP>
+            </div>
             <p className="text-xs text-gray-500 mt-1">
-              OTP sent to {phoneNumber}
+              OTP sent to {phoneNumber ?? ''}
             </p>
           </div>
           <div className="flex space-x-2">

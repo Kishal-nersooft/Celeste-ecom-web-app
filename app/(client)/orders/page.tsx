@@ -1,6 +1,6 @@
 'use client';
 import Container from "@/components/Container";
-import { FileX, Package, CheckCircle, XCircle, Clock, Truck, CheckSquare, X, RotateCcw, Plus, ShoppingBag, Phone, User } from "lucide-react";
+import { FileX, Package, CheckCircle, XCircle, Clock, Truck, CheckSquare, X, RotateCcw, Plus, ShoppingBag, Phone, User, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState, useCallback, Suspense } from "react";
@@ -8,8 +8,16 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Order, DriverInfo, RiderInfo } from "@/store";
-import { getUserOrders } from "@/lib/api";
+import { getAuthHeaders, getUserOrders } from "@/lib/api";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
 import ReorderDialog from "@/components/ReorderDialog";
@@ -25,6 +33,10 @@ const OrdersPageContent = () => {
   const [activeFilter, setActiveFilter] = useState<OrderStatusFilter>('ongoing');
   const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [cancelTargetOrder, setCancelTargetOrder] = useState<Order | null>(null);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelSubmitting, setCancelSubmitting] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const cartStore = useCartStore();
@@ -126,6 +138,21 @@ const OrdersPageContent = () => {
 
         // Convert backend orders to local Order format based on API schema
         const convertedOrders: Order[] = backendOrders.map((order: any) => {
+          const scheduledAtRaw =
+            order.scheduled_at ??
+            order.scheduledAt ??
+            order.scheduled_for ??
+            null;
+          const explicitlyNotScheduled =
+            order.is_scheduled === false || order.isScheduled === false;
+          const isScheduled =
+            !explicitlyNotScheduled &&
+            (order.is_scheduled === true ||
+              order.isScheduled === true ||
+              Boolean(
+                typeof scheduledAtRaw === "string" && scheduledAtRaw.trim(),
+              ));
+
           const statusUpper = (order.status || '').toUpperCase();
           const driver = mapDriver(order);
           const rider = mapRider(order);
@@ -182,7 +209,11 @@ const OrdersPageContent = () => {
             paymentReference: order.payment_reference,
             transactionId: order.transaction_id,
             driver,
-            rider
+            rider,
+            isScheduled,
+            scheduledAt: typeof scheduledAtRaw === "string" && scheduledAtRaw.trim()
+              ? scheduledAtRaw.trim()
+              : undefined,
           };
         });
         
@@ -263,6 +294,48 @@ const OrdersPageContent = () => {
   const handleReorderClick = (order: Order) => {
     setSelectedOrder(order);
     setShowReorderDialog(true);
+  };
+
+  const canCancelOrderAsCustomer = (status: string) => {
+    const s = String(status || "").toUpperCase();
+    return ["PENDING", "CONFIRMED", "PROCESSING", "PACKED"].includes(s);
+  };
+
+  const openCancelDialog = (order: Order) => {
+    setCancelTargetOrder(order);
+    setCancelReason("");
+    setCancelDialogOpen(true);
+  };
+
+  const submitCancel = async () => {
+    if (!cancelTargetOrder) return;
+    setCancelSubmitting(true);
+    try {
+      const authHeaders = await getAuthHeaders();
+      const response = await fetch(`/api/v1/orders/${cancelTargetOrder.id}/cancel`, {
+        method: "POST",
+        headers: authHeaders,
+        body: JSON.stringify({
+          reason: cancelReason.trim() ? cancelReason.trim() : undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        throw new Error(errorText || `Failed to cancel order (${response.status})`);
+      }
+
+      toast.success("Order cancelled");
+      setCancelDialogOpen(false);
+      setCancelTargetOrder(null);
+      setCancelReason("");
+      await fetchOrders(false);
+    } catch (error) {
+      console.error("Cancel order error:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to cancel order");
+    } finally {
+      setCancelSubmitting(false);
+    }
   };
 
 
@@ -429,9 +502,19 @@ const OrdersPageContent = () => {
                           
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
                             <div className="flex items-center gap-1.5 sm:gap-2">
-                              <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
+                              <Clock className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
                               <span className="truncate">{new Date(order.createdAt).toLocaleDateString()} at {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
+                            {order.isScheduled && order.scheduledAt && !Number.isNaN(new Date(order.scheduledAt).getTime()) && (
+                              <div className="flex items-center gap-1.5 sm:gap-2 text-violet-800">
+                                <CalendarClock className="w-3 h-3 sm:w-4 sm:h-4 shrink-0" />
+                                <span className="truncate font-medium">
+                                  Scheduled for{" "}
+                                  {new Date(order.scheduledAt).toLocaleDateString()} at{" "}
+                                  {new Date(order.scheduledAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                </span>
+                              </div>
+                            )}
                             <div className="flex items-center gap-1.5 sm:gap-2">
                               {order.fulfillmentMode === 'pickup' ? (
                                 <ShoppingBag className="w-3 h-3 sm:w-4 sm:h-4" />
@@ -577,6 +660,26 @@ const OrdersPageContent = () => {
                                 </Button>
                               </div>
                             )}
+
+                            {/* Cancel Button - Customers can cancel up to PACKED */}
+                            {activeFilter === "ongoing" && canCancelOrderAsCustomer(order.status) && (
+                              <div className="mt-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    openCancelDialog(order);
+                                  }}
+                                  className="w-full text-xs sm:text-sm border-red-200 text-red-700 hover:bg-red-50 hover:text-red-800"
+                                >
+                                  <X className="w-3 h-3 sm:w-4 sm:h-4 mr-1.5 sm:mr-2" />
+                                  Cancel order
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -613,6 +716,61 @@ const OrdersPageContent = () => {
           setSelectedOrder(null);
         }}
       />
+
+      {/* Cancel Order Dialog */}
+      <Dialog
+        open={cancelDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && cancelSubmitting) return;
+          setCancelDialogOpen(open);
+          if (!open) {
+            setCancelTargetOrder(null);
+            setCancelReason("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Cancel order</DialogTitle>
+            <DialogDescription>
+              {cancelTargetOrder ? `Order #${cancelTargetOrder.orderNumber}` : "This order will be cancelled."}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-900" htmlFor="cancel-reason">
+              Reason (optional)
+            </label>
+            <textarea
+              id="cancel-reason"
+              value={cancelReason}
+              onChange={(e) => setCancelReason(e.target.value)}
+              placeholder="Changed my mind"
+              className="min-h-24 w-full rounded-md border border-gray-200 bg-white p-3 text-sm outline-none focus:ring-2 focus:ring-black/10"
+              disabled={cancelSubmitting}
+            />
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCancelDialogOpen(false)}
+              disabled={cancelSubmitting}
+            >
+              Keep order
+            </Button>
+            <Button
+              type="button"
+              onClick={submitCancel}
+              disabled={cancelSubmitting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {cancelSubmitting ? "Cancelling..." : "Cancel order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
     </div>
   );
