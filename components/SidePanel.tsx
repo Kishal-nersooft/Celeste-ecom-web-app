@@ -3,7 +3,17 @@
 import { useState } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { MenuIcon, HomeIcon, UserIcon, HeartIcon, MapPinIcon, LogOutIcon, HelpCircleIcon, ShoppingCart } from "lucide-react";
+import {
+  MenuIcon,
+  HomeIcon,
+  UserIcon,
+  HeartIcon,
+  MapPinIcon,
+  LogOutIcon,
+  HelpCircleIcon,
+  ShoppingCart,
+  CreditCardIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { signOut } from "firebase/auth";
@@ -111,6 +121,14 @@ export const SidePanel = () => {
                 onClick={() => setIsOpen(false)}>
                 <MapPinIcon className="h-4 w-4 sm:h-5 sm:w-5" />
                 Saved Address
+              </Link>
+              <Link
+                href="/saved-cards"
+                className="flex items-center gap-2 text-sm sm:text-lg font-medium hover:text-blue-600"
+                onClick={() => setIsOpen(false)}
+              >
+                <CreditCardIcon className="h-4 w-4 sm:h-5 sm:w-5" />
+                Saved Cards
               </Link>
               <Button
                 variant="ghost"

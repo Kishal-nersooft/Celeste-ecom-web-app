@@ -50,7 +50,11 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
  * Returns the user profile if registered (200), or null if not registered (404/401).
  * Used after Firebase phone auth to decide whether to show the name/register step.
  */
-export async function getCurrentUserWithToken(idToken: string, includeAddresses: boolean = false): Promise<{ registered: true; profile: unknown } | { registered: false }> {
+export async function getCurrentUserWithToken(
+  idToken: string,
+  includeAddresses: boolean = false,
+  options?: { signal?: AbortSignal }
+): Promise<{ registered: true; profile: unknown } | { registered: false }> {
   const response = await fetch(
     `${getBaseUrl()}/users/me?include_addresses=${includeAddresses}`,
     {
@@ -59,6 +63,7 @@ export async function getCurrentUserWithToken(idToken: string, includeAddresses:
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${idToken}`,
       },
+      signal: options?.signal,
     }
   );
   if (response.ok) {
@@ -238,7 +243,13 @@ export async function registerUser(idToken: string, name: string) {
     throw new Error(`Failed to register user: ${response.status} ${response.statusText}`);
   }
 
-  return response.json();
+  // Backend may return JSON or plain text (Swagger shows `"string"`). Handle both.
+  const raw = await response.text();
+  try {
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return raw;
+  }
 }
 
 export async function getUserAddress(addressId: number) {
@@ -2022,7 +2033,8 @@ export async function createOrder(orderData: {
 // Get saved payment cards for the current user
 export async function getSavedCards() {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/payments/saved-cards`, {
+  // Uses Next.js proxy route: /api/v1/payments/saved-cards -> backend /api/v1/payments/saved-cards
+  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards`, {
     method: 'GET',
     headers: authHeaders,
   });
@@ -2035,6 +2047,39 @@ export async function getSavedCards() {
 
   const data = await response.json();
   return data;
+}
+
+export async function deleteSavedCard(cardId: number) {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards/${cardId}`, {
+    method: "DELETE",
+    headers: authHeaders,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("❌ Failed to delete saved card:", errorText);
+    throw new Error(`Failed to delete saved card: ${response.status} ${response.statusText}`);
+  }
+
+  // Backend returns a JSON string; keep it flexible.
+  return response.json().catch(async () => response.text());
+}
+
+export async function setDefaultSavedCard(cardId: number) {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards/${cardId}/set-default`, {
+    method: "PATCH",
+    headers: authHeaders,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    console.error("❌ Failed to set default saved card:", errorText);
+    throw new Error(`Failed to set default saved card: ${response.status} ${response.statusText}`);
+  }
+
+  return response.json().catch(async () => response.text());
 }
 
 /** Start MPGS hosted session to add a saved card (no body). Returns API wrapper with `data.session_id`, `data.reference`, etc. */

@@ -36,7 +36,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const data = await response.json();
+    // Backend may return JSON or plain text (Swagger shows `"string"`). Handle both.
+    const raw = await response.text();
+    let data: unknown = raw;
+    try {
+      data = raw ? JSON.parse(raw) : null;
+    } catch {
+      // keep as plain text
+    }
     console.log('✅ POST /auth/register - External API response received');
     return NextResponse.json(data, { status: 201 });
   } catch (error) {

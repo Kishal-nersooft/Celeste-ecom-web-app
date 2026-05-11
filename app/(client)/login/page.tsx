@@ -32,9 +32,11 @@ export default function LoginPage() {
     const run = async () => {
       if (!user || step !== "phone" || checkingExistingUser) return;
       setCheckingExistingUser(true);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 12_000);
       try {
         const token = await user.getIdToken();
-        const result = await getCurrentUserWithToken(token);
+        const result = await getCurrentUserWithToken(token, false, { signal: controller.signal });
         if (result.registered) {
           router.push(returnUrl);
           return;
@@ -43,9 +45,15 @@ export default function LoginPage() {
         setIdToken(token);
         setPhoneNumber(user.phoneNumber ?? "");
         setStep("name");
-      } catch {
-        // If backend check fails, stay on phone step and let the user retry.
+      } catch (err) {
+        // On mobile networks, this check can hang; don't keep the user on an infinite loader.
+        const message =
+          err instanceof DOMException && err.name === "AbortError"
+            ? "Network timeout while checking your account. Please try again."
+            : "Could not check your account. Please try again.";
+        toast.error(message);
       } finally {
+        clearTimeout(timeout);
         setCheckingExistingUser(false);
       }
     };
