@@ -68,17 +68,21 @@ const ProductList = ({
   // Category selection handler
   const handleCategorySelect = (
     categoryId: number | null,
-    isDealsSelected: boolean = false
+    isDealsSelected: boolean = false,
+    categoryName?: string
   ) => {
     if (storeId) {
-      // For store pages, we don't use context
       console.log("📦 ProductList - Store page category selection:", {
         categoryId,
         isDealsSelected,
       });
     } else {
-      // For homepage, use context
-      setSelectedCategory(categoryId, isDealsSelected);
+      const name =
+        categoryName ??
+        (categoryId != null
+          ? categories.find((c) => c.id === categoryId)?.name
+          : undefined);
+      setSelectedCategory(categoryId, isDealsSelected, name);
       setLastVisitedCategory(categoryId, isDealsSelected);
     }
   };

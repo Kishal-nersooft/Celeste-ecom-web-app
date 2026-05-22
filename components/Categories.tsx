@@ -20,7 +20,11 @@ export interface Category {
 }
 
 interface Props {
-  onSelectCategory: (categoryId: number | null, isDeals?: boolean) => void;
+  onSelectCategory: (
+    categoryId: number | null,
+    isDeals?: boolean,
+    categoryName?: string
+  ) => void;
 }
 
 const Categories = ({ onSelectCategory }: Props) => {
@@ -55,9 +59,12 @@ const Categories = ({ onSelectCategory }: Props) => {
     }
   };
 
-  const handleCategoryClick = (categoryId: number | null, isDeals: boolean = false) => {
-    // Directly select category without expansion
-    onSelectCategory(categoryId, isDeals);
+  const handleCategoryClick = (
+    categoryId: number | null,
+    isDeals: boolean = false,
+    categoryName?: string
+  ) => {
+    onSelectCategory(categoryId, isDeals, categoryName);
   };
 
   // Check scroll buttons on mount and when categories change
@@ -167,7 +174,13 @@ const Categories = ({ onSelectCategory }: Props) => {
                       ? "text-black"
                       : "text-black"
                   )}
-                  onClick={() => handleCategoryClick(category.id, isDealsCategory)}
+                  onClick={() =>
+                    handleCategoryClick(
+                      category.id,
+                      isDealsCategory,
+                      isDealsCategory ? "Deals" : category.name
+                    )
+                  }
                 >
                   <div
                     className={cn(

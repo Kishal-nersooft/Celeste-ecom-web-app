@@ -9,6 +9,7 @@ import SubcategorySelector from "@/components/SubcategorySelector";
 import { Product } from "../../../../store";
 import { Category } from "@/components/Categories";
 import { getSubcategories, getProductsBySubcategoryWithPricing, getParentCategoryFromSubcategory, getProductsByParentCategoryWithPagination, getParentCategories } from "@/lib/api";
+import { getCategorySlug, resolveCategorySlugToId, toCategorySlug } from "@/lib/category-slug";
 import { ArrowLeft } from "lucide-react";
 import Loader from "@/components/Loader";
 import Image from "next/image";
@@ -20,6 +21,7 @@ interface Props {
 
 const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   const router = useRouter();
+  const [numericCategoryId, setNumericCategoryId] = useState<number | null>(null);
   const [products, setProducts] = useState<Product[]>(() => fallbackProducts ?? []);
   const [displayCategoryName, setDisplayCategoryName] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
@@ -109,7 +111,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
     setLoadingMore(true);
     try {
       const result = await getProductsByParentCategoryWithPagination(
-        parseInt(categoryId),
+        numericCategoryId!,
         12, // Load 12 more products
         nextCursor
       );
@@ -123,7 +125,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
     } finally {
       setLoadingMore(false);
     }
-  }, [isParentCategory, loadingMore, hasMore, nextCursor, categoryId]);
+  }, [isParentCategory, loadingMore, hasMore, nextCursor, numericCategoryId]);
 
   // Scroll detection for infinite loading
   const handleScroll = useCallback(() => {
@@ -138,7 +140,6 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   }, [isParentCategory, hasMore, loadingMore, loadMoreProducts]);
 
   useEffect(() => {
-    // Redirect special slugs to dedicated pages (same box UI, no left sidebar)
     if (categoryId === "recent") {
       router.replace("/recent-items");
       return;
@@ -148,22 +149,47 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
       return;
     }
 
+    let cancelled = false;
+    resolveCategorySlugToId(categoryId).then((id) => {
+      if (!cancelled && id !== null) {
+        setNumericCategoryId(id);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [categoryId, router]);
+
+  useEffect(() => {
+    if (numericCategoryId === null) return;
+
+    const categoryKey = numericCategoryId.toString();
+
     const fetchCategoryData = async () => {
       try {
-        // First, try to determine if this is a parent category or subcategory
-        // Get all parent categories to check if the ID matches
         const parentCategories = await getParentCategories();
-        const isParent = parentCategories.some((cat: any) => cat.id === parseInt(categoryId));
+        const isParent = parentCategories.some(
+          (cat: any) => cat.id === numericCategoryId
+        );
+
+        const canonicalSlug = getCategorySlug(
+          numericCategoryId,
+          parentCategories
+        );
+        if (canonicalSlug && canonicalSlug !== categoryId) {
+          router.replace(`/categories/${canonicalSlug}`, { scroll: false });
+        }
         
         if (isParent) {
           // This is a parent category - show all products from all subcategories
           setIsParentCategory(true);
-          const parentCategoryName = parentCategories.find((cat: any) => cat.id === parseInt(categoryId))?.name || "";
+          const parentCategoryName =
+            parentCategories.find((cat: any) => cat.id === numericCategoryId)
+              ?.name || "";
           setDisplayCategoryName(parentCategoryName);
           
-          // Load initial products (18 products)
           const result = await getProductsByParentCategoryWithPagination(
-            parseInt(categoryId),
+            numericCategoryId,
             18, // Initial load: 18 products
             null // No cursor for first load
           );
@@ -178,8 +204,8 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
           setIsParentCategory(false);
           
           // Check if we have subcategory data stored in sessionStorage
-          const storedProducts = sessionStorage.getItem(`subcategory_${categoryId}_products`);
-          const storedCategoryName = sessionStorage.getItem(`subcategory_${categoryId}_name`);
+          const storedProducts = sessionStorage.getItem(`subcategory_${categoryKey}_products`);
+          const storedCategoryName = sessionStorage.getItem(`subcategory_${categoryKey}_name`);
 
           if (storedProducts) {
             try {
@@ -188,16 +214,16 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
               setDisplayCategoryName(storedCategoryName || "");
               
               // Clear the stored data after using it
-              sessionStorage.removeItem(`subcategory_${categoryId}_products`);
-              sessionStorage.removeItem(`subcategory_${categoryId}_name`);
-              sessionStorage.removeItem(`subcategory_${categoryId}_id`);
+              sessionStorage.removeItem(`subcategory_${categoryKey}_products`);
+              sessionStorage.removeItem(`subcategory_${categoryKey}_name`);
+              sessionStorage.removeItem(`subcategory_${categoryKey}_id`);
             } catch (error) {
               console.error("Error parsing stored products:", error);
             }
           }
           
           // Get parent category info and subcategories
-          const parentCat = await getParentCategoryFromSubcategory(parseInt(categoryId));
+          const parentCat = await getParentCategoryFromSubcategory(numericCategoryId);
           setParentCategory(parentCat);
           setParentCategoryName(parentCat.name);
           
@@ -205,26 +231,23 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
           const subcats = await getSubcategories(parentCat.id);
           setSubcategories(subcats);
           
-          // Pre-select the current subcategory
-          setSelectedSubcategoryId(parseInt(categoryId));
+          setSelectedSubcategoryId(numericCategoryId);
           
-          // Store parent category ID for back navigation if not already stored
-          const existingParentId = sessionStorage.getItem(`subcategory_${categoryId}_parent_id`);
+          const existingParentId = sessionStorage.getItem(`subcategory_${categoryKey}_parent_id`);
           if (!existingParentId) {
-            sessionStorage.setItem(`subcategory_${categoryId}_parent_id`, parentCat.id.toString());
+            sessionStorage.setItem(`subcategory_${categoryKey}_parent_id`, parentCat.id.toString());
           }
           
-          // Load products for the current subcategory
           if (!storedProducts) {
             try {
-              const subcategoryProducts = await getProductsBySubcategoryWithPricing(parseInt(categoryId));
+              const subcategoryProducts = await getProductsBySubcategoryWithPricing(numericCategoryId);
               setProducts(subcategoryProducts);
-              const currentSubcategoryName = subcats.find((s: any) => s.id === parseInt(categoryId))?.name || "";
+              const currentSubcategoryName =
+                subcats.find((s: any) => s.id === numericCategoryId)?.name || "";
               setDisplayCategoryName(currentSubcategoryName);
               
-              // Cache the current subcategory products
-              sessionStorage.setItem(`subcategory_${categoryId}_products`, JSON.stringify(subcategoryProducts));
-              sessionStorage.setItem(`subcategory_${categoryId}_name`, currentSubcategoryName);
+              sessionStorage.setItem(`subcategory_${categoryKey}_products`, JSON.stringify(subcategoryProducts));
+              sessionStorage.setItem(`subcategory_${categoryKey}_name`, currentSubcategoryName);
             } catch (error) {
               console.error("Error fetching current subcategory products:", error);
             }
@@ -239,7 +262,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
     };
 
     fetchCategoryData();
-  }, [categoryId]);
+  }, [numericCategoryId, categoryId, router]);
 
   const handleSubcategorySelect = async (subcategoryId: number | null) => {
     if (!subcategoryId) return;
@@ -248,13 +271,15 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
     setIsLoadingProducts(true);
     
     // Preserve parent category ID for the new subcategory
-    const parentCategoryId = sessionStorage.getItem(`subcategory_${categoryId}_parent_id`);
+    const categoryKey = numericCategoryId?.toString() ?? categoryId;
+    const parentCategoryId = sessionStorage.getItem(`subcategory_${categoryKey}_parent_id`);
     if (parentCategoryId) {
       sessionStorage.setItem(`subcategory_${subcategoryId}_parent_id`, parentCategoryId);
     }
-    
-    // Navigate to the new subcategory URL
-    router.push(`/categories/${subcategoryId}`);
+
+    const sub = subcategories.find((s) => s.id === subcategoryId);
+    const slug = sub ? toCategorySlug(sub.name) : subcategoryId.toString();
+    router.push(`/categories/${slug}`);
   };
 
   const handleGoBack = () => {
@@ -270,10 +295,12 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
       router.push('/');
     } else {
       // Check if we have parent category ID stored (subcategory case)
-      const parentCategoryId = sessionStorage.getItem(`subcategory_${categoryId}_parent_id`);
+      const categoryKey = numericCategoryId?.toString() ?? categoryId;
+      const parentCategoryId = sessionStorage.getItem(`subcategory_${categoryKey}_parent_id`);
       
-      if (parentCategoryId) {
-        // Navigate to parent category page with category selected
+      if (parentCategoryId && parentCategory) {
+        router.push(`/?category=${toCategorySlug(parentCategory.name)}`);
+      } else if (parentCategoryId) {
         router.push(`/?category=${parentCategoryId}`);
       } else {
         // Fallback to browser back
@@ -282,12 +309,12 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
     }
   };
 
-  if (isLoading) {
-    return <Loader />;
-  }
-
-  // Redirect special slugs to dedicated pages (avoid showing category layout + sidebar)
-  if (categoryId === "recent" || categoryId === "popular-items") {
+  if (
+    isLoading ||
+    numericCategoryId === null ||
+    categoryId === "recent" ||
+    categoryId === "popular-items"
+  ) {
     return <Loader />;
   }
 
@@ -374,7 +401,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
               selectedSubcategoryId={selectedSubcategoryId}
               onSelectSubcategory={handleSubcategorySelect}
               parentCategoryName={parentCategoryName}
-              currentSubcategoryId={parseInt(categoryId)}
+              currentSubcategoryId={numericCategoryId}
             />
 
             {/* Right Side - Products Grid */}

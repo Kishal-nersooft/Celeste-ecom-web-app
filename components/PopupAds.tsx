@@ -26,39 +26,54 @@ const PopupAds: React.FC<PopupAdsProps> = ({
   const [promotion, setPromotion] = useState<Promotion | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasPromotion, setHasPromotion] = useState(false);
+  // Keep the last promotion image base URL so we can retry alternate Google Drive URL formats.
+  const [promotionBaseUrl, setPromotionBaseUrl] = useState<string | null>(null);
 
-  // Get image URL - supports both local paths and Google Drive links
-  const getImageUrl = useCallback((url: string, retry: number = 0): string => {
-    // If it's already a local path (starts with /), return as is
-    if (url.startsWith('/')) {
-      return url;
+  const extractGoogleDriveFileId = useCallback((url: string): string | null => {
+    const fromPath = url.match(/\/d\/([a-zA-Z0-9_-]+)(?:\/|$|\?)/);
+    if (fromPath) return fromPath[1];
+    try {
+      const u = new URL(url);
+      if (!u.hostname.endsWith("drive.google.com")) return null;
+      const id = u.searchParams.get("id");
+      if (id && /^[a-zA-Z0-9_-]+$/.test(id)) return id;
+    } catch {
+      const q = url.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+      if (q) return q[1];
     }
-    
-    // If it's a Google Drive sharing link, convert it
-    const driveFileIdMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
-    if (driveFileIdMatch) {
-      const fileId = driveFileIdMatch[1];
-      
-      // Try different URL formats based on retry count
+    return null;
+  }, []);
+
+  // Get image URL - supports local paths and Google Drive (Drive often 403s hotlinked drive.google.com URLs).
+  const getImageUrl = useCallback(
+    (url: string, retry: number = 0): string => {
+      if (url.startsWith("/")) {
+        return url;
+      }
+
+      const fileId = extractGoogleDriveFileId(url);
+      if (!fileId) {
+        return url;
+      }
+
+      // Prefer lh3 / usercontent first; drive.google.com/uc often returns 403 for cross-site <img>.
       switch (retry) {
         case 0:
-          // Format 1: Direct view (most common)
-          return `https://drive.google.com/uc?export=view&id=${fileId}`;
+          return `https://lh3.googleusercontent.com/d/${fileId}`;
         case 1:
-          // Format 2: Thumbnail with high resolution
-          return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1920`;
+          return `https://drive.usercontent.google.com/uc?export=view&id=${fileId}`;
         case 2:
-          // Format 3: Alternative export method
-          return `https://drive.google.com/uc?export=download&id=${fileId}`;
+          return `https://drive.google.com/thumbnail?id=${fileId}&sz=w1920`;
         case 3:
-          // Format 4: Using file/d endpoint
-          return `https://drive.google.com/file/d/${fileId}/view`;
-        default:
           return `https://drive.google.com/uc?export=view&id=${fileId}`;
+        case 4:
+          return `https://drive.google.com/uc?export=download&id=${fileId}`;
+        default:
+          return `https://lh3.googleusercontent.com/d/${fileId}`;
       }
-    }
-    return url;
-  }, []);
+    },
+    [extractGoogleDriveFileId]
+  );
 
   const handleClose = () => {
     setIsOpen(false);
@@ -95,11 +110,12 @@ const PopupAds: React.FC<PopupAdsProps> = ({
     }
     
     // For Google Drive URLs or fallback imageUrl, try different formats
-    if (imageUrl && retryCount < 3) {
-      // Try next URL format
+    const base = promotionBaseUrl || imageUrl || null;
+    if (base && retryCount < 4) {
+      // Try next URL format (matches getImageUrl cases 0–4)
       const nextRetry = retryCount + 1;
       setRetryCount(nextRetry);
-      setCurrentImageUrl(getImageUrl(imageUrl, nextRetry));
+      setCurrentImageUrl(getImageUrl(base, nextRetry));
     } else {
       // All retry attempts failed
       console.error("Failed to load popup ad image after multiple attempts");
@@ -150,18 +166,15 @@ const PopupAds: React.FC<PopupAdsProps> = ({
           
           if (imageUrls && imageUrls.length > 0 && imageUrls[0]) {
             // Use the image URL directly from the API response
-            let selectedImageUrl = imageUrls[0];
-            
-            // If it's a Google Drive URL, proxy it through our API to avoid CORS issues
-            if (selectedImageUrl.includes('drive.google.com')) {
-              selectedImageUrl = `/api/images/proxy?url=${encodeURIComponent(selectedImageUrl)}`;
-            }
-            
+            const rawUrl = imageUrls[0];
+            setPromotionBaseUrl(rawUrl);
+            setRetryCount(0);
+            const selectedImageUrl = getImageUrl(rawUrl, 0);
             setCurrentImageUrl(selectedImageUrl);
             console.log('✅ Popup promotion loaded:', {
               promotionId: activePromotion.id,
-              originalUrl: imageUrls[0],
-              proxiedUrl: selectedImageUrl,
+              originalUrl: rawUrl,
+              resolvedUrl: selectedImageUrl,
               isMobile,
               type: isMobile ? 'mobile' : 'web'
             });
@@ -169,13 +182,10 @@ const PopupAds: React.FC<PopupAdsProps> = ({
             // Fallback to web images if mobile images not available
             const fallbackUrls = activePromotion.image_urls_web;
             if (fallbackUrls && fallbackUrls.length > 0 && fallbackUrls[0]) {
-              let fallbackUrl = fallbackUrls[0];
-              
-              // If it's a Google Drive URL, proxy it through our API to avoid CORS issues
-              if (fallbackUrl.includes('drive.google.com')) {
-                fallbackUrl = `/api/images/proxy?url=${encodeURIComponent(fallbackUrl)}`;
-              }
-              
+              const rawFallbackUrl = fallbackUrls[0];
+              setPromotionBaseUrl(rawFallbackUrl);
+              setRetryCount(0);
+              const fallbackUrl = getImageUrl(rawFallbackUrl, 0);
               setCurrentImageUrl(fallbackUrl);
               console.log('✅ Using web image as fallback:', fallbackUrl);
             } else {
@@ -187,7 +197,9 @@ const PopupAds: React.FC<PopupAdsProps> = ({
           // No promotions from API, use fallback imageUrl if provided
           console.log('ℹ️ No active popup promotions found, using fallback image');
           setHasPromotion(false);
+          setPromotionBaseUrl(null);
           if (imageUrl) {
+            setRetryCount(0);
             setCurrentImageUrl(getImageUrl(imageUrl, 0));
           } else {
             setImageError(true);
@@ -197,7 +209,9 @@ const PopupAds: React.FC<PopupAdsProps> = ({
         console.error('❌ Error fetching promotions:', error);
         // On error, use fallback imageUrl if provided
         setHasPromotion(false);
+        setPromotionBaseUrl(null);
         if (imageUrl) {
+          setRetryCount(0);
           setCurrentImageUrl(getImageUrl(imageUrl, 0));
         } else {
           setImageError(true);

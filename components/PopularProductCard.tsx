@@ -2,6 +2,7 @@ import Image from "next/image";
 import React from "react";
 import Link from "next/link";
 import { Product } from "../store";
+import { getProductPath } from "@/lib/product-slug";
 import PriceFormatter from "./PriceFormatter";
 import FavoriteButton from "./FavoriteButton";
 
@@ -97,7 +98,7 @@ const PopularProductCard = ({ product }: PopularProductCardProps) => {
           </div>
 
           {/* Add to Cart button */}
-          <Link href={`/product/${product?.id}`}>
+          <Link href={getProductPath(product)}>
             <button className={`font-semibold py-3 px-6 rounded-xl transition-colors w-full ${
               isDiscounted 
                 ? 'bg-white text-black hover:bg-gray-100' 

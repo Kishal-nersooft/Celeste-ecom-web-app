@@ -9,6 +9,7 @@ import FavoriteButton from "./FavoriteButton";
 import FuturePricingDisplay from "./FuturePricingDisplay";
 import { Product } from "../store";
 import { useCategory } from "../contexts/CategoryContext";
+import { getProductPath } from "@/lib/product-slug";
 // Removed discount-utils import - using direct pricing data instead
 
 const ProductCard = memo(({ product }: { product: Product }) => {
@@ -96,7 +97,7 @@ const ProductCard = memo(({ product }: { product: Product }) => {
 
         {hasValidImage && (
           <Link
-            href={`/product/${product?.id}`}
+            href={getProductPath(product)}
             onClick={() => {
               // Save current category state when product is clicked
               setLastVisitedCategory(selectedCategoryId, isDealsSelected);

@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toCategorySlug } from "@/lib/category-slug";
 
 interface Props {
   products: Product[];
@@ -118,7 +119,7 @@ const ProductRowClient = ({
       return;
     }
 
-    router.push(`/categories/${categoryId}`);
+    router.push(`/categories/${toCategorySlug(categoryName)}`);
   };
 
   return (

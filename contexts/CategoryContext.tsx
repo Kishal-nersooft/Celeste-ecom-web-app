@@ -10,6 +10,13 @@ import React, {
   useCallback,
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { Category } from "@/components/Categories";
+import { getParentCategories } from "@/lib/api";
+import {
+  findCategoryIdBySlug,
+  getCategorySlug,
+  toCategorySlug,
+} from "@/lib/category-slug";
 
 interface CategoryState {
   selectedCategoryId: number | null;
@@ -23,7 +30,12 @@ interface CategoryContextType {
   isDealsSelected: boolean;
   lastVisitedCategory: number | null;
   lastVisitedIsDeals: boolean;
-  setSelectedCategory: (categoryId: number | null, isDeals?: boolean) => void;
+  setSelectedCategory: (
+    categoryId: number | null,
+    isDeals?: boolean,
+    categoryName?: string
+  ) => void;
+  getCategoryUrlParam: (categoryId: number) => string | null;
   setLastVisitedCategory: (
     categoryId: number | null,
     isDeals?: boolean
@@ -52,6 +64,15 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
     lastVisitedCategory: null,
     lastVisitedIsDeals: false,
   });
+  const [parentCategories, setParentCategories] = useState<Category[]>([]);
+
+  useEffect(() => {
+    getParentCategories()
+      .then(setParentCategories)
+      .catch((error) =>
+        console.warn("Failed to load categories for URL slugs:", error)
+      );
+  }, []);
 
   // Load category state from localStorage after hydration
   useEffect(() => {
@@ -81,42 +102,70 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
     }
   }, [categoryState]);
 
+  const getCategoryUrlParam = useCallback(
+    (categoryId: number, categoryName?: string) => {
+      if (categoryName) return toCategorySlug(categoryName);
+      return getCategorySlug(categoryId, parentCategories);
+    },
+    [parentCategories]
+  );
+
   // Handle URL-based category restoration
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const categoryParam = urlParams.get("category");
-      const dealsParam = urlParams.get("deals");
+    if (typeof window === "undefined") return;
 
-      if (categoryParam === "deals" || dealsParam === "true") {
+    const urlParams = new URLSearchParams(window.location.search);
+    const categoryParam = urlParams.get("category");
+    const dealsParam = urlParams.get("deals");
+
+    if (categoryParam === "deals" || dealsParam === "true") {
+      setCategoryState((prev) => ({
+        ...prev,
+        selectedCategoryId: null,
+        isDealsSelected: true,
+      }));
+      return;
+    }
+
+    if (categoryParam) {
+      const resolvedId = findCategoryIdBySlug(categoryParam, parentCategories);
+      if (resolvedId !== null) {
         setCategoryState((prev) => ({
           ...prev,
-          selectedCategoryId: null,
-          isDealsSelected: true,
-        }));
-      } else if (categoryParam && !isNaN(Number(categoryParam))) {
-        setCategoryState((prev) => ({
-          ...prev,
-          selectedCategoryId: Number(categoryParam),
+          selectedCategoryId: resolvedId,
           isDealsSelected: false,
         }));
-      } else if (pathname === "/" && categoryState.lastVisitedCategory !== null) {
-        // Restore last visited category when returning to homepage
-        setCategoryState((prev) => ({
-          ...prev,
-          selectedCategoryId: prev.lastVisitedCategory,
-          isDealsSelected: prev.lastVisitedIsDeals,
-        }));
+
+        const slug = getCategorySlug(resolvedId, parentCategories);
+        if (slug && slug !== categoryParam) {
+          const url = new URL(window.location.href);
+          url.searchParams.set("category", slug);
+          window.history.replaceState({}, "", url.toString());
+        }
+        return;
       }
+    }
+
+    if (pathname === "/" && categoryState.lastVisitedCategory !== null) {
+      setCategoryState((prev) => ({
+        ...prev,
+        selectedCategoryId: prev.lastVisitedCategory,
+        isDealsSelected: prev.lastVisitedIsDeals,
+      }));
     }
   }, [
     pathname,
+    parentCategories,
     categoryState.lastVisitedCategory,
     categoryState.lastVisitedIsDeals,
   ]);
 
   const setSelectedCategory = useCallback(
-    (categoryId: number | null, isDeals: boolean = false) => {
+    (
+      categoryId: number | null,
+      isDeals: boolean = false,
+      categoryName?: string
+    ) => {
       console.log("🎯 CategoryContext - setSelectedCategory called:", { categoryId, isDeals });
       
       setCategoryState((prev) => {
@@ -148,7 +197,12 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
           url.searchParams.set("deals", "true");
           url.searchParams.delete("category");
         } else if (categoryId) {
-          url.searchParams.set("category", categoryId.toString());
+          const slug = getCategoryUrlParam(categoryId, categoryName);
+          if (slug) {
+            url.searchParams.set("category", slug);
+          } else {
+            url.searchParams.set("category", categoryId.toString());
+          }
           url.searchParams.delete("deals");
         } else {
           url.searchParams.delete("category");
@@ -159,7 +213,7 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
         window.history.replaceState({}, "", url.toString());
       }
     },
-    []
+    [getCategoryUrlParam]
   );
 
   const setLastVisitedCategory = useCallback(
@@ -220,6 +274,7 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
       lastVisitedCategory: categoryState.lastVisitedCategory,
       lastVisitedIsDeals: categoryState.lastVisitedIsDeals,
       setSelectedCategory,
+      getCategoryUrlParam,
       setLastVisitedCategory,
       clearCategoryState,
       restoreLastVisitedCategory,
@@ -230,6 +285,7 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
       categoryState.lastVisitedCategory,
       categoryState.lastVisitedIsDeals,
       setSelectedCategory,
+      getCategoryUrlParam,
       setLastVisitedCategory,
       clearCategoryState,
       restoreLastVisitedCategory,

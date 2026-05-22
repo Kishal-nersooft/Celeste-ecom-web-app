@@ -25,6 +25,7 @@ import {
 import QuantityButtons from "./QuantityButtons";
 import useCartStore from "@/store";
 import paymentGatewaySolutions from "@/images/Payment Gateway Solutions-03.jpg";
+import { PaymentTermsContent } from "@/components/PaymentTermsContent";
 
 interface OrderSummaryProps {
   previewData: any;
@@ -58,42 +59,29 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
     <Dialog open={isTermsOpen} onOpenChange={setIsTermsOpen}>
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-base sm:text-lg">Terms & Conditions</DialogTitle>
+          <DialogTitle className="text-base sm:text-lg">Payment Terms &amp; Conditions</DialogTitle>
           <DialogDescription className="text-xs sm:text-sm">
-            Please review and accept to continue.
+            Please review and accept to continue with secure payment processing.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="max-h-[55vh] overflow-auto rounded-lg border bg-white p-3 sm:p-4 text-xs sm:text-sm text-gray-700 leading-relaxed">
-          <p className="font-medium text-gray-900">Sample terms (placeholder)</p>
-          <p className="mt-2">
-            By placing this order, you confirm that the information you provided is accurate and that you are
-            authorized to use the selected payment method. Delivery timelines are estimates and may vary due to
-            external factors. If items become unavailable, we may adjust your order total accordingly.
-          </p>
-          <p className="mt-2">
-            Payments are processed securely by our payment partners. We do not store full card details on our
-            servers. Refunds and cancellations are subject to our policy and may require verification.
-          </p>
-          <p className="mt-2">
-            If you have questions, please contact support before completing your purchase.
-          </p>
+        <div className="max-h-[55vh] overflow-auto rounded-lg border bg-white p-3 sm:p-4 text-xs sm:text-sm leading-relaxed">
+          <p className="font-medium text-gray-900 mb-3">Payment Processing Terms &amp; Conditions</p>
+          <PaymentTermsContent />
         </div>
 
-        <div className="rounded-lg border bg-gray-50 p-3">
-          <label className="flex items-start gap-2 cursor-pointer select-none">
-            <input
-              id="terms-dialog"
-              type="checkbox"
-              checked={acceptedTerms}
-              onChange={(e) => setAcceptedTerms(e.target.checked)}
-              className="mt-0.5 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
-            />
-            <span className="text-[10px] sm:text-xs text-gray-700 leading-snug">
-              I agree to the Terms & Conditions.
-            </span>
-          </label>
-        </div>
+        <label className="mt-3 flex items-start gap-2 cursor-pointer select-none">
+          <input
+            id="terms-dialog"
+            type="checkbox"
+            checked={acceptedTerms}
+            onChange={(e) => setAcceptedTerms(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+          />
+          <span className="text-[10px] sm:text-xs text-gray-700 leading-snug">
+            I agree to the Payment Terms &amp; Conditions and authorize secure payment processing.
+          </span>
+        </label>
 
         <DialogFooter>
           <Button type="button" variant="outline" onClick={() => setIsTermsOpen(false)}>
@@ -173,9 +161,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                       setIsTermsOpen(true);
                     }}
                   >
-                    Terms & Conditions
-                  </button>
-                  .
+                    Payment Terms &amp; Conditions
+                  </button>{" "}
+                  and authorize secure payment processing.
                 </span>
               </label>
             </div>
@@ -542,9 +530,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                   setIsTermsOpen(true);
                 }}
               >
-                Terms & Conditions
-              </button>
-              .
+                Payment Terms &amp; Conditions
+              </button>{" "}
+              and authorize secure payment processing.
             </span>
           </label>
         </div>

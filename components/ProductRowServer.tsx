@@ -4,6 +4,7 @@ import ProductCard from "./ProductCard";
 import ProductCardSkeleton from "./ProductCardSkeleton";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
+import { toCategorySlug } from "@/lib/category-slug";
 
 interface Props {
   products: Product[];
@@ -61,7 +62,7 @@ const ProductRowServer = ({
         <h2 className="text-2xl font-semibold text-black">{categoryName}</h2>
         <div className="flex items-center gap-2">
           <Link
-            href={`/categories/${categoryId}`}
+            href={`/categories/${toCategorySlug(categoryName)}`}
             onClick={handleSeeAllClick}
             className="text-blue-600 hover:text-blue-800 font-medium text-sm transition-colors"
           >

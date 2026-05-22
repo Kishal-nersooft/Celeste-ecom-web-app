@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { toCategorySlug } from "@/lib/category-slug";
 
 interface Props {
   products: Product[];
@@ -169,16 +170,19 @@ const ProductRow = ({
         return;
       }
 
-      // Check if this is a parent category from "All" view
+      const categorySlug =
+        categoryId === "recent" ||
+        categoryId === "popular-items" ||
+        categoryId === "all"
+          ? categoryId
+          : toCategorySlug(categoryName);
+
       const isParentCategoryFromAll = (window as any).isParentCategoryFromAll;
       if (isParentCategoryFromAll) {
-        // Store source tracking for back button behavior
-        sessionStorage.setItem('category_source', 'all');
-        // Navigate to parent category page
-        router.push(`/categories/${categoryId}`);
+        sessionStorage.setItem("category_source", "all");
+        router.push(`/categories/${categorySlug}`);
       } else {
-        // Regular subcategory navigation
-        router.push(`/categories/${categoryId}`);
+        router.push(`/categories/${categorySlug}`);
       }
     }
   };

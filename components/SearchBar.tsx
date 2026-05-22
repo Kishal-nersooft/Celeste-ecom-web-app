@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 import { searchProducts, trackSearchClick, getProductById, getSearchHistory } from '@/lib/api';
+import { getProductPath } from '@/lib/product-slug';
 import { useLocation } from '@/contexts/LocationContext';
 import { Product } from '@/store';
 import AddToCartButton from './AddToCartButton';
@@ -223,9 +224,10 @@ const SearchBar: React.FC<SearchBarProps> = ({
     try {
       // Track the click (this also saves the search query to history on backend)
       await trackSearchClick(query, product.id);
-      
-      // Navigate to search page with query
-      router.push(`/search?q=${encodeURIComponent(query)}`);
+
+      router.push(
+        getProductPath({ id: product.id, name: product.name, ref: product.ref })
+      );
       setIsOpen(false);
       setQuery('');
       
@@ -242,8 +244,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
       }, 2500);
     } catch (err) {
       console.error('Error tracking search click:', err);
-      // Still navigate even if tracking fails
-      router.push(`/search?q=${encodeURIComponent(query)}`);
+      router.push(
+        getProductPath({ id: product.id, name: product.name, ref: product.ref })
+      );
       setIsOpen(false);
       setQuery('');
       // Refresh history after search - force refresh

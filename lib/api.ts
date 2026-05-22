@@ -1,18 +1,24 @@
-/** Backend API base URL. Set API_BASE_URL in .env (no hardcoded fallback). */
+/**
+ * Backend API base URL.
+ *
+ * - Server: prefer `API_BASE_URL`
+ * - Browser: MUST use `NEXT_PUBLIC_API_BASE_URL` (non-public env vars are not available client-side)
+ */
 export const API_BASE_URL = process.env.API_BASE_URL ?? "";
-export const LOCAL_API_BASE_URL = "/api";
+export const NEXT_PUBLIC_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 
 // Import product caching functions
 import { getCachedProducts, setCachedProducts, hasCachedProducts } from './product-cache';
 
 // Helper function to get the appropriate base URL for server vs client
 function getBaseUrl() {
-  if (typeof window === 'undefined') {
-    // Server-side: use the external API directly to avoid port issues
-    return API_BASE_URL;
+  // Browser must use NEXT_PUBLIC_* env var.
+  if (typeof window !== 'undefined') {
+    return NEXT_PUBLIC_API_BASE_URL || API_BASE_URL;
   }
-  // Client-side: use window.location.origin to dynamically get the current port
-  return `${window.location.origin}${LOCAL_API_BASE_URL}`;
+
+  // Server-side can read non-public env var.
+  return API_BASE_URL || NEXT_PUBLIC_API_BASE_URL;
 }
 
 // Helper function to get authentication headers
@@ -421,17 +427,7 @@ export async function removeFromFavorites(productId: number): Promise<string> {
 
 // Alternative: Dynamic port detection for server-side (if needed)
 function getServerBaseUrl() {
-  if (typeof window !== 'undefined') {
-    // Client-side: use relative URL
-    return LOCAL_API_BASE_URL;
-  }
-  
-  // Server-side: try to get port from environment or use default
-  const port = process.env.PORT || process.env.NEXT_PUBLIC_PORT || '3000';
-  const host = process.env.HOST || 'localhost';
-  
-  // Use external API for server-side to avoid port conflicts
-  return API_BASE_URL;
+  return getBaseUrl();
 }
 
 export async function getCategories(includeSubcategories: boolean = true, parentOnly: boolean = false) {
@@ -444,7 +440,9 @@ export async function getCategories(includeSubcategories: boolean = true, parent
   }
   
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/categories?${params.toString()}`, {
+  // Backend canonicalizes collection endpoints with a trailing slash (e.g. `/categories/`).
+  // Hitting the non-slash variant may trigger a redirect, which browsers disallow for CORS preflight.
+  const response = await fetch(`${getBaseUrl()}/categories/?${params.toString()}`, {
     method: 'GET',
     cache: 'no-store', // Disable Next.js caching
     headers: {
@@ -535,7 +533,9 @@ export async function getProducts(
     params.append('only_discounted', 'true');
   }
   
-  const url = `${getBaseUrl()}/products?${params.toString()}`;
+  // Backend canonicalizes collection endpoints with a trailing slash (e.g. `/products/`).
+  // Avoid redirects because redirects break CORS preflight in browsers.
+  const url = `${getBaseUrl()}/products/?${params.toString()}`;
   console.log("🔍 API - Fetching products from server:", url.split('?')[0]);
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -594,7 +594,7 @@ export async function getSubcategories(parentCategoryId: number) {
   params.append('subcategories_only', 'true');
   
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/categories?${params.toString()}`, {
+  const response = await fetch(`${getBaseUrl()}/categories/?${params.toString()}`, {
     method: 'GET',
     cache: 'no-store',
     headers: {
@@ -639,7 +639,7 @@ export async function getProductsBySubcategory(
   }
   
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/products?${params.toString()}`, {
+  const response = await fetch(`${getBaseUrl()}/products/?${params.toString()}`, {
     method: 'GET',
     cache: 'no-store',
     headers: {
@@ -701,27 +701,25 @@ export async function getParentCategories() {
 
 // Get parent category info from subcategory ID
 export async function getParentCategoryFromSubcategory(subcategoryId: number) {
-  try {
-    // First get all categories to find the subcategory
-    const allCategories = await getCategories(true, false);
-    const subcategory = allCategories.find((cat: any) => cat.id === subcategoryId);
-    
-    if (!subcategory || !subcategory.parent_category_id) {
-      throw new Error("Subcategory not found or has no parent");
-    }
-    
-    // Find the parent category
-    const parentCategory = allCategories.find((cat: any) => cat.id === subcategory.parent_category_id);
-    
-    if (!parentCategory) {
-      throw new Error("Parent category not found");
-    }
-    
-    return parentCategory;
-  } catch (error) {
-    console.error("Error getting parent category from subcategory:", error);
-    throw error;
+  const { flattenCategories } = await import("./category-slug");
+
+  const allCategories = await getCategories(true, false);
+  const flat = flattenCategories(allCategories);
+  const subcategory = flat.find((cat) => cat.id === subcategoryId);
+
+  if (!subcategory?.parent_category_id) {
+    throw new Error("Subcategory not found or has no parent");
   }
+
+  const parentCategory = flat.find(
+    (cat) => cat.id === subcategory.parent_category_id
+  );
+
+  if (!parentCategory) {
+    throw new Error("Parent category not found");
+  }
+
+  return parentCategory;
 }
 
 export async function revalidateAllProducts() {
@@ -743,7 +741,8 @@ export async function getProductById(
   productId: string,
   storeIds?: number[],
   latitude?: number,
-  longitude?: number
+  longitude?: number,
+  quiet = false
 ) {
   const params = new URLSearchParams();
   params.append('include_pricing', 'true');
@@ -764,13 +763,17 @@ export async function getProductById(
   }
   
   const url = `${getBaseUrl()}/products/${productId}?${params.toString()}`;
-  
-  console.log('🔍 getProductById - Requesting URL:', url);
-  console.log('🔍 getProductById - Parameters:', params.toString());
-  
+
+  if (!quiet) {
+    console.log('🔍 getProductById - Requesting URL:', url);
+    console.log('🔍 getProductById - Parameters:', params.toString());
+  }
+
   const authHeaders = await getAuthHeaders();
-  console.log('🔍 getProductById - Auth headers:', authHeaders);
-  
+  if (!quiet) {
+    console.log('🔍 getProductById - Auth headers:', authHeaders);
+  }
+
   const response = await fetch(url, {
     method: 'GET',
     cache: 'no-store', // Disable Next.js caching
@@ -784,21 +787,27 @@ export async function getProductById(
     }
   });
   
-  console.log('🔍 getProductById - Response status:', response.status);
-  console.log('🔍 getProductById - Response ok:', response.ok);
-  
+  if (!quiet) {
+    console.log('🔍 getProductById - Response status:', response.status);
+    console.log('🔍 getProductById - Response ok:', response.ok);
+  }
+
   if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ getProductById - Error response:', errorText);
+    if (!quiet) {
+      const errorText = await response.text();
+      console.error('❌ getProductById - Error response:', errorText);
+    }
     throw new Error(`Failed to fetch product: ${response.status} ${response.statusText}`);
   }
-  
+
   const data = await response.json();
   let product = data.data;
-  
-  console.log('🔍 getProductById - Raw API response:', JSON.stringify(data, null, 2));
-  console.log('🔍 getProductById - Product data:', JSON.stringify(product, null, 2));
-  console.log('🔍 getProductById - Pricing data:', product?.pricing);
+
+  if (!quiet) {
+    console.log('🔍 getProductById - Raw API response:', JSON.stringify(data, null, 2));
+    console.log('🔍 getProductById - Product data:', JSON.stringify(product, null, 2));
+    console.log('🔍 getProductById - Pricing data:', product?.pricing);
+  }
   
   // Note: The backend API should return pricing data with include_pricing=true
   // If pricing is null, the backend needs to be configured to return pricing data
@@ -997,7 +1006,7 @@ export async function getAllProducts(
       params.append('cursor', cursor);
     }
     
-    const url = `${getBaseUrl()}/products?${params.toString()}`;
+    const url = `${getBaseUrl()}/products/?${params.toString()}`;
     console.log("Fetching products from URL:", url);
     
     const authHeaders = await getAuthHeaders();
@@ -1469,7 +1478,7 @@ export async function getProductsWithCursorPagination(
     params.append('only_discounted', 'true');
   }
   
-  const url = `${getBaseUrl()}/products?${params.toString()}`;
+  const url = `${getBaseUrl()}/products/?${params.toString()}`;
   console.log("🔍 API - Fetching products with cursor pagination:", url.split('?')[0]);
   
   const authHeaders = await getAuthHeaders();
@@ -2033,8 +2042,9 @@ export async function createOrder(orderData: {
 // Get saved payment cards for the current user
 export async function getSavedCards() {
   const authHeaders = await getAuthHeaders();
-  // Uses Next.js proxy route: /api/v1/payments/saved-cards -> backend /api/v1/payments/saved-cards
-  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards`, {
+  // NOTE: `getBaseUrl()` already points at `${API_BASE_URL}` which includes `/api/v1`.
+  // Do NOT prefix `/v1` again, otherwise it becomes `/api/v1/v1/...` (404).
+  const response = await fetch(`${getBaseUrl()}/payments/saved-cards`, {
     method: 'GET',
     headers: authHeaders,
   });
@@ -2051,7 +2061,7 @@ export async function getSavedCards() {
 
 export async function deleteSavedCard(cardId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards/${cardId}`, {
+  const response = await fetch(`${getBaseUrl()}/payments/saved-cards/${cardId}`, {
     method: "DELETE",
     headers: authHeaders,
   });
@@ -2068,7 +2078,7 @@ export async function deleteSavedCard(cardId: number) {
 
 export async function setDefaultSavedCard(cardId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards/${cardId}/set-default`, {
+  const response = await fetch(`${getBaseUrl()}/payments/saved-cards/${cardId}/set-default`, {
     method: "PATCH",
     headers: authHeaders,
   });
@@ -2085,7 +2095,7 @@ export async function setDefaultSavedCard(cardId: number) {
 /** Start MPGS hosted session to add a saved card (no body). Returns API wrapper with `data.session_id`, `data.reference`, etc. */
 export async function createSavedCardMpgsSession() {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/v1/payments/saved-cards/mpgs`, {
+  const response = await fetch(`${getBaseUrl()}/payments/saved-cards/mpgs`, {
     method: "POST",
     headers: authHeaders,
   });
@@ -2147,7 +2157,7 @@ export async function checkInventoryAvailability(productIds: number[], storeId?:
   console.log('🔍 Product IDs to check:', productIds);
   productIds.forEach(id => params.append('product_ids', id.toString()));
   
-  const url = `${getBaseUrl()}/products?${params.toString()}&_t=${Date.now()}`;
+  const url = `${getBaseUrl()}/products/?${params.toString()}&_t=${Date.now()}`;
   console.log('🔍 Checking inventory availability:', url);
   console.log('🔍 Full URL with params:', url);
   
@@ -2230,11 +2240,23 @@ export async function verifyOrderPayment(orderId: string, paymentData: {
 }
 
 // Get all orders for the current user
-export async function getUserOrders(page: number = 1, limit: number = 20, includeProducts: boolean = true, includeStores: boolean = true, includeAddresses: boolean = true, includeRider: boolean = true) {
+export async function getUserOrders(
+  page: number = 1,
+  limit: number = 20,
+  statuses: string[] = [],
+  includeProducts: boolean = true,
+  includeStores: boolean = true,
+  includeAddresses: boolean = true,
+  includeRider: boolean = true,
+) {
   const authHeaders = await getAuthHeaders();
   const params = new URLSearchParams();
   params.append('page', page.toString());
   params.append('limit', limit.toString());
+
+  for (const status of statuses) {
+    params.append('status', status);
+  }
   
   if (includeProducts) params.append('include_products', 'true');
   if (includeStores) params.append('include_stores', 'true');
@@ -2244,7 +2266,7 @@ export async function getUserOrders(page: number = 1, limit: number = 20, includ
   // Add cache-busting parameter to ensure fresh data
   params.append('_t', Date.now().toString());
   
-  const response = await fetch(`${getBaseUrl()}/users/me/orders?${params.toString()}`, {
+  const response = await fetch(`${getBaseUrl()}/orders/?${params.toString()}`, {
     method: 'GET',
     headers: authHeaders,
     cache: 'no-store' // Disable caching for real-time updates
@@ -2261,7 +2283,7 @@ export async function getUserOrders(page: number = 1, limit: number = 20, includ
 // Get specific order by ID
 export async function getOrderById(orderId: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/orders/${orderId}`, {
+  const response = await fetch(`${getBaseUrl()}/orders/${orderId}`, {
     method: 'GET',
     headers: authHeaders
   });
@@ -2279,7 +2301,7 @@ export async function getOrderById(orderId: string) {
 // Cancel an order
 export async function cancelOrder(orderId: string, reason?: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/orders/${orderId}/cancel`, {
+  const response = await fetch(`${getBaseUrl()}/orders/${orderId}/cancel`, {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ reason })
@@ -2558,7 +2580,8 @@ export async function searchProducts(
     params.append('longitude', options.longitude.toString());
   }
 
-  const url = `${getBaseUrl()}/search?${params.toString()}`;
+  // Backend search endpoint is `/products/search` (not `/search`).
+  const url = `${getBaseUrl()}/products/search?${params.toString()}`;
   console.log("🔍 Search API - Fetching search results:", url.split('?')[0]);
   
   const authHeaders = await getAuthHeaders();
@@ -2595,7 +2618,8 @@ export async function searchProducts(
 export async function trackSearchClick(query: string, productId: number) {
   try {
     const authHeaders = await getAuthHeaders();
-    const response = await fetch(`${getBaseUrl()}/search/click`, {
+    // Backend click tracking endpoint is `/products/search/click`.
+    const response = await fetch(`${getBaseUrl()}/products/search/click`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

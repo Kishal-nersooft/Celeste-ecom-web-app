@@ -17,20 +17,25 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Order, DriverInfo, RiderInfo } from "@/store";
-import { getAuthHeaders, getUserOrders } from "@/lib/api";
+import { getAuthHeaders, getUserOrders, NEXT_PUBLIC_API_BASE_URL, API_BASE_URL } from "@/lib/api";
+import {
+  canCancelOrderAsCustomer,
+  getOrderStatusFromPayload,
+  getOrderStatusesForTab,
+  normalizeOrderStatus,
+  type OrderFilterTab,
+} from "@/lib/order-status";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
 import ReorderDialog from "@/components/ReorderDialog";
 import Loader from "@/components/Loader";
 import useCartStore from "@/store";
 
-type OrderStatusFilter = 'ongoing' | 'completed' | 'cancelled';
-
 const OrdersPageContent = () => {
   const { user, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState<OrderStatusFilter>('ongoing');
+  const [activeFilter, setActiveFilter] = useState<OrderFilterTab>('ongoing');
   const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -42,53 +47,50 @@ const OrdersPageContent = () => {
   const cartStore = useCartStore();
   const paymentSuccessHandled = React.useRef(false);
 
-  // Filter orders based on status
-  const getFilteredOrders = () => {
-    return orders.filter(order => {
-      const status = order.status?.toUpperCase();
-      switch (activeFilter) {
-        case 'ongoing':
-          return ['PENDING', 'CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED'].includes(status);
-        case 'completed':
-          return status === 'DELIVERED';
-        case 'cancelled':
-          return status === 'CANCELLED';
-        default:
-          return true;
-      }
-    });
-  };
-
   // Get status display info
   const getStatusInfo = (status: string) => {
-    const statusUpper = status?.toUpperCase();
+    const statusUpper = normalizeOrderStatus(status);
     switch (statusUpper) {
       case 'PENDING':
+      case 'PAYMENT_PENDING':
         return { label: 'Pending', color: 'bg-yellow-100 text-yellow-800', icon: Clock };
       case 'CONFIRMED':
+      case 'PAID':
         return { label: 'Confirmed', color: 'bg-blue-100 text-blue-800', icon: CheckSquare };
       case 'PROCESSING':
+      case 'PREPARING':
+      case 'IN_PROGRESS':
         return { label: 'Processing', color: 'bg-purple-100 text-purple-800', icon: Package };
       case 'PACKED':
         return { label: 'Packed', color: 'bg-indigo-100 text-indigo-800', icon: Package };
+      case 'READY':
+        return { label: 'Ready', color: 'bg-indigo-100 text-indigo-800', icon: Package };
       case 'SHIPPED':
+      case 'OUT_FOR_DELIVERY':
+      case 'DISPATCHED':
         return { label: 'Shipped', color: 'bg-orange-100 text-orange-800', icon: Truck };
       case 'DELIVERED':
+      case 'COMPLETED':
+      case 'COMPLETE':
         return { label: 'Delivered', color: 'bg-green-100 text-green-800', icon: CheckCircle };
       case 'CANCELLED':
+      case 'CANCELED':
+      case 'VOID':
+      case 'REFUNDED':
+      case 'PARTIALLY_REFUNDED':
         return { label: 'Cancelled', color: 'bg-red-100 text-red-800', icon: XCircle };
       default:
-        return { label: status, color: 'bg-gray-100 text-gray-800', icon: Clock };
+        return { label: statusUpper.replace(/_/g, ' '), color: 'bg-gray-100 text-gray-800', icon: Clock };
     }
   };
 
   // Fetch orders function - extracted to be reusable
-  const fetchOrders = useCallback(async (showLoading = true) => {
+  const fetchOrders = useCallback(async (showLoading = true, filter: OrderFilterTab = activeFilter) => {
     if (!authLoading && user) {
       if (showLoading) setLoading(true);
       try {
-        // Get orders from backend API
-        const response = await getUserOrders(1, 50, true, true, true, true);
+        const statuses = getOrderStatusesForTab(filter);
+        const response = await getUserOrders(1, 50, statuses, true, true, true, true);
         
         // Handle the new API response structure: { statusCode, message, data: { orders, pagination } }
         let backendOrders = [];
@@ -153,7 +155,8 @@ const OrdersPageContent = () => {
                 typeof scheduledAtRaw === "string" && scheduledAtRaw.trim(),
               ));
 
-          const statusUpper = (order.status || '').toUpperCase();
+          const normalizedStatus = getOrderStatusFromPayload(order);
+          const statusUpper = normalizedStatus;
           const driver = mapDriver(order);
           const rider = mapRider(order);
           if ((statusUpper === 'SHIPPED' || statusUpper === 'DELIVERED') && (order.rider ?? order.driver ?? order.driver_info ?? order.assigned_driver)) {
@@ -194,7 +197,7 @@ const OrdersPageContent = () => {
             customerName: user.displayName || "Customer",
             email: user.email || "",
             totalAmount: order.total_amount || 0,
-            status: order.status?.toUpperCase() || "PENDING",
+            status: normalizedStatus,
             createdAt: order.created_at || new Date().toISOString(),
             userId: order.user_id || user.uid,
             items: itemsWithDetails,
@@ -229,7 +232,7 @@ const OrdersPageContent = () => {
       setLoading(false);
       router.push("/login?returnUrl=" + encodeURIComponent("/orders"));
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, router, activeFilter]);
 
   // Handle payment success redirect (separate effect to avoid re-triggering)
   useEffect(() => {
@@ -285,20 +288,15 @@ const OrdersPageContent = () => {
     }
   }, [searchParams, cartStore, fetchOrders]);
 
-  // Fetch orders on mount and when user/auth changes
+  // Fetch orders when auth is ready or when the status tab changes (API filters via `status` query)
   useEffect(() => {
-    fetchOrders();
-  }, [user, authLoading, fetchOrders]);
+    fetchOrders(true, activeFilter);
+  }, [user, authLoading, activeFilter, fetchOrders]);
 
   // Reorder handlers
   const handleReorderClick = (order: Order) => {
     setSelectedOrder(order);
     setShowReorderDialog(true);
-  };
-
-  const canCancelOrderAsCustomer = (status: string) => {
-    const s = String(status || "").toUpperCase();
-    return ["PENDING", "CONFIRMED", "PROCESSING", "PACKED"].includes(s);
   };
 
   const openCancelDialog = (order: Order) => {
@@ -312,7 +310,8 @@ const OrdersPageContent = () => {
     setCancelSubmitting(true);
     try {
       const authHeaders = await getAuthHeaders();
-      const response = await fetch(`/api/v1/orders/${cancelTargetOrder.id}/cancel`, {
+      const baseUrl = NEXT_PUBLIC_API_BASE_URL || API_BASE_URL;
+      const response = await fetch(`${baseUrl}/orders/${cancelTargetOrder.id}/cancel`, {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({
@@ -425,8 +424,6 @@ const OrdersPageContent = () => {
     );
   }
 
-  const filteredOrders = getFilteredOrders();
-
   return (
     <div>
       <Container className="py-4 sm:py-6 md:py-10">
@@ -475,9 +472,9 @@ const OrdersPageContent = () => {
           </div>
 
           {/* Orders List */}
-          {filteredOrders?.length ? (
+          {orders?.length ? (
             <div className="space-y-4">
-              {filteredOrders.map((order) => {
+              {orders.map((order) => {
                 const statusInfo = getStatusInfo(order.status);
                 const StatusIcon = statusInfo.icon;
                 

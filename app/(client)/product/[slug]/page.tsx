@@ -8,13 +8,17 @@ import FuturePricingDisplay from "@/components/FuturePricingDisplay";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
 import Image from "next/image";
-import { notFound } from "next/navigation";
+import { notFound, useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { LuStar, LuShare2 } from "react-icons/lu";
 import { FaEdit } from "react-icons/fa";
 import { FaArrowRight } from "react-icons/fa";
 import { Product } from "../../../../store";
-import { getProductById, getProductsWithPricing, getParentCategoryFromSubcategory, getCategories } from "@/lib/api";
+import { buildProductBreadcrumbItems } from "@/lib/product-breadcrumb";
+import {
+  getProductPath,
+  resolveProductSlugToProduct,
+} from "@/lib/product-slug";
 import ProductPageSkeleton from "@/components/ProductPageSkeleton";
 import Breadcrumb from "@/components/Breadcrumb";
 import SimilarProductsSection from "@/components/SimilarProductsSection";
@@ -30,8 +34,10 @@ import { Button } from "@/components/ui/button";
 import toast from "react-hot-toast";
 
 const ProductPage = ({ params }: { params: { slug: string } }) => {
+  const router = useRouter();
   const { user, loading: authLoading } = useAuth();
-  const { defaultAddress, isLocationLoading } = useLocation();
+  const { defaultAddress, isLocationLoading, selectedStore, deliveryType } =
+    useLocation();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -39,114 +45,45 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
   
   const { slug } = params;
 
-  // Fetch product data (works with or without authentication)
   useEffect(() => {
     const fetchProduct = async () => {
-      // Wait for auth to finish loading (but don't require user to be logged in)
       if (authLoading) return;
-      
-      // For location loading, only wait if user is logged in (non-logged-in users can view without location)
       if (user && isLocationLoading) return;
 
       try {
-        console.log("🔍 ProductPage - Fetching product...");
-        console.log("🔍 ProductPage - User authenticated:", !!user);
-        console.log("🔍 ProductPage - Product slug:", slug);
-        console.log("🔍 ProductPage - Default address:", defaultAddress);
-        
         setLoading(true);
         setError(null);
 
-        // Get latitude and longitude from default address (can be from localStorage for non-logged-in users)
         const latitude = defaultAddress?.latitude;
         const longitude = defaultAddress?.longitude;
+        const storeIds =
+          deliveryType === "pickup" && selectedStore?.id
+            ? [parseInt(String(selectedStore.id), 10)]
+            : undefined;
 
-        console.log("🔍 ProductPage - Using location:", { latitude, longitude });
-
-        // Use latitude and longitude for proper inventory lookup (no store IDs)
-        // If no location, fetch without location params (will show from all stores)
-        const foundProduct = await getProductById(
-          slug, // Product ID/slug
-          undefined, // No store IDs - let backend determine based on location
-          latitude, // User's latitude (or undefined if no location)
-          longitude // User's longitude (or undefined if no location)
-        );
+        const foundProduct = await resolveProductSlugToProduct(slug, {
+          latitude,
+          longitude,
+          storeIds,
+        });
 
         if (!foundProduct) {
-          console.log("❌ ProductPage - Product not found:", slug);
           setError("Product not found");
           return;
         }
 
-        console.log("✅ ProductPage - Found product:", {
-          id: foundProduct.id,
-          name: foundProduct.name,
-          pricing: foundProduct.pricing
-        });
-
         setProduct(foundProduct);
 
-        // Build breadcrumb from product's category data
-        if (foundProduct) {
-          try {
-            const breadcrumbs: { label: string; href?: string }[] = [];
-            
-            // If product has subcategory ID, get parent category and subcategory
-            if (foundProduct.ecommerce_subcategory_id) {
-              try {
-                // Get parent category from subcategory
-                const parentCategory = await getParentCategoryFromSubcategory(foundProduct.ecommerce_subcategory_id);
-                breadcrumbs.push({
-                  label: parentCategory.name,
-                  href: `/categories/${parentCategory.id}`
-                });
-                
-                // Get subcategory details
-                const allCategories = await getCategories(true, false);
-                const subcategory = allCategories.find((cat: any) => cat.id === foundProduct.ecommerce_subcategory_id);
-                if (subcategory) {
-                  breadcrumbs.push({
-                    label: subcategory.name,
-                    href: `/categories/${subcategory.id}`
-                  });
-                }
-              } catch (error) {
-                console.error("Error fetching category data:", error);
-                // If subcategory fetch fails, try to get parent category directly
-                if (foundProduct.ecommerce_category_id) {
-                  const allCategories = await getCategories(true, false);
-                  const category = allCategories.find((cat: any) => cat.id === foundProduct.ecommerce_category_id);
-                  if (category) {
-                    breadcrumbs.push({
-                      label: category.name,
-                      href: `/categories/${category.id}`
-                    });
-                  }
-                }
-              }
-            } else if (foundProduct.ecommerce_category_id) {
-              // If only parent category ID is available (no subcategory)
-              const allCategories = await getCategories(true, false);
-              const category = allCategories.find((cat: any) => cat.id === foundProduct.ecommerce_category_id);
-              if (category) {
-                breadcrumbs.push({
-                  label: category.name,
-                  href: `/categories/${category.id}`
-                });
-              }
-            }
-            
-            // Add product name as last item (no href)
-            breadcrumbs.push({
-              label: foundProduct.name
-            });
-            
-            setBreadcrumbItems(breadcrumbs);
-          } catch (error) {
-            console.error("Error building breadcrumb:", error);
-            // Set product name only if breadcrumb fetch fails
-            setBreadcrumbItems([{ label: foundProduct.name }]);
-          }
+        const canonicalPath = getProductPath(foundProduct);
+        if (canonicalPath !== `/product/${slug}`) {
+          router.replace(canonicalPath, { scroll: false });
+        }
+
+        try {
+          setBreadcrumbItems(await buildProductBreadcrumbItems(foundProduct));
+        } catch (error) {
+          console.error("Error building breadcrumb:", error);
+          setBreadcrumbItems([{ label: foundProduct.name }]);
         }
       } catch (error) {
         console.error("❌ ProductPage - Error fetching product:", error);
@@ -157,7 +94,16 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
     };
 
     fetchProduct();
-  }, [user, authLoading, slug, defaultAddress, isLocationLoading]);
+  }, [
+    user,
+    authLoading,
+    slug,
+    defaultAddress,
+    isLocationLoading,
+    deliveryType,
+    selectedStore,
+    router,
+  ]);
 
   // Debug logging when product is loaded
   useEffect(() => {

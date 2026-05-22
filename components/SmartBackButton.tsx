@@ -17,7 +17,12 @@ const SmartBackButton: React.FC<SmartBackButtonProps> = ({
   children 
 }) => {
   const router = useRouter();
-  const { lastVisitedCategory, lastVisitedIsDeals, restoreLastVisitedCategory } = useCategory();
+  const {
+    lastVisitedCategory,
+    lastVisitedIsDeals,
+    restoreLastVisitedCategory,
+    getCategoryUrlParam,
+  } = useCategory();
 
   const handleBackClick = () => {
     // Check if we have a last visited category
@@ -30,7 +35,8 @@ const SmartBackButton: React.FC<SmartBackButtonProps> = ({
       if (lastVisitedIsDeals) {
         url.searchParams.set('deals', 'true');
       } else if (lastVisitedCategory !== null) {
-        url.searchParams.set('category', lastVisitedCategory.toString());
+        const slug = getCategoryUrlParam(lastVisitedCategory);
+        url.searchParams.set("category", slug ?? lastVisitedCategory.toString());
       }
       
       router.push(url.toString());
