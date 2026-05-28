@@ -44,7 +44,6 @@ const CartPage = () => {
   const activeCarts = cartStore.carts.filter(cart => {
     // Show only carts with status 'active' or no status (legacy carts)
     const isActive = cart.status === 'active' || !cart.status;
-    console.log(`Cart ${cart.id}: status="${cart.status}", isActive=${isActive}`);
     return isActive;
   });
 
@@ -130,10 +129,8 @@ const CartPage = () => {
 
     try {
       setLoadingProducts(prev => ({ ...prev, [productId]: true }));
-      console.log(`🔍 Fetching product details for ID: ${productId}`);
       
       const product = await getProductById(productId.toString());
-      console.log(`✅ Product details fetched for ID ${productId}:`, product);
       
       setProductDetails(prev => ({
         ...prev,
@@ -235,7 +232,6 @@ const CartPage = () => {
         {!isLoading && activeCarts.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
             {activeCarts.map((cart) => {
-              console.log(`Rendering cart ${cart.id}: name="${cart.name}", status="${cart.status}"`);
               return (
               <Card key={cart.id} className={`relative ${cart.isActive ? 'ring-2 ring-blue-500' : ''}`}>
                 <CardHeader className="pb-2 sm:pb-3">

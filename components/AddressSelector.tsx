@@ -52,7 +52,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   
   // Debug: Log when predictions change
   useEffect(() => {
-    console.log('AddressSelector - Predictions updated:', predictions.length, predictions);
   }, [predictions]);
 
   // Pre-fill form when editing an address
@@ -84,7 +83,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   // Debug Google Maps loading
   useEffect(() => {
-    console.log('AddressSelector - Google Maps loading state:', { isLoaded, loadError });
     if (loadError) {
       console.error('AddressSelector - Google Maps load error:', loadError);
     }
@@ -92,14 +90,12 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   useEffect(() => {
     if (isLoaded && typeof window !== 'undefined' && window.google && window.google.maps) {
-      console.log('AddressSelector - Initializing Google Maps services...');
       const geocoder = new window.google.maps.Geocoder();
       
       // Initialize AutocompleteService (standard Places API)
       if (window.google.maps.places && window.google.maps.places.AutocompleteService) {
         try {
           const autocomplete = new window.google.maps.places.AutocompleteService();
-          console.log('AddressSelector - AutocompleteService initialized successfully');
           setAutocompleteService(autocomplete);
         } catch (error) {
           console.error('AddressSelector - Error creating AutocompleteService:', error);
@@ -109,7 +105,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
       }
       
       setGeocoderService(geocoder);
-      console.log('AddressSelector - Geocoder initialized successfully');
     }
   }, [isLoaded]);
 
@@ -129,16 +124,13 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
             types: ['establishment'] // Only search for named places/locations, not street addresses
           },
           (predictions: any, status: any) => {
-            console.log('AddressSelector - AutocompleteService response:', { status, predictionsCount: predictions?.length, predictions });
             // Check both constant and string for compatibility
             const isOK = status === window.google.maps.places.PlacesServiceStatus.OK || status === "OK";
             const isZeroResults = status === window.google.maps.places.PlacesServiceStatus.ZERO_RESULTS || status === "ZERO_RESULTS";
             
             if (isOK && predictions && predictions.length > 0) {
-              console.log('AddressSelector - Setting predictions:', predictions.length);
               setPredictions(predictions);
             } else if (isZeroResults) {
-              console.log('AddressSelector - Zero results');
               setPredictions([]);
             } else {
               console.error("AddressSelector - AutocompleteService failed:", status);
@@ -149,7 +141,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         return;
       }
       
-      console.log('AddressSelector - AutocompleteService not available, using fallback');
 
       
       // Fallback: Use Geocoder only if AutocompleteService is not available
@@ -157,7 +148,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         geocoderService.geocode(
           { address: input.trim() },
           (results: any, status: any) => {
-            console.log('AddressSelector - Geocoder response:', { status, resultsCount: results?.length });
             if (status === window.google.maps.GeocoderStatus.OK && results && results.length > 0) {
               const predictions = results.slice(0, 5).map((result: any, index: number) => ({
                 place_id: `geocoder_${index}`,
@@ -182,7 +172,6 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
 
   const handleSearchInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const input = e.target.value;
-    console.log('AddressSelector - Input changed:', input);
     setSearchQuery(input);
     fetchPredictions(input);
   };

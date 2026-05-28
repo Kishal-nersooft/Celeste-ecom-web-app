@@ -128,13 +128,6 @@ const ProductRow = ({
   );
 
   // Debug logging for ProductRow
-  console.log(`🛍️ ProductRow - ${categoryName}:`, {
-    productsCount: products.length,
-    visibleProductsCount: visibleProducts.length,
-    loading,
-    isLoaded,
-    categoryId
-  });
 
   const handleSeeAllClick = () => {
     if (typeof window !== 'undefined') {
@@ -160,7 +153,6 @@ const ProductRow = ({
       // For "all" category, redirect to a special route or handle differently
       if (categoryId === "all") {
         // You might want to create a special route for "all products" or handle this differently
-        console.log("See all products clicked - all products already displayed");
         return;
       }
 

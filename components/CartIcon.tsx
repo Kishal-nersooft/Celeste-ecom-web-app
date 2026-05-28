@@ -17,7 +17,6 @@ const CartIcon = () => {
   return (
     <div 
       className="relative flex items-center justify-center w-12 h-12 border border-gray-200 rounded-md shadow-md hover:shadow-none hoverEffect bg-white cursor-pointer"
-      onClick={() => console.log("CartIcon clicked!")}
     >
       <MdOutlineShoppingCart className="text-2xl text-darkBlue" />
       

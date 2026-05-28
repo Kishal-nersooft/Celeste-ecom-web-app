@@ -125,10 +125,8 @@ const CheckoutPage = () => {
       });
 
       if (itemsNeedingData.length > 0) {
-        console.log('🔍 Cart items need complete data, syncing cart...');
         try {
           await cartStore.switchCart(cartStore.cartId);
-          console.log('✅ Cart synced, items should now have complete data');
         } catch (error) {
           console.error('❌ Failed to sync cart:', error);
         }
@@ -151,7 +149,6 @@ const CheckoutPage = () => {
 
     try {
       setLoadingPreview(true);
-      console.log('🔍 Fetching preview data for cart:', cartStore.cartId);
       
       // Prepare location data based on order type
       const locationData = selectedOrderType === 'pickup' 
@@ -176,20 +173,17 @@ const CheckoutPage = () => {
       });
 
       setPreviewData(response);
-      console.log('✅ Preview data received:', response);
     } catch (error: any) {
       console.error('❌ Failed to fetch preview data:', error);
       
       // Handle authentication errors specifically
       if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
-        console.log('🔄 Authentication required, redirecting to login');
         router.push("/login?returnUrl=" + encodeURIComponent("/checkout"));
         return;
       }
       
       // Handle address validation errors
       if (error.message?.includes('422') && error.message?.includes('Address') && error.message?.includes('not found')) {
-        console.log('🔄 Address validation error detected, clearing stale data');
         handleAddressValidationError();
         toast.error('Address data has been cleared. Please select your address again.');
         return;
@@ -627,9 +621,7 @@ const CheckoutPage = () => {
           : { is_scheduled: false }),
       };
 
-      console.log('📤 Creating checkout session:', checkoutData);
       const checkoutResponse = await createOrder(checkoutData);
-      console.log('✅ Checkout session created:', checkoutResponse);
 
       // Extract payment info from response
       const paymentInfo =
@@ -646,13 +638,6 @@ const CheckoutPage = () => {
         payStatus === 'needs_3ds' ||
         (typeof paymentInfo.three_ds_html === 'string' && paymentInfo.three_ds_html.length > 0);
 
-      console.log('💳 Payment info:', {
-        session_id: paymentInfo.session_id,
-        payment_reference: paymentInfo.payment_reference,
-        merchant_id: paymentInfo.merchant_id,
-        status: paymentInfo.status,
-        three_ds: threeDsChallenge,
-      });
 
       // Store payment session data for callback verification (when session exists)
       if (typeof window !== 'undefined' && paymentInfo.session_id) {

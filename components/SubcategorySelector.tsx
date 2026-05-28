@@ -3,6 +3,7 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import { Category } from "./Categories";
 import Image from "next/image";
+import { getSubcategoryImageUrl } from "@/lib/subcategory-image";
 
 interface Props {
   subcategories: Category[];
@@ -19,82 +20,6 @@ const SubcategorySelector = ({
   parentCategoryName,
   currentSubcategoryId
 }: Props) => {
-  const normalizeImageUrl = (url: string): string => {
-    // Normalize Google Drive image links to the "drive.google.com/uc?export=view&id=..."
-    // format so they work with Next's image loader.
-    try {
-      const u = new URL(url);
-      const id = u.searchParams.get("id");
-
-      if (!id) return url;
-
-      // If it's already drive.google.com/uc, just ensure export=view.
-      if (u.hostname === "drive.google.com") {
-        // Most inputs are: /uc?export=view&id=...
-        return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(
-          id
-        )}`;
-      }
-
-      // If it's drive.usercontent.google.com/download?...id=..., convert back.
-      if (u.hostname === "drive.usercontent.google.com") {
-        return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(
-          id
-        )}`;
-      }
-    } catch {
-      // ignore parsing errors
-    }
-    return url;
-  };
-
-  const getSubcategoryImageUrl = (subcategory: any): string | null => {
-    if (!subcategory) return null;
-
-    const candidates: Array<any> = [
-      subcategory.image_url,
-      subcategory.imageUrl,
-      subcategory.image,
-      // Some backends use different naming for web/mobile variants
-      subcategory.image_url_web,
-      subcategory.image_url_mobile,
-    ];
-
-    for (const c of candidates) {
-      if (typeof c === "string" && c.trim().length > 0)
-        return normalizeImageUrl(c);
-    }
-
-    const arrayKeys = [
-      "image_urls",
-      "imageUrls",
-      "image_urls_web",
-      "image_urls_mobile",
-    ];
-
-    for (const key of arrayKeys) {
-      const arr = subcategory?.[key];
-      if (!Array.isArray(arr) || arr.length === 0) continue;
-
-      const first = arr[0];
-      if (typeof first === "string" && first.trim().length > 0) return first;
-      if (first && typeof first === "object") {
-        const objCandidates = [
-          (first as any).image_url,
-          (first as any).imageUrl,
-          (first as any).url,
-          (first as any).image,
-        ];
-        for (const oc of objCandidates) {
-          if (typeof oc === "string" && oc.trim().length > 0)
-            return normalizeImageUrl(oc);
-        }
-      }
-    }
-
-    return null;
-  };
-
   // Function to split long names intelligently
   const formatName = (name: string, maxLength: number = 10) => {
     if (name.length <= maxLength) return name;

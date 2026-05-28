@@ -31,7 +31,6 @@ export const useOptimizedCart = () => {
     updateTimeoutRef.current = setTimeout(() => {
       if (lastUpdateRef.current === now) {
         // This was the last update, no more pending
-        console.log('📦 Cart update completed');
       }
     }, 100);
   }, [addItem]);
@@ -52,7 +51,6 @@ export const useOptimizedCart = () => {
     updateTimeoutRef.current = setTimeout(() => {
       if (lastUpdateRef.current === now) {
         // This was the last update, no more pending
-        console.log('📦 Cart update completed');
       }
     }, 100);
   }, [removeItem]);

@@ -32,15 +32,12 @@ const RecentItemsSection = () => {
           // For pickup mode, we don't send location (store_id is handled by backend based on auth)
           latitude = undefined;
           longitude = undefined;
-          console.log("🛍️ RecentItems: Using pickup mode");
         } else {
           // For delivery mode, use location coordinates
           if (defaultAddress?.latitude && defaultAddress?.longitude) {
             latitude = parseFloat(defaultAddress.latitude);
             longitude = parseFloat(defaultAddress.longitude);
-            console.log("🚚 RecentItems: Using delivery mode with location:", { latitude, longitude });
           } else {
-            console.log("⚠️ RecentItems: Delivery mode but no location available yet");
             // Don't fetch if we don't have location for delivery mode
             setLoading(false);
             return;
@@ -48,7 +45,6 @@ const RecentItemsSection = () => {
         }
 
         // Fetch recent products (limit 20 for the section)
-        console.log("🔄 RecentItems: Fetching recent products...");
         const products = await getRecentProducts(
           20, // limit
           true, // includePricing
@@ -59,7 +55,6 @@ const RecentItemsSection = () => {
           longitude // longitude (for delivery)
         );
         
-        console.log("✅ RecentItems: Received products:", products?.length || 0);
         
         if (Array.isArray(products) && products.length > 0) {
           setRecentProducts(products);

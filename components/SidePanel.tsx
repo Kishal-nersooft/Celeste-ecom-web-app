@@ -51,7 +51,7 @@ export const SidePanel = () => {
         <SheetHeader className="mb-6 sm:mb-8">
           <SheetTitle>
             <Link href="/">
-              <Image src={logo} alt="Shop Logo" width={90} height={36} className="sm:w-[100px] sm:h-[40px]" />
+              <Image src={logo} alt="Shop Logo" width={90} height={36} className="h-auto w-auto max-w-[100px]" />
             </Link>
           </SheetTitle>
         </SheetHeader>

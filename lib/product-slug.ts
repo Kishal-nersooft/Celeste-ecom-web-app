@@ -48,7 +48,7 @@ async function fetchProductByApiKey(
   apiKey: string,
   options?: ResolveOptions
 ): Promise<Product | null> {
-  const { getProductById } = await import("./api");
+  const { getProductById, apiLog } = await import("./api");
   const { latitude, longitude, storeIds } = options ?? {};
 
   const attempts: Array<() => Promise<Product | null>> = [];
@@ -83,7 +83,21 @@ async function fetchProductByApiKey(
 
   for (const attempt of attempts) {
     const product = await attempt();
-    if (product?.id) return product;
+    if (product?.id) {
+      apiLog(
+        `GET /products/${product.id}`,
+        `200 · product detail`,
+        {
+          slug: apiKey,
+          product,
+          pricing: product.pricing,
+          image_urls: product.image_urls,
+          inventory: product.inventory,
+        },
+        { dedupeKey: `product-detail|${product.id}` }
+      );
+      return product;
+    }
   }
 
   return null;

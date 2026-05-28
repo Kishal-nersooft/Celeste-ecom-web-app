@@ -105,26 +105,6 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
     router,
   ]);
 
-  // Debug logging when product is loaded
-  useEffect(() => {
-    if (product) {
-      console.log("=== PRODUCT PAGE DEBUG ===");
-      console.log("Product ID/Slug:", slug);
-      console.log("Full Product Data:", JSON.stringify(product, null, 2));
-      console.log("Pricing Data:", product?.pricing);
-      console.log("Discount Applied:", product?.pricing?.discount_applied);
-      console.log("Discount Percentage:", product?.pricing?.discount_percentage);
-      console.log("Final Price:", product?.pricing?.final_price);
-      console.log("Base Price:", product?.pricing?.base_price);
-      console.log("Legacy Price:", product?.price);
-      // console.log("Inventory Data:", product?.inventory); // Inventory not available in Product type
-      console.log("Image URLs:", product?.image_urls);
-      console.log("Product Name:", product?.name);
-      console.log("Product Brand:", product?.brand);
-      console.log("========================");
-    }
-  }, [product, slug]);
-
   // Handle loading and error states
   // Only wait for location loading if user is logged in
   if (authLoading || (user && isLocationLoading) || loading) {

@@ -7,6 +7,7 @@ import { getParentCategories } from "../lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCategory } from "../contexts/CategoryContext";
 import { getCategoryIconPath } from "@/lib/category-icons-config";
+import { normalizeImageUrl } from "@/lib/normalize-image-url";
 
 // New Category interface matching backend schema
 export interface Category {
@@ -195,7 +196,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                       if (category.image_url) {
                         return (
                           <Image
-                            src={category.image_url as string}
+                            src={normalizeImageUrl(category.image_url as string)}
                             alt={category.name}
                             width={30}
                             height={30}

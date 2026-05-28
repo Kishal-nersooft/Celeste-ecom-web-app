@@ -5,8 +5,6 @@ import { API_BASE_URL } from './api';
 // This function is now disabled to prevent excessive API calls
 // Use only for specific use cases where individual pricing is absolutely necessary
 export async function getProductPricing(productId: number, tierId: number = 1, quantity: number = 1) {
-  console.log(`⚠️ Individual product pricing disabled to prevent excessive API calls`);
-  console.log(`📦 Product ID: ${productId}, Tier: ${tierId}, Quantity: ${quantity}`);
   
   // Return null to indicate pricing is not available
   // This prevents the excessive API calls

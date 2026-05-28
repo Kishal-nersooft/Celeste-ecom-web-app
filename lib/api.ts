@@ -9,6 +9,9 @@ export const NEXT_PUBLIC_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? 
 
 // Import product caching functions
 import { getCachedProducts, setCachedProducts, hasCachedProducts } from './product-cache';
+import { apiLog, devLog } from './debug-log';
+
+export { apiLog, apiError, devLog, resetApiLogDedupe, isDebugEnabled } from './debug-log';
 
 // Helper function to get the appropriate base URL for server vs client
 function getBaseUrl() {
@@ -148,7 +151,6 @@ export async function getUserAddresses() {
     return responseData;
   }
   // Fallback: return empty array if unexpected format
-  console.warn('Unexpected response format from getUserAddresses:', responseData);
   return [];
 }
 
@@ -181,7 +183,6 @@ export async function createUserAddress(addressData: {
     }
     if (response.status === 500) {
       // Try to register user first, then retry address creation
-      console.log('🔄 Attempting user registration before address creation...');
       try {
         const { getAuth } = await import('firebase/auth');
         const auth = getAuth();
@@ -190,7 +191,6 @@ export async function createUserAddress(addressData: {
         if (user) {
           const idToken = await user.getIdToken();
           await registerUser(idToken, user.displayName || 'User');
-          console.log('✅ User registered successfully, retrying address creation...');
           
           // Retry address creation
           const retryResponse = await fetch(`${getBaseUrl()}/users/me/addresses`, {
@@ -206,7 +206,6 @@ export async function createUserAddress(addressData: {
           }
         }
       } catch (regError) {
-        console.log('❌ User registration failed:', regError);
       }
       
       throw new Error('Backend service temporarily unavailable. Please try again later.');
@@ -241,7 +240,6 @@ export async function registerUser(idToken: string, name: string) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    console.log('❌ User registration error response:', errorText);
     
     if (response.status === 422) {
       throw new Error('Invalid registration data');
@@ -453,25 +451,17 @@ export async function getCategories(includeSubcategories: boolean = true, parent
     }
   });
   
-  // Only log once per session
-  if (!(window as any).categoriesLogged) {
-    console.log("getCategories response status:", response.status);
-    console.log("getCategories response ok:", response.ok);
-    (window as any).categoriesLogged = true;
-  }
   
   if (!response.ok) {
     throw new Error("Failed to fetch categories");
   }
   const data = await response.json();
-  
-  // Only log once per session
-  if (!(window as any).categoriesDataLogged) {
-    console.log("getCategories parsed data:", data);
-    (window as any).categoriesDataLogged = true;
-  }
-  
-  return data.data || [];
+  const categories = data.data || [];
+  apiLog('GET /categories/', `${response.status} · ${categories.length} categories`, {
+    url: `${getBaseUrl()}/categories/`,
+    categories,
+  });
+  return categories;
 }
 
 export async function getProducts(
@@ -504,7 +494,10 @@ export async function getProducts(
   if (typeof window !== 'undefined') {
     const cachedProducts = getCachedProducts(cacheParams);
     if (cachedProducts) {
-      console.log("📦 API - Using cached products:", cachedProducts.length);
+      devLog('GET /products/ (cache)', {
+        categoryIds,
+        count: cachedProducts.length,
+      });
       return cachedProducts;
     }
   }
@@ -536,7 +529,6 @@ export async function getProducts(
   // Backend canonicalizes collection endpoints with a trailing slash (e.g. `/products/`).
   // Avoid redirects because redirects break CORS preflight in browsers.
   const url = `${getBaseUrl()}/products/?${params.toString()}`;
-  console.log("🔍 API - Fetching products from server:", url.split('?')[0]);
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
     method: 'GET',
@@ -548,12 +540,6 @@ export async function getProducts(
       ...authHeaders
     }
   });
-  // Only log once per session
-  if (!(window as any).productsLogged) {
-    console.log("getProducts response status:", response.status);
-    console.log("getProducts response ok:", response.ok);
-    (window as any).productsLogged = true;
-  }
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -562,11 +548,6 @@ export async function getProducts(
   }
   const data = await response.json();
   
-  // Only log once per session
-  if (!(window as any).productsDataLogged) {
-    console.log("getProducts parsed data:", data);
-    (window as any).productsDataLogged = true;
-  }
   
   let products = data.data?.products || [];
   
@@ -575,15 +556,11 @@ export async function getProducts(
     setCachedProducts(cacheParams, products);
   }
   
-  // Debug: Log summary of products with discounts
-  const discountedCount = products.filter((p: any) => p.pricing && p.pricing.discount_applied > 0).length;
-  console.log(`📦 Fetched ${products.length} products (${discountedCount} with discounts)`);
-
-  
-  // Note: The backend API should return pricing data with include_pricing=true
-  // If pricing is null, the backend needs to be configured to return pricing data
-  // We don't make individual API calls for each product - that's inefficient
-  
+  apiLog('GET /products/', `${response.status} · ${products.length} products`, {
+    url: url.split('?')[0],
+    params: Object.fromEntries(params),
+    products,
+  });
   return products;
 }
 
@@ -764,15 +741,7 @@ export async function getProductById(
   
   const url = `${getBaseUrl()}/products/${productId}?${params.toString()}`;
 
-  if (!quiet) {
-    console.log('🔍 getProductById - Requesting URL:', url);
-    console.log('🔍 getProductById - Parameters:', params.toString());
-  }
-
   const authHeaders = await getAuthHeaders();
-  if (!quiet) {
-    console.log('🔍 getProductById - Auth headers:', authHeaders);
-  }
 
   const response = await fetch(url, {
     method: 'GET',
@@ -786,11 +755,6 @@ export async function getProductById(
       ...(authHeaders.Authorization && { Authorization: authHeaders.Authorization })
     }
   });
-  
-  if (!quiet) {
-    console.log('🔍 getProductById - Response status:', response.status);
-    console.log('🔍 getProductById - Response ok:', response.ok);
-  }
 
   if (!response.ok) {
     if (!quiet) {
@@ -801,17 +765,23 @@ export async function getProductById(
   }
 
   const data = await response.json();
-  let product = data.data;
+  const product = data.data;
 
   if (!quiet) {
-    console.log('🔍 getProductById - Raw API response:', JSON.stringify(data, null, 2));
-    console.log('🔍 getProductById - Product data:', JSON.stringify(product, null, 2));
-    console.log('🔍 getProductById - Pricing data:', product?.pricing);
+    apiLog(
+      `GET /products/${productId}`,
+      `${response.status} · 1 product`,
+      {
+        url: url.split('?')[0],
+        product,
+        pricing: product?.pricing,
+        image_urls: product?.image_urls,
+        inventory: product?.inventory,
+      },
+      { dedupeKey: `product-detail|${productId}` }
+    );
   }
-  
-  // Note: The backend API should return pricing data with include_pricing=true
-  // If pricing is null, the backend needs to be configured to return pricing data
-  
+
   return product;
 }
 
@@ -842,8 +812,6 @@ export async function getStores(latitude?: number, longitude?: number, radius?: 
     }
   });
   
-  console.log("getStores response status:", response.status);
-  console.log("getStores response ok:", response.ok);
   
   if (!response.ok) {
     const errorText = await response.text();
@@ -852,7 +820,6 @@ export async function getStores(latitude?: number, longitude?: number, radius?: 
   }
   
   const data = await response.json();
-  console.log("getStores parsed data:", data);
   return data.data?.stores || [];
 }
 
@@ -968,7 +935,6 @@ export async function getAllProducts(
   if (typeof window !== 'undefined') {
     const cachedProducts = getCachedProducts(cacheParams);
     if (cachedProducts) {
-      console.log("📦 API - Using cached all products:", cachedProducts.length);
       return cachedProducts;
     }
   }
@@ -1007,7 +973,6 @@ export async function getAllProducts(
     }
     
     const url = `${getBaseUrl()}/products/?${params.toString()}`;
-    console.log("Fetching products from URL:", url);
     
     const authHeaders = await getAuthHeaders();
     const response = await fetch(url, {
@@ -1037,10 +1002,8 @@ export async function getAllProducts(
     hasMore = pagination?.has_more || false;
     cursor = pagination?.next_cursor || null;
     
-    console.log(`Fetched ${products.length} products, total: ${allProducts.length}, hasMore: ${hasMore}`);
   }
   
-  console.log(`getAllProducts - Total products fetched: ${allProducts.length}`);
   
   // Cache the results (only on client side)
   if (typeof window !== 'undefined') {
@@ -1065,7 +1028,6 @@ export async function getProductsWithPricing(
   latitude?: number,
   longitude?: number
 ) {
-  console.log(`🔄 Getting products with pricing (onlyDiscounted: ${onlyDiscounted})...`);
   
   // Use the main getProducts function with include_pricing=true
   // The backend API should return pricing data when include_pricing=true
@@ -1082,7 +1044,6 @@ export async function getProductsWithPricing(
     longitude
   );
 
-  console.log(`📦 Found ${products.length} products from backend`);
   
   // Only calculate pricing for fetched products (not all products)
   const productsWithPricing = products.map((product: any) => ({
@@ -1096,7 +1057,6 @@ export async function getProductsWithPricing(
     }
   }));
   
-  console.log(`📊 Products with pricing: ${productsWithPricing.length}`);
   return productsWithPricing;
 }
 
@@ -1116,7 +1076,6 @@ export async function getPopularProducts(
   latitude?: number,
   longitude?: number
 ) {
-  console.log(`🔥 Getting popular products (mode: ${mode})...`);
   
   const params = new URLSearchParams();
   params.append('mode', mode);
@@ -1147,7 +1106,6 @@ export async function getPopularProducts(
   }
   
   const url = `${getBaseUrl()}/products/popular?${params.toString()}`;
-  console.log("🔍 API - Fetching popular products from:", url.split('?')[0]);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1168,17 +1126,7 @@ export async function getPopularProducts(
   }
   
   const data = await response.json();
-  
-  // Log the full response structure for debugging
-  console.log("📦 Popular products API response structure:", {
-    hasProducts: !!data.products,
-    hasDataProducts: !!data.data?.products,
-    hasData: !!data.data,
-    keys: Object.keys(data),
-    responseSample: JSON.stringify(data).substring(0, 200)
-  });
-  
-  // Handle different response structures
+
   let products: any[] = [];
   if (data.products && Array.isArray(data.products)) {
     products = data.products;
@@ -1187,15 +1135,7 @@ export async function getPopularProducts(
   } else if (Array.isArray(data)) {
     products = data;
   }
-  
-  console.log(`✅ Found ${products.length} popular products (mode: ${mode})`);
-  
-  if (products.length === 0) {
-    console.warn("⚠️ No products returned for mode:", mode);
-    console.warn("Response data:", JSON.stringify(data).substring(0, 500));
-  }
-  
-  // Ensure products have pricing structure
+
   const productsWithPricing = products.map((product: any) => ({
     ...product,
     pricing: product.pricing || {
@@ -1206,7 +1146,14 @@ export async function getPopularProducts(
       applied_price_lists: []
     }
   }));
-  
+
+  apiLog('GET /products/popular', `${response.status} · ${productsWithPricing.length} products · ${mode}`, {
+    url: url.split('?')[0],
+    mode,
+    params: Object.fromEntries(params),
+    products: productsWithPricing,
+  });
+
   return productsWithPricing;
 }
 
@@ -1220,7 +1167,6 @@ export async function getRecentProducts(
   latitude?: number,
   longitude?: number
 ) {
-  console.log(`🔄 Getting recent products...`);
   
   const params = new URLSearchParams();
   params.append('limit', limit.toString());
@@ -1235,7 +1181,6 @@ export async function getRecentProducts(
   }
   
   const url = `${getBaseUrl()}/products/recents?${params.toString()}`;
-  console.log("🔍 API - Fetching recent products from:", url.split('?')[0]);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1256,49 +1201,18 @@ export async function getRecentProducts(
   }
   
   const data = await response.json();
-  
-  // Log the full response structure for debugging
-  console.log("📦 Recent products API response structure:", {
-    isArray: Array.isArray(data),
-    keys: Array.isArray(data) ? 'array' : Object.keys(data),
-    responseSample: JSON.stringify(data).substring(0, 200)
-  });
-  
-  // Handle different response structures
-  // API returns: {statusCode: 200, message: "Success", data: [...]}
+
   let products: any[] = [];
   if (Array.isArray(data)) {
     products = data;
   } else if (data.data && Array.isArray(data.data)) {
-    // Response structure: {statusCode, message, data: [...]} - products are directly in data.data array
     products = data.data;
   } else if (data.products && Array.isArray(data.products)) {
     products = data.products;
   } else if (data.data?.products && Array.isArray(data.data.products)) {
     products = data.data.products;
   }
-  
-  console.log(`✅ Found ${products.length} recent products`);
-  
-  if (products.length === 0) {
-    console.warn("⚠️ No recent products returned");
-    console.warn("Response data structure:", {
-      isArray: Array.isArray(data),
-      hasData: !!data.data,
-      dataIsArray: Array.isArray(data.data),
-      dataLength: Array.isArray(data.data) ? data.data.length : 'N/A',
-      keys: Object.keys(data)
-    });
-  }
-  
-  console.log(`✅ Found ${products.length} recent products`);
-  
-  if (products.length === 0) {
-    console.warn("⚠️ No recent products returned");
-    console.warn("Response data:", JSON.stringify(data).substring(0, 500));
-  }
-  
-  // Ensure products have pricing structure
+
   const productsWithPricing = products.map((product: any) => ({
     ...product,
     pricing: product.pricing || {
@@ -1309,7 +1223,23 @@ export async function getRecentProducts(
       applied_price_lists: []
     }
   }));
-  
+
+  apiLog(
+    'GET /products/recents',
+    `${response.status} · ${productsWithPricing.length} products`,
+    {
+      url: url.split('?')[0],
+      params: Object.fromEntries(params),
+      products: productsWithPricing,
+      productSummary: productsWithPricing.map((p) => ({
+        id: p.id,
+        name: p.name,
+        ref: p.ref,
+      })),
+    },
+    { dedupeKey: `products-recents|${productsWithPricing.length}` }
+  );
+
   return productsWithPricing;
 }
 
@@ -1326,7 +1256,6 @@ export async function getSimilarProducts(
   longitude?: number,
   quantity: number = 1
 ) {
-  console.log(`🔄 Getting similar products for product ID: ${productId}...`);
   
   const params = new URLSearchParams();
   params.append('limit', limit.toString());
@@ -1349,7 +1278,6 @@ export async function getSimilarProducts(
   }
   
   const url = `${getBaseUrl()}/products/${productId}/similar?${params.toString()}`;
-  console.log("🔍 API - Fetching similar products from:", url.split('?')[0]);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1370,15 +1298,7 @@ export async function getSimilarProducts(
   }
   
   const data = await response.json();
-  
-  // Log the full response structure for debugging
-  console.log("📦 Similar products API response structure:", {
-    isArray: Array.isArray(data),
-    keys: Array.isArray(data) ? 'array' : Object.keys(data),
-    responseSample: JSON.stringify(data).substring(0, 200)
-  });
-  
-  // Handle different response structures
+
   let products: any[] = [];
   if (Array.isArray(data)) {
     products = data;
@@ -1389,14 +1309,7 @@ export async function getSimilarProducts(
   } else if (data.data?.products && Array.isArray(data.data.products)) {
     products = data.data.products;
   }
-  
-  console.log(`✅ Found ${products.length} similar products`);
-  
-  if (products.length === 0) {
-    console.warn("⚠️ No similar products returned");
-  }
-  
-  // Ensure products have pricing structure
+
   const productsWithPricing = products.map((product: any) => ({
     ...product,
     pricing: product.pricing || {
@@ -1407,7 +1320,24 @@ export async function getSimilarProducts(
       applied_price_lists: []
     }
   }));
-  
+
+  apiLog(
+    `GET /products/${productId}/similar`,
+    `${response.status} · ${productsWithPricing.length} products`,
+    {
+      url: url.split('?')[0],
+      productId,
+      products: productsWithPricing,
+      productSummary: productsWithPricing.map((p) => ({
+        id: p.id,
+        name: p.name,
+        ref: p.ref,
+        final_price: p.final_price ?? p.pricing?.final_price,
+      })),
+    },
+    { dedupeKey: `product-similar|${productId}|${productsWithPricing.length}` }
+  );
+
   return productsWithPricing;
 }
 
@@ -1417,7 +1347,6 @@ export async function getDiscountedProductsOptimized(
   storeIds?: number[],
   cursor?: string | null
 ) {
-  console.log(`🎯 Getting discounted products (using backend filtering)...`);
   
   // Use backend's only_discounted=true parameter for fast filtering
   const products = await getProducts(
@@ -1431,7 +1360,6 @@ export async function getDiscountedProductsOptimized(
     storeIds
   );
 
-  console.log(`✅ Found ${products.length} discounted products from backend`);
   
   // Only calculate pricing for fetched products (not all products)
   const productsWithPricing = products.map((product: any) => ({
@@ -1479,7 +1407,6 @@ export async function getProductsWithCursorPagination(
   }
   
   const url = `${getBaseUrl()}/products/?${params.toString()}`;
-  console.log("🔍 API - Fetching products with cursor pagination:", url.split('?')[0]);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1561,8 +1488,6 @@ export async function getProductsByParentCategoryWithPagination(
 // This function is now disabled to prevent excessive API calls
 // Instead, we use basic pricing structure from product data
 async function enrichProductsWithIndividualPricing(products: any[], tierId: number = 1) {
-  console.log(`⚠️ Individual pricing enrichment disabled to prevent excessive API calls`);
-  console.log(`📦 Using basic pricing structure for ${products.length} products`);
   
   // Return products with basic pricing structure instead of making individual calls
   return products.map((product: any) => ({
@@ -1581,8 +1506,6 @@ async function enrichProductsWithIndividualPricing(products: any[], tierId: numb
 // This function is now disabled to prevent excessive API calls
 // Use only for specific use cases where individual pricing is absolutely necessary
 async function getProductPricing(productId: number, tierId: number = 1, quantity: number = 1) {
-  console.log(`⚠️ Individual product pricing disabled to prevent excessive API calls`);
-  console.log(`📦 Product ID: ${productId}, Tier: ${tierId}, Quantity: ${quantity}`);
   
   // Return null to indicate pricing is not available
   // This prevents the excessive API calls
@@ -1629,7 +1552,6 @@ export async function createCart(cartData: {
   name: string;
   description?: string;
 }) {
-  console.log('🛒 Creating cart with data:', cartData);
   const authHeaders = await getAuthHeaders();
   const response = await fetch(`${getBaseUrl()}/users/me/carts`, {
     method: 'POST',
@@ -1779,24 +1701,20 @@ export async function updateCartItemQuantity(cartId: number, itemId: number, qua
 // Update cart item quantity by product ID (finds item ID first)
 export async function updateCartItemQuantityByProductId(cartId: number, productId: number, quantity: number) {
   try {
-    console.log(`🔍 updateCartItemQuantityByProductId called: cartId=${cartId}, productId=${productId}, quantity=${quantity}`);
     
     // First get cart details to find the item ID for this product
     const cartDetails = await getCartDetails(cartId);
     const cartData = cartDetails?.data || cartDetails;
     const items = cartData?.items || [];
     
-    console.log(`📦 Cart has ${items.length} items:`, items.map((i: any) => ({ id: i.id, product_id: i.product_id })));
     
     // Find the item with the matching product ID
     const cartItem = items.find((item: any) => item.product_id === productId);
     
     if (!cartItem) {
-      console.log(`❌ Product ${productId} not found in cart ${cartId}`);
       return null; // Item not in cart
     }
     
-    console.log(`✅ Found cart item: id=${cartItem.id}, product_id=${cartItem.product_id}`);
     const itemId = cartItem.id;
     return await updateCartItemQuantity(cartId, itemId, quantity);
   } catch (error) {
@@ -1808,7 +1726,6 @@ export async function updateCartItemQuantityByProductId(cartId: number, productI
 // Remove product from cart by product ID
 export async function removeFromCart(cartId: number, productId: number, quantity?: number) {
   try {
-    console.log(`🔍 removeFromCart called: cartId=${cartId}, productId=${productId}, quantity=${quantity}`);
     
     const params = new URLSearchParams();
     if (quantity !== undefined) {
@@ -1817,7 +1734,6 @@ export async function removeFromCart(cartId: number, productId: number, quantity
     
     const authHeaders = await getAuthHeaders();
     const url = `${getBaseUrl()}/users/me/carts/${cartId}/items/${productId}?${params.toString()}`;
-    console.log(`🌐 DELETE request to: ${url}`);
     
     const response = await fetch(url, {
       method: 'DELETE',
@@ -1827,13 +1743,11 @@ export async function removeFromCart(cartId: number, productId: number, quantity
     if (!response.ok) {
       // Idempotency: if the item is already gone, treat it as a successful remove
       if (response.status === 404) {
-        console.log(`ℹ️ Item already removed (404) for productId=${productId} in cartId=${cartId}`);
         return true;
       }
       throw new Error(`Failed to remove from cart: ${response.status} ${response.statusText}`);
     }
     
-    console.log(`✅ Successfully removed item from cart`);
     return response.status === 204;
   } catch (error) {
     console.error('❌ Error removing from cart:', error);
@@ -1910,6 +1824,83 @@ export async function getCheckoutCarts() {
 /** Backend `DeliveryOption` enum values (snake_case). */
 export type CheckoutDeliveryOption = 'leave_at_door' | 'meet_outside' | 'at_reception';
 
+const checkoutDeliveryServices = {
+  standard: { label: 'Standard', description: 'Regular delivery' },
+  premium: { label: 'Premium', description: 'Faster delivery' },
+  priority: { label: 'Priority', description: 'Fastest delivery' },
+} as const;
+
+const checkoutDeliveryOptions: Record<CheckoutDeliveryOption, { label: string }> = {
+  leave_at_door: { label: 'Leave at door' },
+  meet_outside: { label: 'Meet outside' },
+  at_reception: { label: 'At reception' },
+};
+
+function getCheckoutLogDetails(data: any) {
+  return data?.data ?? data;
+}
+
+function getCheckoutSelectionDetails(orderData: any) {
+  const serviceLevel =
+    (orderData?.location?.delivery_service_level as keyof typeof checkoutDeliveryServices | undefined) ??
+    'standard';
+  const deliveryOption =
+    orderData?.location?.delivery_option as CheckoutDeliveryOption | undefined;
+  const usingSavedCard = orderData?.saved_card === false;
+
+  return {
+    deliveryService: {
+      selected: serviceLevel,
+      selectedLabel: checkoutDeliveryServices[serviceLevel]?.label ?? serviceLevel,
+      selectedDescription: checkoutDeliveryServices[serviceLevel]?.description,
+      options: checkoutDeliveryServices,
+    },
+    howShouldWeDeliver: {
+      selected: deliveryOption ?? null,
+      selectedLabel: deliveryOption ? checkoutDeliveryOptions[deliveryOption]?.label : null,
+      options: checkoutDeliveryOptions,
+    },
+    scheduleOrder: {
+      isScheduled: Boolean(orderData?.is_scheduled),
+      scheduled_at: orderData?.scheduled_at ?? null,
+    },
+    paymentMethod: {
+      selected: orderData?.saved_card === undefined ? null : usingSavedCard ? 'saved_card' : 'new_card',
+      selectedCardId: orderData?.source_token_id ?? null,
+      saveCard: orderData?.save_card ?? null,
+    },
+  };
+}
+
+function getCheckoutLogKey(orderData: any) {
+  return JSON.stringify({
+    cart_ids: orderData?.cart_ids,
+    mode: orderData?.location?.mode,
+    delivery_service_level: orderData?.location?.delivery_service_level,
+    delivery_option: orderData?.location?.delivery_option,
+    split_order: orderData?.split_order,
+    is_scheduled: orderData?.is_scheduled,
+    scheduled_at: orderData?.scheduled_at,
+    saved_card: orderData?.saved_card,
+    source_token_id: orderData?.source_token_id,
+  });
+}
+
+function getCheckoutItemCount(details: any): number {
+  if (Array.isArray(details?.fulfillable_stores)) {
+    return details.fulfillable_stores.reduce(
+      (count: number, store: any) => count + (Array.isArray(store?.items) ? store.items.length : 0),
+      0
+    );
+  }
+
+  if (Array.isArray(details?.items)) {
+    return details.items.length;
+  }
+
+  return 0;
+}
+
 // Preview multi-cart order
 export async function previewOrder(orderData: {
   cart_ids: number[];
@@ -1933,7 +1924,6 @@ export async function previewOrder(orderData: {
     split_order: orderData.split_order !== undefined ? orderData.split_order : true
   };
 
-  console.log('🔍 Preview order request data:', JSON.stringify(requestData, null, 2));
 
   const authHeaders = await getAuthHeaders();
   const response = await fetch(`${getBaseUrl()}/users/me/checkout/preview`, {
@@ -1949,7 +1939,6 @@ export async function previewOrder(orderData: {
     
     // If we get a 422 error about address not found, clear the address and retry
     if (response.status === 422 && errorText.includes('Address') && errorText.includes('not found')) {
-      console.log('🔄 Address not found, retrying without address...');
       const retryData = {
         ...requestData,
         location: {
@@ -1966,7 +1955,20 @@ export async function previewOrder(orderData: {
       
       if (retryResponse.ok) {
         const data = await retryResponse.json();
-        console.log('✅ Preview order succeeded without address');
+        const preview = getCheckoutLogDetails(data);
+        const storeCount = Array.isArray(preview?.fulfillable_stores) ? preview.fulfillable_stores.length : 0;
+        const itemCount = getCheckoutItemCount(preview);
+        apiLog(
+          'POST /checkout/preview',
+          `${retryResponse.status} · ${storeCount} stores · ${itemCount} items`,
+          {
+            checkoutDetails: {
+              selections: getCheckoutSelectionDetails(retryData),
+              preview,
+            },
+          },
+          { dedupeKey: `checkout-preview-retry|${getCheckoutLogKey(retryData)}|${storeCount}|${itemCount}` }
+        );
         return data;
       }
     }
@@ -1975,6 +1977,20 @@ export async function previewOrder(orderData: {
   }
   
   const data = await response.json();
+  const preview = getCheckoutLogDetails(data);
+  const storeCount = Array.isArray(preview?.fulfillable_stores) ? preview.fulfillable_stores.length : 0;
+  const itemCount = getCheckoutItemCount(preview);
+  apiLog(
+    'POST /checkout/preview',
+    `${response.status} · ${storeCount} stores · ${itemCount} items`,
+    {
+      checkoutDetails: {
+        selections: getCheckoutSelectionDetails(requestData),
+        preview,
+      },
+    },
+    { dedupeKey: `checkout-preview|${getCheckoutLogKey(requestData)}|${storeCount}|${itemCount}` }
+  );
   return data;
 }
 
@@ -2005,8 +2021,6 @@ export async function createOrder(orderData: {
   source_token_id?: number;
 }) {
   const authHeaders = await getAuthHeaders();
-  console.log('📤 CREATE ORDER - Sending data:', JSON.stringify(orderData, null, 2));
-  console.log('📤 CREATE ORDER - Headers:', authHeaders);
   
   const response = await fetch(`${getBaseUrl()}/users/me/checkout/order`, {
     method: 'POST',
@@ -2016,9 +2030,6 @@ export async function createOrder(orderData: {
   
   if (!response.ok) {
     const errorText = await response.text();
-    console.log('❌ Order creation error response:', errorText);
-    console.log('❌ Order creation error status:', response.status);
-    console.log('❌ Order creation error headers:', Object.fromEntries(response.headers.entries()));
     
     // Try to parse the error response for more details
     try {
@@ -2034,6 +2045,18 @@ export async function createOrder(orderData: {
   }
   
   const data = await response.json();
+  const order = getCheckoutLogDetails(data);
+  apiLog(
+    'POST /checkout/order',
+    `${response.status} · order created`,
+    {
+      orderDetails: {
+        selections: getCheckoutSelectionDetails(orderData),
+        order,
+      },
+    },
+    { dedupeKey: `checkout-order|${getCheckoutLogKey(orderData)}|${order?.id ?? order?.order_id ?? Date.now()}` }
+  );
   return data;
 }
 
@@ -2138,7 +2161,6 @@ export async function checkPaymentStatus(paymentRef: string) {
 
 // Check inventory availability for products
 export async function checkInventoryAvailability(productIds: number[], storeId?: number, latitude?: number, longitude?: number) {
-  console.log('🚀🚀🚀 CHECKINVENTORYAVAILABILITY CALLED - NEW VERSION 🚀🚀🚀');
   const params = new URLSearchParams();
   params.append('include_inventory', 'true');
   params.append('include_pricing', 'true');
@@ -2154,12 +2176,9 @@ export async function checkInventoryAvailability(productIds: number[], storeId?:
   }
   
   // Add product IDs as filters
-  console.log('🔍 Product IDs to check:', productIds);
   productIds.forEach(id => params.append('product_ids', id.toString()));
   
   const url = `${getBaseUrl()}/products/?${params.toString()}&_t=${Date.now()}`;
-  console.log('🔍 Checking inventory availability:', url);
-  console.log('🔍 Full URL with params:', url);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -2179,27 +2198,15 @@ export async function checkInventoryAvailability(productIds: number[], storeId?:
   // Filter to only include the products we requested
   const products = allProducts.filter((product: any) => productIds.includes(product.id));
   
-  console.log('🔍 Raw inventory API response:', JSON.stringify(data, null, 2));
-  console.log('🔍 All products returned by API:', allProducts.length);
-  console.log('🔍 Filtered products (requested IDs only):', products.length);
-  console.log('🔍 Requested product IDs:', productIds);
-  console.log('🔍 Found product IDs:', products.map((p: any) => p.id));
   
   // Check availability for each product
-  console.log('🚀 NEW INVENTORY CHECK LOGIC - Starting availability check...');
   const availability = products.map((product: any) => {
-    console.log(`🔍 Product ${product.id} (${product.name}) inventory:`, product.inventory);
     
     // Handle inventory as array - find the first available store or use the first one
     const inventory = Array.isArray(product.inventory) ? product.inventory[0] : product.inventory;
     
-    console.log(`🔍 Product ${product.id} - First inventory item:`, inventory);
-    console.log(`🔍 Product ${product.id} - in_stock:`, inventory?.in_stock);
-    console.log(`🔍 Product ${product.id} - can_fulfill:`, inventory?.can_fulfill);
-    console.log(`🔍 Product ${product.id} - quantity_available:`, inventory?.quantity_available);
     
     const isAvailable = inventory?.in_stock || inventory?.can_fulfill || false;
-    console.log(`🔍 Product ${product.id} - Final availability:`, isAvailable);
     
     return {
       product_id: product.id,
@@ -2210,12 +2217,18 @@ export async function checkInventoryAvailability(productIds: number[], storeId?:
     };
   });
   
-  console.log('📦 Inventory availability check results:', availability);
-  console.log('🚀 NEW INVENTORY CHECK LOGIC - Completed availability check...');
   return availability;
 }
 
 // ==================== ORDER MANAGEMENT API FUNCTIONS ====================
+
+function extractOrdersFromResponse(data: any): any[] {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.orders)) return data.orders;
+  if (Array.isArray(data?.data?.orders)) return data.data.orders;
+  return [];
+}
 
 // Verify payment for an order
 export async function verifyOrderPayment(orderId: string, paymentData: {
@@ -2236,6 +2249,12 @@ export async function verifyOrderPayment(orderId: string, paymentData: {
   }
   
   const data = await response.json();
+  apiLog(
+    `POST /orders/${orderId}/payment/verify`,
+    `${response.status} · payment verified`,
+    { payment: data?.data ?? data },
+    { dedupeKey: `order-payment-verify|${orderId}` }
+  );
   return data;
 }
 
@@ -2277,6 +2296,13 @@ export async function getUserOrders(
   }
   
   const data = await response.json();
+  const orders = extractOrdersFromResponse(data);
+  apiLog(
+    'GET /orders/',
+    `${response.status} · ${orders.length} orders`,
+    { orders },
+    { dedupeKey: `orders|${statuses.join(',') || 'all'}|${orders.length}` }
+  );
   return data;
 }
 
@@ -2293,6 +2319,12 @@ export async function getOrderById(orderId: string) {
   }
   
   const data = await response.json();
+  apiLog(
+    `GET /orders/${orderId}`,
+    `${response.status} · 1 order`,
+    { order: data?.data ?? data },
+    { dedupeKey: `order-detail|${orderId}` }
+  );
   return data;
 }
 
@@ -2312,6 +2344,12 @@ export async function cancelOrder(orderId: string, reason?: string) {
   }
   
   const data = await response.json();
+  apiLog(
+    `POST /orders/${orderId}/cancel`,
+    `${response.status} · order cancelled`,
+    { order: data?.data ?? data },
+    { dedupeKey: `order-cancel|${orderId}` }
+  );
   return data;
 }
 
@@ -2360,7 +2398,6 @@ export async function getOrderByIdAdmin(orderId: string) {
 
 // Reorder functionality - Create new cart from completed order
 export async function createReorderCart(order: any) {
-  console.log('🔄 Creating reorder cart for order:', order.id);
   
   try {
     // 1. Create new cart
@@ -2372,7 +2409,6 @@ export async function createReorderCart(order: any) {
       description: cartDescription
     });
     
-    console.log('✅ New reorder cart created:', newCart);
     
     // 2. Fetch fresh product data and add items to cart
     const cartId = newCart.data?.id || newCart.id;
@@ -2396,9 +2432,7 @@ export async function createReorderCart(order: any) {
             cartItem
           });
           
-          console.log(`✅ Added ${freshProduct.name} (qty: ${orderItem.quantity}) to reorder cart`);
         } else {
-          console.warn(`⚠️ Product ${orderItem.productId} not found, skipping`);
         }
       } catch (error) {
         console.error(`❌ Failed to add product ${orderItem.productId} to reorder cart:`, error);
@@ -2420,7 +2454,6 @@ export async function createReorderCart(order: any) {
 
 // Add reorder items to existing cart
 export async function addReorderItemsToExistingCart(cartId: number, order: any) {
-  console.log('🔄 Adding reorder items to existing cart:', cartId);
   
   try {
     const addedItems = [];
@@ -2442,14 +2475,12 @@ export async function addReorderItemsToExistingCart(cartId: number, order: any) 
             // Update quantity (add to existing)
             const newQuantity = existingItem.quantity + orderItem.quantity;
             await updateCartItemQuantityByProductId(cartId, freshProduct.id, newQuantity);
-            console.log(`✅ Updated quantity for ${freshProduct.name} to ${newQuantity}`);
           } else {
             // Add new item
             await addItemToCart(cartId, {
               product_id: freshProduct.id,
               quantity: orderItem.quantity
             });
-            console.log(`✅ Added ${freshProduct.name} (qty: ${orderItem.quantity}) to existing cart`);
           }
           
           addedItems.push({
@@ -2582,7 +2613,6 @@ export async function searchProducts(
 
   // Backend search endpoint is `/products/search` (not `/search`).
   const url = `${getBaseUrl()}/products/search?${params.toString()}`;
-  console.log("🔍 Search API - Fetching search results:", url.split('?')[0]);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -2603,15 +2633,22 @@ export async function searchProducts(
   }
 
   const data = await response.json();
-  console.log(`🔍 Search API - Found ${data.data?.products?.length || 0} products for query: "${query}"`);
-  
-  // Return the data in the expected format (matching backend response structure)
-  return {
+  const result = {
     products: data.data?.products || [],
     suggestions: data.data?.suggestions || [],
     total_results: data.data?.total_results || 0,
-    search_metadata: data.data?.search_metadata || {}
+    search_metadata: data.data?.search_metadata || {},
   };
+
+  apiLog('GET /products/search', `${response.status} · ${result.products.length} products · "${query}"`, {
+    url: url.split('?')[0],
+    query,
+    mode,
+    products: result.products,
+    total_results: result.total_results,
+  });
+
+  return result;
 }
 
 // Track search click
@@ -2638,7 +2675,6 @@ export async function trackSearchClick(query: string, productId: number) {
     }
 
     const data = await response.json();
-    console.log(`🔍 Search Click - Tracked click for product ${productId} with query: "${query}"`);
     
     return data;
   } catch (error) {
@@ -2772,7 +2808,6 @@ export async function getActivePromotions(
     
     const authHeaders = await getAuthHeaders();
     const apiUrl = `${getBaseUrl()}/promotions/active/random?${params.toString()}`;
-    console.log('🔍 Fetching fresh promotions from:', apiUrl.split('&_t=')[0]); // Log without timestamp
     
     const response = await fetch(apiUrl, {
       method: 'GET',
@@ -2788,7 +2823,6 @@ export async function getActivePromotions(
     if (!response.ok) {
       if (response.status === 404) {
         // No promotions found, return empty array
-        console.log('ℹ️ No promotions found (404)');
         return [];
       }
       const errorText = await response.text();
@@ -2797,20 +2831,26 @@ export async function getActivePromotions(
     }
 
     const responseData = await response.json();
-    console.log('📦 Promotions API Response:', responseData);
-    
-    // Handle the response format: { statusCode, message, data: [...] }
-    if (responseData && responseData.data && Array.isArray(responseData.data)) {
-      console.log('✅ Found promotions:', responseData.data.length);
-      return responseData.data;
+
+    let promotions: unknown[] = [];
+    if (responseData?.data && Array.isArray(responseData.data)) {
+      promotions = responseData.data;
     } else if (Array.isArray(responseData)) {
-      // Fallback: if response is directly an array
-      console.log('✅ Found promotions (direct array):', responseData.length);
-      return responseData;
+      promotions = responseData;
     }
-    
-    console.warn("⚠️ Unexpected promotions API response format:", responseData);
-    return [];
+
+    apiLog(
+      `GET /promotions/active/random`,
+      `${response.status} · ${promotions.length} · ${promotionType}`,
+      {
+        url: apiUrl.split('&_t=')[0],
+        promotionType,
+        options,
+        promotions,
+      }
+    );
+
+    return promotions as Promotion[];
   } catch (error) {
     console.error('Error getting promotions:', error);
     // Return empty array on error to not break the user experience

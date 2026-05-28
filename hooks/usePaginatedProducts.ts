@@ -164,7 +164,6 @@ export const usePaginatedProducts = ({
       return;
     }
 
-    console.log("🎯 fetchDealsProducts - Starting fetch for 'Deals' category", { page, append });
 
     if (page === 1) {
       setData(prev => ({ ...prev, loading: true, products: [] }));
@@ -187,10 +186,6 @@ export const usePaginatedProducts = ({
         )
       );
 
-      console.log("🎯 fetchDealsProducts - Received products:", {
-        count: discountedProducts.length,
-        sample: discountedProducts.slice(0, 3).map((p: any) => ({ id: p.id, name: p.name, discount: p.discount_percentage }))
-      });
 
       setData(prev => ({
         ...prev,
@@ -332,7 +327,6 @@ export const usePaginatedProducts = ({
       return;
     }
 
-    console.log("🔄 fetchAllProducts - Starting fetch for 'All' category", { page, append, categoriesCount: categories.length });
 
     if (page === 1) {
       setData(prev => ({ ...prev, loading: true, products: [] }));
@@ -349,17 +343,14 @@ export const usePaginatedProducts = ({
 
       // Get all parent categories first
       const parentCategories = categories.filter(cat => !cat.parent_category_id);
-      console.log("🔄 fetchAllProducts - Parent categories found:", parentCategories.length);
       
       // Fetch products for first few parent categories only (lazy loading)
       const limitedParentCategories = parentCategories.slice(0, 5); // Only first 5 parent categories
-      console.log("🔄 fetchAllProducts - Limited to first 5 categories:", limitedParentCategories.map(c => c.name));
       
       const productPromises = limitedParentCategories.map(parentCat =>
         executeWithLimit(() =>
           getProductsWithPricing([parentCat.id], page, Math.ceil(pageSize / limitedParentCategories.length), false, true, true, storeId ? [storeId] : undefined, latitude, longitude)
         ).then((prods) => {
-          console.log(`🔄 fetchAllProducts - Category ${parentCat.name} (${parentCat.id}): ${prods.length} products`);
           return {
             parentId: parentCat.id,
             parentName: parentCat.name,
@@ -379,13 +370,6 @@ export const usePaginatedProducts = ({
         parentProducts[parentId] = products;
       });
 
-      console.log("🔄 fetchAllProducts - Final data:", {
-        allProductsCount: allProducts.length,
-        parentNamesCount: Object.keys(parentNames).length,
-        parentProductsCount: Object.keys(parentProducts).length,
-        parentNames: parentNames,
-        parentProductsKeys: Object.keys(parentProducts)
-      });
 
       setData(prev => ({
         ...prev,

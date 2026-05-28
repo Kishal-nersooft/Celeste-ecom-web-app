@@ -72,10 +72,6 @@ const ProductList = ({
     categoryName?: string
   ) => {
     if (storeId) {
-      console.log("📦 ProductList - Store page category selection:", {
-        categoryId,
-        isDealsSelected,
-      });
     } else {
       const name =
         categoryName ??
@@ -124,27 +120,11 @@ const ProductList = ({
       typeof window !== 'undefined' &&
       validProducts.length !== (window as any).lastProductCount
     ) {
-      console.log(
-        "📦 ProductList - Products:",
-        validProducts.length,
-        "Categories:",
-        categories.length
-      );
       (window as any).lastProductCount = validProducts.length;
     }
   }, [validProducts.length, categories.length]);
 
   // Debug logging for All and Deals categories
-  console.log("📦 ProductList - Current state:", {
-    selectedCategory,
-    isDeals,
-    validProductsCount: validProducts.length,
-    parentCategoryNamesCount: Object.keys(parentCategoryNames).length,
-    parentProductsCount: Object.keys(parentProducts).length,
-    loading,
-    parentCategoryNames,
-    parentProductsKeys: Object.keys(parentProducts)
-  });
 
   return (
     <div>

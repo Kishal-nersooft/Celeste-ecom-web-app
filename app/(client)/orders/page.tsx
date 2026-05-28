@@ -113,7 +113,6 @@ const OrdersPageContent = () => {
         }
         
         // Log clean orders data
-        console.log('Orders Data:', response.data || response);
 
         // Normalize driver data from backend (sent when status is Shipped or later)
         const mapDriver = (raw: any): DriverInfo | undefined => {
@@ -160,7 +159,6 @@ const OrdersPageContent = () => {
           const driver = mapDriver(order);
           const rider = mapRider(order);
           if ((statusUpper === 'SHIPPED' || statusUpper === 'DELIVERED') && (order.rider ?? order.driver ?? order.driver_info ?? order.assigned_driver)) {
-            console.log('Order (Shipped/Delivered) rider/driver payload:', { orderId: order.id, status: order.status, rider: order.rider, driverPayload: order.driver ?? order.driver_info ?? order.assigned_driver, mappedRider: rider, mappedDriver: driver });
           }
 
           // Use included product data directly from API response
@@ -236,6 +234,8 @@ const OrdersPageContent = () => {
 
   // Handle payment success redirect (separate effect to avoid re-triggering)
   useEffect(() => {
+    if (authLoading) return;
+
     const paymentSuccess = searchParams.get('paymentSuccess');
     const paymentRef = searchParams.get('paymentRef');
     const success = searchParams.get('success');
@@ -255,11 +255,12 @@ const OrdersPageContent = () => {
       
       // Handle cart operations in background (non-blocking)
       const handlePaymentSuccessRedirect = async () => {
+        if (!user) return;
+
         try {
           // Create a new cart for future use (don't clear the old cart - it's already used for the order)
           // The old cart will remain in the carts list but won't be active anymore
           await cartStore.createNewCart();
-          console.log('✅ New cart created after successful payment');
         } catch (error) {
           console.error('Error creating new cart after payment success:', error);
           // Don't show error toast - cart operations are not critical
@@ -286,7 +287,7 @@ const OrdersPageContent = () => {
         fetchOrders(false); // Don't show loading spinner for refresh
       }, 1000);
     }
-  }, [searchParams, cartStore, fetchOrders]);
+  }, [searchParams, cartStore, fetchOrders, authLoading, user]);
 
   // Fetch orders when auth is ready or when the status tab changes (API filters via `status` query)
   useEffect(() => {

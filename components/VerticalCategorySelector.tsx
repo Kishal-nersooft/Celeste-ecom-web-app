@@ -31,7 +31,6 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
   }, []);
 
   const handleCategoryClick = (categoryId: number | null, isDeals: boolean = false) => {
-    console.log("🔍 VerticalCategorySelector - Category clicked:", { categoryId, isDeals });
     // Directly filter products by category
     onSelectCategory(categoryId, isDeals);
   };

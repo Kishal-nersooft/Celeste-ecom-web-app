@@ -35,7 +35,6 @@ const StorePageClient: React.FC<{ storeId: string }> = ({ storeId }) => {
         
         // Use selectedStore from context if available and matches the storeId
         if (selectedStore && selectedStore.id === storeId) {
-          console.log('Using store data from context:', selectedStore);
           setStore(selectedStore);
         } else {
           // Try to fetch store data from API
@@ -184,7 +183,6 @@ const StorePageClient: React.FC<{ storeId: string }> = ({ storeId }) => {
               {activeTab === 'shop' && (
                 <VerticalCategorySelector 
                   onSelectCategory={(categoryId, isDeals) => {
-                    console.log("🏪 StorePageClient - Category selected:", { categoryId, isDeals });
                     setSelectedCategoryId(categoryId);
                     setIsDealsSelected(isDeals || false);
                   }}

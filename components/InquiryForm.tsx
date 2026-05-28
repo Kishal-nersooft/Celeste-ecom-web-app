@@ -28,7 +28,6 @@ export default function InquiryForm() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Form submitted:", formData);
     toast.success("Message sent successfully! We'll get back to you soon.");
     setFormData({ name: "", email: "", phone: "", message: "" });
   };

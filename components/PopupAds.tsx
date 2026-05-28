@@ -141,13 +141,10 @@ const PopupAds: React.FC<PopupAdsProps> = ({
         }
         
         // Always fetch fresh promotions from backend (backend sends random promotion)
-        console.log('🔄 Fetching fresh random promotion from backend...');
         const promotions = await getActivePromotions('popup', options);
-        console.log('📋 Fresh promotions received from backend:', promotions);
 
         if (promotions && promotions.length > 0) {
           const activePromotion = promotions[0];
-          console.log('🎯 Using promotion:', activePromotion);
           setPromotion(activePromotion);
           setHasPromotion(true);
           
@@ -157,12 +154,6 @@ const PopupAds: React.FC<PopupAdsProps> = ({
             ? activePromotion.image_urls_mobile 
             : activePromotion.image_urls_web;
           
-          console.log('🖼️ Image URLs:', {
-            isMobile,
-            mobile: activePromotion.image_urls_mobile,
-            web: activePromotion.image_urls_web,
-            selected: imageUrls
-          });
           
           if (imageUrls && imageUrls.length > 0 && imageUrls[0]) {
             // Use the image URL directly from the API response
@@ -171,13 +162,6 @@ const PopupAds: React.FC<PopupAdsProps> = ({
             setRetryCount(0);
             const selectedImageUrl = getImageUrl(rawUrl, 0);
             setCurrentImageUrl(selectedImageUrl);
-            console.log('✅ Popup promotion loaded:', {
-              promotionId: activePromotion.id,
-              originalUrl: rawUrl,
-              resolvedUrl: selectedImageUrl,
-              isMobile,
-              type: isMobile ? 'mobile' : 'web'
-            });
           } else {
             // Fallback to web images if mobile images not available
             const fallbackUrls = activePromotion.image_urls_web;
@@ -187,7 +171,6 @@ const PopupAds: React.FC<PopupAdsProps> = ({
               setRetryCount(0);
               const fallbackUrl = getImageUrl(rawFallbackUrl, 0);
               setCurrentImageUrl(fallbackUrl);
-              console.log('✅ Using web image as fallback:', fallbackUrl);
             } else {
               console.error('❌ No valid image URLs in promotion:', activePromotion);
               setImageError(true);
@@ -195,7 +178,6 @@ const PopupAds: React.FC<PopupAdsProps> = ({
           }
         } else {
           // No promotions from API, use fallback imageUrl if provided
-          console.log('ℹ️ No active popup promotions found, using fallback image');
           setHasPromotion(false);
           setPromotionBaseUrl(null);
           if (imageUrl) {
@@ -325,13 +307,6 @@ const PopupAds: React.FC<PopupAdsProps> = ({
                   }}
                   onLoad={(e) => {
                     const img = e.target as HTMLImageElement;
-                    console.log("✅ Image loaded successfully:", {
-                      url: currentImageUrl,
-                      naturalWidth: img.naturalWidth,
-                      naturalHeight: img.naturalHeight,
-                      displayedWidth: img.width,
-                      displayedHeight: img.height
-                    });
                   }}
                   loading="eager"
                 />

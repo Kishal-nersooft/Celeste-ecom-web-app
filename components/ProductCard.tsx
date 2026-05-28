@@ -10,6 +10,7 @@ import FuturePricingDisplay from "./FuturePricingDisplay";
 import { Product } from "../store";
 import { useCategory } from "../contexts/CategoryContext";
 import { getProductPath } from "@/lib/product-slug";
+import { normalizeImageUrl } from "@/lib/normalize-image-url";
 // Removed discount-utils import - using direct pricing data instead
 
 const ProductCard = memo(({ product }: { product: Product }) => {
@@ -62,7 +63,8 @@ const ProductCard = memo(({ product }: { product: Product }) => {
 
   // Get the first valid image URL
   const imageUrl = useMemo(() => {
-    return product?.image_urls?.[0] || product?.imageUrl;
+    const raw = product?.image_urls?.[0] || product?.imageUrl;
+    return raw ? normalizeImageUrl(raw) : raw;
   }, [product?.image_urls, product?.imageUrl]);
 
   const hasValidImage = useMemo(() => {

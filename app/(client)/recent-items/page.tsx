@@ -47,15 +47,12 @@ export default function RecentItemsPage() {
           // For pickup mode, we don't send location (store_id is handled by backend based on auth)
           latitude = undefined;
           longitude = undefined;
-          console.log("🛍️ RecentItemsPage: Using pickup mode");
         } else {
           // For delivery mode, use location coordinates
           if (defaultAddress?.latitude && defaultAddress?.longitude) {
             latitude = parseFloat(defaultAddress.latitude);
             longitude = parseFloat(defaultAddress.longitude);
-            console.log("🚚 RecentItemsPage: Using delivery mode with location:", { latitude, longitude });
           } else {
-            console.log("⚠️ RecentItemsPage: Delivery mode but no location available yet");
             setError("Please select a delivery location to view recent items");
             setLoading(false);
             return;
@@ -63,7 +60,6 @@ export default function RecentItemsPage() {
         }
 
         // Fetch all recent products (max 100)
-        console.log("🔄 RecentItemsPage: Fetching recent products...");
         const products = await getRecentProducts(
           100, // limit (max allowed)
           true, // includePricing
@@ -74,7 +70,6 @@ export default function RecentItemsPage() {
           longitude // longitude (for delivery)
         );
         
-        console.log("✅ RecentItemsPage: Received products:", products?.length || 0);
         
         if (Array.isArray(products) && products.length > 0) {
           setRecentProducts(products);

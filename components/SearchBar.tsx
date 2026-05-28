@@ -79,7 +79,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
     setIsLoadingHistory(true);
     try {
       const history = await getSearchHistory(10);
-      console.log('🔍 Search History - Fetched from API:', history);
       // Always update state to ensure fresh data is displayed
       setSearchHistory(history);
       return history;

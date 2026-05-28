@@ -43,13 +43,11 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
 
   React.useEffect(() => {
     if (isLoaded && window.google) {
-      console.log('Google Maps loaded, initializing services...');
       
       // Initialize AutocompleteService
       if (window.google.maps.places.AutocompleteService) {
         try {
           const autocomplete = new window.google.maps.places.AutocompleteService();
-          console.log('✅ AutocompleteService initialized');
           setAutocompleteService(autocomplete);
         } catch (error) {
           console.error('❌ Error creating AutocompleteService:', error);
@@ -62,7 +60,6 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
       if (window.google.maps.Geocoder) {
         try {
           const geocoder = new window.google.maps.Geocoder();
-          console.log('✅ Geocoder initialized');
           setGeocoderService(geocoder);
         } catch (error) {
           console.error('❌ Error creating Geocoder:', error);
@@ -157,7 +154,6 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
                   // Update context with new address
                   setDefaultAddress(addressData);
                   setAddressId(addressId);
-                  console.log('✅ New address created and set:', { addressId, addressData });
                 } else {
                   console.error('❌ Invalid address response structure:', newAddress);
                   toast.error('Failed to save address');

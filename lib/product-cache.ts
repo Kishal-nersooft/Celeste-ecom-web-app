@@ -1,3 +1,4 @@
+import { devLog } from './debug-log';
 // Product caching system for local storage
 // This prevents unnecessary API calls when navigating between pages
 
@@ -110,7 +111,7 @@ class ProductCache {
         }
       }
     } catch (error) {
-      console.warn('Failed to load product cache from localStorage:', error);
+      devLog('Failed to load product cache from localStorage:', error);
       this.cache = new Map();
     }
   }
@@ -133,12 +134,10 @@ class ProductCache {
     const entry = this.cache.get(key);
     
     if (entry && this.isValid(entry)) {
-      console.log('📦 ProductCache: Cache hit for key:', key.substring(0, 100) + '...');
       return entry.data;
     }
     
     if (entry) {
-      console.log('📦 ProductCache: Cache expired for key:', key.substring(0, 100) + '...');
       this.cache.delete(key);
     }
     
@@ -158,7 +157,6 @@ class ProductCache {
     this.enforceMaxSize();
     this.saveToStorage();
     
-    console.log('📦 ProductCache: Cached', products.length, 'products for key:', key.substring(0, 100) + '...');
   }
 
   // Clear specific cache entry
@@ -166,14 +164,12 @@ class ProductCache {
     const key = this.generateCacheKey(params);
     this.cache.delete(key);
     this.saveToStorage();
-    console.log('📦 ProductCache: Cleared cache for key:', key.substring(0, 100) + '...');
   }
 
   // Clear all cache
   clearAll(): void {
     this.cache.clear();
     localStorage.removeItem('product-cache');
-    console.log('📦 ProductCache: Cleared all cache');
   }
 
   // Get cache statistics

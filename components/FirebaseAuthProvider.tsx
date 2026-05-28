@@ -35,7 +35,6 @@ export const FirebaseAuthProvider: React.FC<{ children: React.ReactNode }> = ({
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       // If user changes (different user logs in), clear cart store to prevent permission issues
       if (user && firebaseUser && user.uid !== firebaseUser.uid) {
-        console.log('🔄 User changed, clearing cart store to prevent permission issues');
         if (typeof window !== 'undefined') {
           localStorage.removeItem('cart-store');
         }

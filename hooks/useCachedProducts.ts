@@ -67,9 +67,7 @@ export const useCachedProducts = ({
 
       // Check if we have cached data
       if (hasCachedData(cacheParams)) {
-        console.log("📦 useCachedProducts: Using cached deals data");
       } else {
-        console.log("📦 useCachedProducts: Fetching fresh deals data");
       }
 
       const discountedProducts = await getDiscountedProductsOptimized(
@@ -113,7 +111,6 @@ export const useCachedProducts = ({
 
       if (isParentCategory) {
         // Parent category selected - fetch its subcategories
-        console.log("📦 useCachedProducts: Fetching subcategories for parent category", selectedCategory);
         
         const subcats = await getSubcategories(selectedCategory);
         setData(prev => ({ ...prev, subcategories: subcats }));
@@ -140,7 +137,6 @@ export const useCachedProducts = ({
         }));
       } else {
         // Subcategory selected - fetch products for this specific subcategory
-        console.log("📦 useCachedProducts: Fetching products for subcategory", selectedCategory);
         
         const prods = await getProductsBySubcategoryWithPricing(
           selectedCategory, 100, storeId ? [storeId] : undefined
@@ -187,7 +183,6 @@ export const useCachedProducts = ({
     setData(prev => ({ ...prev, loadingSubcategories: true }));
 
     try {
-      console.log("📦 useCachedProducts: Fetching all products grouped by parent categories");
       
       // Get all parent categories first
       const parentCategories = categories.filter(cat => !cat.parent_category_id);

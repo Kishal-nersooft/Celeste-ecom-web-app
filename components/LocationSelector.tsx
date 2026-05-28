@@ -74,7 +74,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
 
   // Debug Google Maps loading
   React.useEffect(() => {
-    console.log('Google Maps loading state:', { isLoaded, loadError });
     if (loadError) {
       console.error('Google Maps load error:', loadError);
     }
@@ -82,7 +81,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
 
   React.useEffect(() => {
     if (isLoaded && typeof window !== 'undefined' && window.google && window.google.maps) {
-      console.log('Google Maps loaded, initializing services...');
       
       const initServices = () => {
         try {
@@ -90,7 +88,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
           if (window.google.maps.places && window.google.maps.places.AutocompleteService) {
             try {
               const autocomplete = new window.google.maps.places.AutocompleteService();
-              console.log('✅ AutocompleteService initialized');
               setAutocompleteService(autocomplete);
             } catch (error) {
               console.error('❌ Error creating AutocompleteService:', error);
@@ -103,7 +100,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
           if (window.google.maps.Geocoder) {
             try {
               const geocoder = new window.google.maps.Geocoder();
-              console.log('✅ Geocoder initialized');
               setGeocoderService(geocoder);
             } catch (error) {
               console.error('❌ Error creating Geocoder:', error);
@@ -295,7 +291,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
                 }
               },
               async (error) => {
-                console.log("Geolocation error:", error);
                 // Fallback to all stores if geolocation fails
                 const allStores = await getStores();
                 setStores(allStores);
@@ -415,7 +410,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
           if (typeof window !== 'undefined') {
             localStorage.setItem('defaultAddress', JSON.stringify(addressData));
           }
-          console.log('✅ Coordinate location saved to localStorage (user not logged in)');
           toast.success("Location saved!");
         }
       } else if (!location.startsWith('Lat:') && !location.startsWith('Lng:')) {
@@ -447,12 +441,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
                   });
                   
                   // Update context with new address ID
-                  console.log('🔍 Full address response:', newAddress);
-                  console.log('🚚 ondemand_delivery_available:', newAddress?.ondemand_delivery_available);
                   
                   // Check if ondemand delivery is not available (check newAddress directly first)
                   if (newAddress?.ondemand_delivery_available === false) {
-                    console.log('⚠️ Showing delivery warning popup');
                     setShowDeliveryWarning(true);
                   }
                   
@@ -492,7 +483,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
                       localStorage.setItem('defaultAddress', JSON.stringify(savedAddressData));
                       localStorage.setItem('selectedAddress', location);
                     }
-                    console.log('✅ Address ID set in context and localStorage:', addressId);
                     
                     // Reload addresses to update the UI
                     const addresses = await getUserAddresses();
@@ -530,7 +520,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
                 if (typeof window !== 'undefined') {
                   localStorage.setItem('defaultAddress', JSON.stringify(addressData));
                 }
-                console.log('✅ Location saved to localStorage (user not logged in)');
                 toast.success("Location saved!");
               }
             }
@@ -569,7 +558,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
         name: addressData.name
       });
       
-      console.log('✅ LocationSelector - New address created:', newAddress);
       
       // Check if ondemand delivery is not available
       if (newAddress?.ondemand_delivery_available === false) {
@@ -632,7 +620,6 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
   };
 
   const handleSelectOutlet = (store: Store) => {
-    console.log('Selected store:', store);
     setSelectedOutlet(store);
     setSelectedLocation(store.name);
     setSelectedStore(store); // Store the selected store in context

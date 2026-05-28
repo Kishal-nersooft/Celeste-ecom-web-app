@@ -40,7 +40,6 @@ const HomeClient: React.FC<HomeClientProps> = ({
       typeof window !== 'undefined' &&
       products.length !== (window as any).lastHomeProductCount
     ) {
-      console.log("🏠 HomeClient - Products loaded:", products.length);
       (window as any).lastHomeProductCount = products.length;
     }
   }, [products.length]);
@@ -52,7 +51,6 @@ const HomeClient: React.FC<HomeClientProps> = ({
       if (deliveryType === "delivery") {
         // If location is still loading, wait for it
         if (isLocationLoading) {
-          console.log("🏠 HomeClient - Waiting for location data...");
           return;
         }
 
@@ -63,7 +61,6 @@ const HomeClient: React.FC<HomeClientProps> = ({
 
           // Case 1: No location selected and not logged in - show all products from all 4 stores
           if (!hasLocationSelected && !isLocationReady && !user) {
-            console.log("🏠 HomeClient - No location selected, fetching all products from all stores...");
             [productsResponse, categoriesResponse] = await Promise.all([
               getProductsWithPricing(
                 null,
@@ -81,10 +78,8 @@ const HomeClient: React.FC<HomeClientProps> = ({
           }
           // Case 2: Location selected (with or without login) - fetch with location coordinates
           else if (isLocationReady && defaultAddress) {
-            console.log("🏠 HomeClient - Location ready, fetching data with cached coordinates...");
             const latitude = defaultAddress.latitude;
             const longitude = defaultAddress.longitude;
-            console.log("📍 Using cached coordinates for immediate stock loading:", { latitude, longitude });
 
             [productsResponse, categoriesResponse] = await Promise.all([
               getProductsWithPricing(
@@ -104,13 +99,11 @@ const HomeClient: React.FC<HomeClientProps> = ({
           // Case 3: Logged in but no location - try to load from backend addresses
           else if (user && !isLocationReady) {
             // Wait a bit more for location to load from backend
-            console.log("🏠 HomeClient - User logged in, waiting for location from backend...");
             setLoading(false);
             return;
           }
           // Case 4: No location data available
           else {
-            console.log("⚠️ Location not ready, fetching all products from all stores...");
             [productsResponse, categoriesResponse] = await Promise.all([
               getProductsWithPricing(
                 null,
@@ -127,7 +120,6 @@ const HomeClient: React.FC<HomeClientProps> = ({
             ]);
           }
 
-          console.log("🏠 HomeClient - Data fetched successfully");
 
           setProducts(Array.isArray(productsResponse) ? productsResponse : []);
           setCategories(
@@ -140,9 +132,6 @@ const HomeClient: React.FC<HomeClientProps> = ({
         }
       } else {
         // For pickup mode, no need to fetch products or categories
-        console.log(
-          "🏠 HomeClient - Pickup mode - skipping product/category fetch"
-        );
         setLoading(false);
       }
     };

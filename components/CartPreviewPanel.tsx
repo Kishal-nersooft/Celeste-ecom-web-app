@@ -83,12 +83,6 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
   
   // Debug: Log cart items
   if (safeItems.length > 0) {
-    console.log('🔍 CartPreviewPanel - Cart items:', safeItems.map(item => ({
-      productId: item.product?.id,
-      productName: item.product?.name,
-      hasImage: !!item.product?.image_urls?.length,
-      hasPricing: !!item.product?.pricing
-    })));
   }
 
   return (

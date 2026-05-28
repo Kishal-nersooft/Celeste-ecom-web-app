@@ -166,7 +166,6 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
       isDeals: boolean = false,
       categoryName?: string
     ) => {
-      console.log("🎯 CategoryContext - setSelectedCategory called:", { categoryId, isDeals });
       
       setCategoryState((prev) => {
         // Only update if the values actually changed
@@ -174,14 +173,9 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
           prev.selectedCategoryId === categoryId &&
           prev.isDealsSelected === isDeals
         ) {
-          console.log("🎯 CategoryContext - No change needed");
           return prev;
         }
 
-        console.log("🎯 CategoryContext - Updating state:", {
-          from: { selectedCategoryId: prev.selectedCategoryId, isDealsSelected: prev.isDealsSelected },
-          to: { selectedCategoryId: categoryId, isDealsSelected: isDeals }
-        });
 
         return {
           ...prev,

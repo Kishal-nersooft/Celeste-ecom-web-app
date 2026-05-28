@@ -39,7 +39,6 @@ class CacheInvalidationManager {
     
     // Don't invalidate too frequently
     if (timeSinceLastInvalidation < 30000) { // 30 seconds minimum
-      console.log('📦 Cache invalidation skipped - too recent');
       return false;
     }
 
@@ -64,7 +63,6 @@ class CacheInvalidationManager {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     if (this.shouldInvalidate()) {
-      console.log('📦 Processing cache invalidation queue:', this.invalidationQueue.length, 'items');
       
       // Execute all queued invalidations
       this.invalidationQueue.forEach(fn => fn());
@@ -86,7 +84,6 @@ class CacheInvalidationManager {
     }
 
     this.queueInvalidation(() => {
-      console.log('📦 Invalidating cache for category:', categoryId);
       invalidateCategoryCache(categoryId);
     });
   }
@@ -98,7 +95,6 @@ class CacheInvalidationManager {
     }
 
     this.queueInvalidation(() => {
-      console.log('📦 Invalidating cache for store:', storeId);
       invalidateStoreCache(storeId);
     });
   }
@@ -106,7 +102,6 @@ class CacheInvalidationManager {
   // Invalidate all cache
   invalidateAll(): void {
     this.queueInvalidation(() => {
-      console.log('📦 Invalidating all cache');
       invalidateAllCache();
     });
   }
@@ -114,7 +109,6 @@ class CacheInvalidationManager {
   // Invalidate cache for product update
   invalidateProduct(productId: number, categoryId?: number, storeId?: number): void {
     this.queueInvalidation(() => {
-      console.log('📦 Invalidating cache for product:', productId);
       
       if (categoryId) {
         invalidateCategoryCache(categoryId);
@@ -143,7 +137,6 @@ class CacheInvalidationManager {
 
   // Force immediate invalidation (bypasses smart invalidation)
   forceInvalidate(): void {
-    console.log('📦 Force invalidating all cache');
     invalidateAllCache();
     this.lastInvalidationTime = Date.now();
   }
@@ -151,7 +144,6 @@ class CacheInvalidationManager {
   // Clear invalidation queue
   clearQueue(): void {
     this.invalidationQueue = [];
-    console.log('📦 Cache invalidation queue cleared');
   }
 
   // Get queue status

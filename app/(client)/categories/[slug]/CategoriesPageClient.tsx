@@ -8,21 +8,32 @@ import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import SubcategorySelector from "@/components/SubcategorySelector";
 import { Product } from "../../../../store";
 import { Category } from "@/components/Categories";
-import { getSubcategories, getProductsBySubcategoryWithPricing, getParentCategoryFromSubcategory, getProductsByParentCategoryWithPagination, getParentCategories } from "@/lib/api";
+import {
+  apiLog,
+  getSubcategories,
+  getProductsBySubcategoryWithPricing,
+  getParentCategoryFromSubcategory,
+  getProductsByParentCategoryWithPagination,
+  getParentCategories,
+} from "@/lib/api";
 import { getCategorySlug, resolveCategorySlugToId, toCategorySlug } from "@/lib/category-slug";
+import { getSubcategoryImageUrl } from "@/lib/subcategory-image";
 import { ArrowLeft } from "lucide-react";
 import Loader from "@/components/Loader";
 import Image from "next/image";
 
 interface Props {
   categoryId: string;
-  fallbackProducts: Product[];
 }
 
-const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
+const SIMILAR_PRODUCTS_SLUG = "similar-products";
+const SIMILAR_PRODUCTS_STORAGE_KEY = "similar";
+const SIMILAR_PRODUCTS_TITLE = "Similar Products";
+
+const CategoriesPageClient = ({ categoryId }: Props) => {
   const router = useRouter();
   const [numericCategoryId, setNumericCategoryId] = useState<number | null>(null);
-  const [products, setProducts] = useState<Product[]>(() => fallbackProducts ?? []);
+  const [products, setProducts] = useState<Product[]>([]);
   const [displayCategoryName, setDisplayCategoryName] = useState<string>("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingProducts, setIsLoadingProducts] = useState(true);
@@ -33,76 +44,12 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   
   // New state for parent category handling
   const [isParentCategory, setIsParentCategory] = useState<boolean>(false);
+  const [isStoredProductList, setIsStoredProductList] = useState<boolean>(false);
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [totalProducts, setTotalProducts] = useState<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  const getSubcategoryImageUrl = (subcategory: any): string | null => {
-    if (!subcategory) return null;
-
-    const normalizeImageUrl = (url: string): string => {
-      // Normalize Google Drive image links to the "drive.google.com/uc?export=view&id=..."
-      try {
-        const u = new URL(url);
-        const id = u.searchParams.get("id");
-        if (!id) return url;
-
-        if (u.hostname === "drive.google.com") {
-          return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
-        }
-
-        if (u.hostname === "drive.usercontent.google.com") {
-          return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(id)}`;
-        }
-      } catch {
-        // ignore parsing errors
-      }
-      return url;
-    };
-
-    const candidates: Array<any> = [
-      subcategory.image_url,
-      subcategory.imageUrl,
-      subcategory.image,
-      subcategory.image_url_web,
-      subcategory.image_url_mobile,
-    ];
-
-    for (const c of candidates) {
-      if (typeof c === "string" && c.trim().length > 0)
-        return normalizeImageUrl(c);
-    }
-
-    const arrayKeys = [
-      "image_urls",
-      "imageUrls",
-      "image_urls_web",
-      "image_urls_mobile",
-    ];
-
-    for (const key of arrayKeys) {
-      const arr = subcategory?.[key];
-      if (!Array.isArray(arr) || arr.length === 0) continue;
-
-      const first = arr[0];
-      if (typeof first === "string" && first.trim().length > 0) return first;
-      if (first && typeof first === "object") {
-        const objCandidates = [
-          first.image_url,
-          first.imageUrl,
-          first.url,
-          first.image,
-        ];
-        for (const oc of objCandidates) {
-          if (typeof oc === "string" && oc.trim().length > 0) return normalizeImageUrl(oc);
-        }
-      }
-    }
-
-    return null;
-  };
 
   // Load more products for parent category
   const loadMoreProducts = useCallback(async () => {
@@ -140,6 +87,9 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   }, [isParentCategory, hasMore, loadingMore, loadMoreProducts]);
 
   useEffect(() => {
+    setNumericCategoryId(null);
+    setIsLoadingProducts(true);
+
     if (categoryId === "recent") {
       router.replace("/recent-items");
       return;
@@ -148,11 +98,21 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
       router.replace("/popular-items");
       return;
     }
+    if (categoryId === SIMILAR_PRODUCTS_SLUG) {
+      setIsStoredProductList(true);
+      return;
+    }
+
+    setIsStoredProductList(false);
 
     let cancelled = false;
     resolveCategorySlugToId(categoryId).then((id) => {
-      if (!cancelled && id !== null) {
-        setNumericCategoryId(id);
+      if (!cancelled) {
+        if (id !== null) {
+          setNumericCategoryId(id);
+        } else {
+          setIsLoadingProducts(false);
+        }
       }
     });
     return () => {
@@ -161,12 +121,58 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   }, [categoryId, router]);
 
   useEffect(() => {
-    if (numericCategoryId === null) return;
+    if (categoryId !== SIMILAR_PRODUCTS_SLUG) return;
+
+    setIsLoadingProducts(true);
+
+    try {
+      const storedProducts = sessionStorage.getItem(
+        `subcategory_${SIMILAR_PRODUCTS_STORAGE_KEY}_products`
+      );
+      const storedCategoryName = sessionStorage.getItem(
+        `subcategory_${SIMILAR_PRODUCTS_STORAGE_KEY}_name`
+      );
+      const displayName = storedCategoryName || SIMILAR_PRODUCTS_TITLE;
+      const parsedProducts = storedProducts ? JSON.parse(storedProducts) : [];
+      const nextProducts = Array.isArray(parsedProducts) ? parsedProducts : [];
+
+      setProducts(nextProducts);
+      setDisplayCategoryName(displayName);
+      setParentCategoryName(displayName);
+      setTotalProducts(nextProducts.length);
+      apiLog(
+        "GET /categories/similar-products",
+        `stored · ${nextProducts.length} products`,
+        { products: nextProducts },
+        { dedupeKey: `categories-similar-products|${nextProducts.length}` }
+      );
+    } catch (error) {
+      console.error("Error parsing stored similar products:", error);
+      setProducts([]);
+      setDisplayCategoryName(SIMILAR_PRODUCTS_TITLE);
+      setParentCategoryName(SIMILAR_PRODUCTS_TITLE);
+      setTotalProducts(0);
+    } finally {
+      setIsStoredProductList(true);
+      setIsParentCategory(false);
+      setSubcategories([]);
+      setSelectedSubcategoryId(null);
+      setParentCategory(null);
+      setHasMore(false);
+      setNextCursor(null);
+      setLoadingMore(false);
+      setIsLoadingProducts(false);
+    }
+  }, [categoryId]);
+
+  useEffect(() => {
+    if (isStoredProductList || numericCategoryId === null) return;
 
     const categoryKey = numericCategoryId.toString();
 
     const fetchCategoryData = async () => {
       try {
+        setIsLoadingProducts(true);
         const parentCategories = await getParentCategories();
         const isParent = parentCategories.some(
           (cat: any) => cat.id === numericCategoryId
@@ -262,7 +268,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
     };
 
     fetchCategoryData();
-  }, [numericCategoryId, categoryId, router]);
+  }, [numericCategoryId, categoryId, router, isStoredProductList]);
 
   const handleSubcategorySelect = async (subcategoryId: number | null) => {
     if (!subcategoryId) return;
@@ -283,6 +289,11 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
   };
 
   const handleGoBack = () => {
+    if (isStoredProductList) {
+      router.back();
+      return;
+    }
+
     // Check if user came from "All" page
     const categorySource = sessionStorage.getItem('category_source');
     
@@ -311,7 +322,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
 
   if (
     isLoading ||
-    numericCategoryId === null ||
+    (!isStoredProductList && numericCategoryId === null) ||
     categoryId === "recent" ||
     categoryId === "popular-items"
   ) {
@@ -336,12 +347,51 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
           >
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
             <span className="font-medium text-sm sm:text-base truncate">
-              {isParentCategory ? displayCategoryName : parentCategoryName}
+              {isStoredProductList
+                ? displayCategoryName
+                : isParentCategory
+                  ? displayCategoryName
+                  : parentCategoryName}
             </span>
           </button>
         </div>
 
-        {isParentCategory ? (
+        {isStoredProductList ? (
+          <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
+            <div className="mb-3 sm:mb-4 md:mb-6">
+              <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-black">
+                {displayCategoryName || SIMILAR_PRODUCTS_TITLE}
+              </h1>
+              <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">
+                {productCount} {productCount === 1 ? 'product' : 'products'} found
+              </p>
+            </div>
+
+            <div className="overflow-y-auto max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] pr-1 sm:pr-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
+                {isLoadingProducts ? (
+                  Array.from({ length: 12 }).map((_, index) => (
+                    <div key={`skeleton-${index}`} className="w-full">
+                      <ProductCardSkeleton />
+                    </div>
+                  ))
+                ) : (
+                  products.map((product) => (
+                    <div key={product.id} className="w-full">
+                      <ProductCard product={product} />
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {!isLoadingProducts && products.length === 0 && (
+                <div className="text-center py-20">
+                  <p className="text-gray-500 text-lg">No similar products found</p>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : isParentCategory ? (
           /* Parent Category Layout - Full Width Grid */
           <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
             <div className="mb-3 sm:mb-4 md:mb-6">
@@ -401,7 +451,7 @@ const CategoriesPageClient = ({ categoryId, fallbackProducts }: Props) => {
               selectedSubcategoryId={selectedSubcategoryId}
               onSelectSubcategory={handleSubcategorySelect}
               parentCategoryName={parentCategoryName}
-              currentSubcategoryId={numericCategoryId}
+              currentSubcategoryId={numericCategoryId!}
             />
 
             {/* Right Side - Products Grid */}

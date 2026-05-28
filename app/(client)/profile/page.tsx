@@ -176,7 +176,6 @@ const ProfilePage = () => {
       alert("Password must be at least 6 characters long!");
       return;
     }
-    console.log("Changing password:", passwordData);
     setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" });
     setShowPasswordForm(false);
   };

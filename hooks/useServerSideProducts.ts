@@ -61,7 +61,6 @@ export const useServerSideProducts = ({
   const loadCachedData = useCallback(() => {
     const cachedProducts = getCachedProducts(cacheKey);
     if (cachedProducts && cachedProducts.length > 0) {
-      console.log('📦 useServerSideProducts: Loading cached data:', cachedProducts.length, 'products');
       setData(prev => ({
         ...prev,
         products: cachedProducts as Product[],
@@ -104,7 +103,6 @@ export const useServerSideProducts = ({
 
       // Cache the results
       setCachedProducts(cacheKey, newProducts);
-      console.log('📦 useServerSideProducts: Cached deals products:', newProducts.length);
     } catch (error) {
       console.error("❌ Error fetching deals products:", error);
       setData(prev => ({ 
@@ -160,7 +158,6 @@ export const useServerSideProducts = ({
 
         // Cache the results
         setCachedProducts(cacheKey, newProducts as any);
-        console.log('📦 useServerSideProducts: Cached subcategory products:', newProducts.length);
       } else {
         // Subcategory selected - fetch products for this specific subcategory
         const prods = await getProductsBySubcategoryWithPricing(
@@ -191,7 +188,6 @@ export const useServerSideProducts = ({
 
         // Cache the results
         setCachedProducts(cacheKey, newProducts as any);
-        console.log('📦 useServerSideProducts: Cached subcategory products:', newProducts.length);
       }
     } catch (error) {
       console.error("❌ Error fetching subcategory products:", error);
@@ -249,7 +245,6 @@ export const useServerSideProducts = ({
 
       // Cache the results
       setCachedProducts(cacheKey, newProducts as any);
-      console.log('📦 useServerSideProducts: Cached all products:', newProducts.length);
     } catch (error) {
       console.error("❌ Error fetching all products:", error);
       setData(prev => ({ 

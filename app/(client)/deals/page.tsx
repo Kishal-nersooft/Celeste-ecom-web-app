@@ -19,26 +19,19 @@ export default function DealsPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log("🔍 Deals page: Starting to fetch data...");
-        console.log("🔍 Deals page: User authenticated:", !!user);
         
         // Fetch all products with pricing data first
-        console.log("🔍 Deals page: Fetching all products with pricing...");
         const allProductsResponse = await getProductsWithPricing(null, 1, 100, false, true, true, [1, 2, 3, 4]); // Get all products first
         
         // Filter to only products with discount_applied > 0
-        console.log("🔍 Deals page: Filtering for products with discounts...");
         const productsResponse = allProductsResponse.filter((product: Product) => 
           product.pricing && 
           product.pricing.discount_applied !== null && 
           product.pricing.discount_applied !== undefined && 
           product.pricing.discount_applied > 0
         );
-        console.log("🔍 Deals page: getProducts response:", productsResponse);
         
-        console.log("🔍 Deals page: Calling getCategories...");
         const categoriesResponse = await getCategories();
-        console.log("🔍 Deals page: getCategories response:", categoriesResponse);
 
         // Ensure products and categories are always arrays
         const productsArray = Array.isArray(productsResponse) ? productsResponse : [];
@@ -47,15 +40,8 @@ export default function DealsPage() {
         setProducts(productsArray);
         setCategories(categoriesArray);
         
-        console.log(`✅ Deals page: Found ${productsArray.length} discounted products`);
-        console.log(`✅ Deals page: Found ${categoriesArray.length} categories`);
         
         if (productsArray.length > 0) {
-          console.log("🔍 Deals page: First product details:", {
-            id: productsArray[0].id,
-            name: productsArray[0].name,
-            pricing: productsArray[0].pricing
-          });
         }
       } catch (error) {
         console.error("❌ Deals page: Error fetching deals data:", error);

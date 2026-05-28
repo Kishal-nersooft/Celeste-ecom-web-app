@@ -60,13 +60,11 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
     try {
       toast.loading('Processing reorder...', { id: 'reorder' });
       
-      console.log('🔄 Starting reorder process for order:', orderToReorder.id);
       
       // Step 1: Always create a new cart for reorder
       const cartName = `Reorder from Order #${orderToReorder.orderNumber || orderToReorder.id}`;
       const cartDescription = `Reordered on ${new Date().toLocaleDateString()}`;
       
-      console.log('📦 Creating new cart...');
       
       let cartId: number;
       try {
@@ -76,22 +74,17 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
         });
         
         cartId = newCart.data?.id || newCart.id;
-        console.log('✅ New cart created:', cartId);
       } catch (error: any) {
         // If 409 Conflict, it means there are already active carts
         // Find an active cart and use it, clearing its items
         if (error.message?.includes('409')) {
-          console.log('⚠️ Cart creation failed with 409, loading user carts to find active cart...');
           await cartStore.loadUserCarts();
           
           // Find active carts (ONLY status='active', exclude 'ordered' carts)
           const activeCarts = cartStore.carts.filter(cart => cart.status === 'active');
-          console.log(`🔍 Found ${activeCarts.length} active carts (excluding ordered carts)`);
-          console.log('🔍 Active cart IDs:', activeCarts.map(c => c.id));
           
           if (activeCarts.length > 0) {
             cartId = activeCarts[0].id;
-            console.log('📍 Using existing active cart and clearing items:', cartId);
             
             // Clear all items from the cart
             const itemsToRemove = activeCarts[0].items;
@@ -100,13 +93,11 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
             for (const productId of uniqueProductIds) {
               try {
                 await removeFromCart(cartId, productId);
-                console.log(`✅ Removed product ${productId} from cart`);
               } catch (error) {
                 console.error(`Failed to remove product ${productId} from cart:`, error);
               }
             }
             
-            console.log('✅ Cleared existing cart items');
           } else {
             throw error; // Re-throw if no active carts found
           }
@@ -121,13 +112,11 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
       
       for (const orderItem of orderToReorder.items || []) {
         try {
-          console.log(`🔄 Fetching product ${orderItem.productId}...`);
           
           // Fetch fresh product data
           const freshProduct = await getProductById(orderItem.productId.toString());
           
           if (freshProduct) {
-            console.log(`✅ Adding ${freshProduct.name} to cart...`);
             
             // Add to cart with original quantity
             await addItemToCart(cartId, {
@@ -135,7 +124,6 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
               quantity: orderItem.quantity
             });
             
-            console.log(`✅ Added ${freshProduct.name} (qty: ${orderItem.quantity}) to cart`);
             
             // Store the full product data (we already fetched it)
             addedItems.push({
@@ -160,33 +148,21 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
         }
       }
       
-      console.log(`✅ Reorder complete: ${addedItems.length} items added, ${skippedItems.length} skipped`);
       
       // Step 4: Sync with backend to get the updated cart with all items
-      console.log('🔄 Step 4: Syncing cart with backend...');
       
       // Set the cart ID first
       cartStore.setCartId(cartId);
       cartStore.setIsCartCreated(true);
       
       // Reload user carts from backend
-      console.log('📥 Loading user carts...');
       await cartStore.loadUserCarts();
       
       // Now switch to the cart with full product data
-      console.log('🔄 Switching to cart:', cartId);
       await cartStore.switchCart(cartId);
       
       // Verify the items are loaded correctly
       const currentItems = cartStore.items;
-      console.log('✅ Cart items after sync:', currentItems.length);
-      console.log('✅ Items data:', currentItems.map(item => ({
-        id: item.product?.id,
-        name: item.product?.name,
-        hasImage: !!item.product?.image_urls?.length,
-        hasPricing: !!item.product?.pricing,
-        pricing: item.product?.pricing
-      })));
       
       // Step 5: Show results and navigate
       if (skippedItems.length > 0) {
@@ -195,7 +171,6 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
         toast.success(`${addedItems.length} items added to cart`, { id: 'reorder' });
       }
       
-      console.log('✅ Navigating to checkout...');
       router.push('/checkout');
       
     } catch (error: any) {

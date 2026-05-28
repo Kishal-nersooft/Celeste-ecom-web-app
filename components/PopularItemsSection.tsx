@@ -60,20 +60,16 @@ const PopularItemsSection = () => {
           // For pickup mode, use selected store ID
           if (selectedStore?.id) {
             storeIds = [parseInt(selectedStore.id.toString())];
-            console.log("🛍️ PopularItems: Using pickup mode with store ID:", storeIds[0]);
           } else {
             // Fallback to default stores if no store selected
             storeIds = [1, 2, 3, 4];
-            console.log("🛍️ PopularItems: Using pickup mode with default stores:", storeIds);
           }
         } else {
           // For delivery mode, use location coordinates
           if (defaultAddress?.latitude && defaultAddress?.longitude) {
             latitude = parseFloat(defaultAddress.latitude);
             longitude = parseFloat(defaultAddress.longitude);
-            console.log("🚚 PopularItems: Using delivery mode with location:", { latitude, longitude });
           } else {
-            console.log("⚠️ PopularItems: Delivery mode but no location available - trying without location");
             // Try without location as fallback
             latitude = undefined;
             longitude = undefined;
@@ -81,13 +77,6 @@ const PopularItemsSection = () => {
         }
 
         // Fetch first 15 trending products for the popular items row
-        console.log("🔥 PopularItems: Fetching trending products (limit 15)");
-        console.log("📋 PopularItems: Request params:", {
-          storeIds,
-          latitude,
-          longitude,
-          deliveryType
-        });
         
         const products = await getPopularProducts(
           'trending', // trending option
@@ -105,7 +94,6 @@ const PopularItemsSection = () => {
           longitude // longitude (for delivery)
         );
         
-        console.log("✅ PopularItems: Received products:", products?.length || 0);
         
         if (Array.isArray(products) && products.length > 0) {
           setPopularProducts(products);

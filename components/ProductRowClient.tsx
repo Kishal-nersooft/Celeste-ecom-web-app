@@ -115,7 +115,6 @@ const ProductRowClient = ({
 
     // For "all" category, redirect to a special route or handle differently
     if (categoryId === "all") {
-      console.log("See all products clicked - all products already displayed");
       return;
     }
 

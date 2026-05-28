@@ -40,7 +40,6 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
             size: 'invisible',
             callback: () => {},
             'expired-callback': () => {
-              console.log('reCAPTCHA expired');
               reinitializeRecaptcha();
             }
           });
@@ -62,7 +61,6 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
           try {
             window.recaptchaVerifier.clear();
           } catch (error) {
-            console.log('Error clearing existing reCAPTCHA verifier:', error);
           }
         }
 
@@ -78,7 +76,6 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
             size: 'invisible',
             callback: () => {},
             'expired-callback': () => {
-              console.log('reCAPTCHA expired');
               // Reset the verifier when expired
               initializeRecaptcha();
             }
@@ -99,7 +96,6 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
         try {
           window.recaptchaVerifier.clear();
         } catch (error) {
-          console.log('Error clearing reCAPTCHA on unmount:', error);
         }
       }
     };

@@ -52,7 +52,7 @@ export const Header = () => {
             <div className="flex items-center gap-2">
               <SidePanel />
               <Link href="/">
-                <Image src={logo} alt="Shop Logo" width={90} height={36} priority className="object-contain" />
+                <Image src={logo} alt="Shop Logo" width={90} height={36} priority className="object-contain h-auto w-auto" />
               </Link>
             </div>
 
@@ -121,7 +121,7 @@ export const Header = () => {
           <div className="flex items-center gap-8">
             <SidePanel />
             <Link href="/">
-              <Image src={logo} alt="Shop Logo" width={120} height={48} priority />
+              <Image src={logo} alt="Shop Logo" width={120} height={48} priority className="h-auto w-auto" />
             </Link>
             <div className="flex items-center gap-2">
               <LocationSelector onLocationSelect={handleLocationSelect} />

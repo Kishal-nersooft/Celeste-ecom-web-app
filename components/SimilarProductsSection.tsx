@@ -31,15 +31,12 @@ const SimilarProductsSection: React.FC<SimilarProductsSectionProps> = ({ product
           }
           latitude = undefined;
           longitude = undefined;
-          console.log("🛍️ SimilarProducts: Using pickup mode with store:", selectedStore?.id);
         } else {
           // For delivery mode, use location coordinates
           if (defaultAddress?.latitude && defaultAddress?.longitude) {
             latitude = parseFloat(defaultAddress.latitude);
             longitude = parseFloat(defaultAddress.longitude);
-            console.log("🚚 SimilarProducts: Using delivery mode with location:", { latitude, longitude });
           } else {
-            console.log("⚠️ SimilarProducts: Delivery mode but no location available");
             // Still fetch without location - API will handle it
             latitude = undefined;
             longitude = undefined;
@@ -47,7 +44,6 @@ const SimilarProductsSection: React.FC<SimilarProductsSectionProps> = ({ product
         }
 
         // Fetch similar products (using default limit of 10)
-        console.log("🔄 SimilarProducts: Fetching similar products for product ID:", productId);
         const products = await getSimilarProducts(
           productId,
           10, // limit (default)
@@ -61,7 +57,6 @@ const SimilarProductsSection: React.FC<SimilarProductsSectionProps> = ({ product
           longitude // longitude (for delivery)
         );
         
-        console.log("✅ SimilarProducts: Received products:", products?.length || 0);
         
         if (Array.isArray(products) && products.length > 0) {
           setSimilarProducts(products);

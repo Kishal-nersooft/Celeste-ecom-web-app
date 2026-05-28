@@ -20,8 +20,6 @@ const PaymentModal: React.FC<PaymentModalProps> = ({
   loading = false
 }) => {
   const handlePaymentSuccess = (paymentData: any) => {
-    console.log('💳 PAYMENT MODAL - Payment success received:', paymentData);
-    console.log('💳 PAYMENT MODAL - Calling onPaymentSuccess and closing modal');
     onPaymentSuccess(paymentData);
     onClose();
   };

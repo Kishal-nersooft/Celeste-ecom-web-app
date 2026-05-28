@@ -207,9 +207,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
         const hasAddressId = addressId !== null;
         
         // Load from backend to get fresh data (only if logged in)
-        console.log("🔄 Loading fresh address data from backend...");
         const addresses = await getUserAddresses();
-        console.log("🔍 Backend addresses loaded:", addresses);
 
         // Ensure addresses is an array
         const addressesArray = Array.isArray(addresses) ? addresses : [];
@@ -218,7 +216,6 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
           // Find the default address or use the first one
           const defaultAddr =
             addressesArray.find((addr: any) => addr.is_default) || addressesArray[0];
-          console.log("📍 Default address found:", defaultAddr);
 
           // Update all location data
           setDefaultAddress(defaultAddr);
@@ -226,13 +223,10 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
           setSelectedLocation(defaultAddr.address);
           setHasSelectedDeliveryType(true);
 
-          console.log("💾 Location data updated and ready for stock loading");
         } else {
-          console.log("⚠️ No addresses found in backend");
           
           // If no backend address but we have cached location without ID, sync it to backend
           if (cachedAddress && cachedAddress.latitude && cachedAddress.longitude && !hasAddressId) {
-            console.log("🔄 Syncing cached location to backend...");
             try {
               const newAddress = await addUserAddress({
                 address: cachedAddress.address || selectedLocation,
@@ -263,7 +257,6 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
                   localStorage.setItem('selectedAddressId', newAddressId.toString());
                   localStorage.setItem('defaultAddress', JSON.stringify(savedAddressData));
                 }
-                console.log("✅ Cached location synced to backend:", newAddressId);
               }
             } catch (syncError) {
               console.warn("Failed to sync cached location to backend:", syncError);
@@ -282,7 +275,6 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
                   // If this location doesn't have an ID, sync it
                   const savedAddressId = localStorage.getItem("selectedAddressId");
                   if (!savedAddressId && parsed.latitude && parsed.longitude) {
-                    console.log("🔄 Syncing localStorage location to backend...");
                     try {
                       const newAddress = await addUserAddress({
                         address: parsed.address || selectedLocation,
@@ -312,7 +304,6 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
                           localStorage.setItem('selectedAddressId', newAddressId.toString());
                           localStorage.setItem('defaultAddress', JSON.stringify(savedAddressData));
                         }
-                        console.log("✅ localStorage location synced to backend:", newAddressId);
                       } else {
                         setDefaultAddress(parsed);
                       }

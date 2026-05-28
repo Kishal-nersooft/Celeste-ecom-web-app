@@ -210,7 +210,6 @@ const useCartStore = create<CartState>()(
             const itemsToPreserve = updatedItems;
             const newCart = await get().createNewCart();
             newCartId = newCart.id;
-            console.log('✅ New cart created for first item:', newCartId);
             
             // Restore the items after cart creation (createNewCart clears items)
             set({ 
@@ -257,7 +256,6 @@ const useCartStore = create<CartState>()(
               product_id: product.id, 
               quantity: 1 
             });
-            console.log('✅ Item synced to backend');
           } catch (error) {
             console.error('❌ Failed to sync item:', error);
           } finally {
@@ -314,7 +312,6 @@ const useCartStore = create<CartState>()(
             set({ isSyncing: true });
             const { removeFromCart } = await import('./lib/api');
             await removeFromCart(currentState.activeCartId, productId);
-            console.log('✅ Item removal synced to backend');
           } catch (error) {
             console.error('❌ Failed to sync removal:', error);
           } finally {
@@ -364,10 +361,8 @@ const useCartStore = create<CartState>()(
             set({ isSyncing: true });
             const { updateCartItemQuantityByProductId } = await import('./lib/api');
             
-            console.log(`🔄 Updating quantity for product ${productId} to ${newQuantity} in cart ${currentState.activeCartId}`);
             // Update quantity directly using the new API function
             await updateCartItemQuantityByProductId(currentState.activeCartId, productId, newQuantity);
-            console.log('✅ Quantity update synced to backend');
           } catch (error) {
             console.error('❌ Failed to sync quantity update:', error);
           } finally {
@@ -410,7 +405,6 @@ const useCartStore = create<CartState>()(
             set({ isSyncing: true });
             const { removeFromCart } = await import('./lib/api');
             await removeFromCart(currentState.activeCartId, productId, opts?.quantity);
-            console.log('✅ Product deletion synced to backend');
           } catch (error) {
             console.error('❌ Failed to sync product deletion:', error);
           } finally {
@@ -444,11 +438,9 @@ const useCartStore = create<CartState>()(
           try {
             const { deleteCart } = await import('./lib/api');
             await deleteCart(state.activeCartId);
-            console.log('✅ Cart cleared from backend');
           } catch (error: any) {
             // Handle 409 Conflict gracefully - this means the cart is associated with a completed order
             if (error.message?.includes('409') || error.message?.includes('Conflict')) {
-              console.log('ℹ️ Cart cannot be deleted (associated with completed order)');
             } else {
               console.error('❌ Failed to clear backend cart:', error);
             }
@@ -576,7 +568,6 @@ const useCartStore = create<CartState>()(
             };
           });
           
-          console.log('✅ New cart created:', newCartId);
           return newCart;
         } catch (error) {
           console.error('❌ Failed to create new cart:', error);
@@ -604,7 +595,6 @@ const useCartStore = create<CartState>()(
             
             try {
               // Always fetch complete product data to ensure we have everything
-              console.log(`🔍 Fetching complete product data for ID: ${productId}`);
               const fullProduct = await getProductById(productId.toString());
               
               if (!fullProduct) {
@@ -612,7 +602,6 @@ const useCartStore = create<CartState>()(
                 return null;
               }
               
-              console.log(`✅ Got complete data for product ${productId}:`, fullProduct?.name);
               
               return {
                 product: {
@@ -654,12 +643,6 @@ const useCartStore = create<CartState>()(
           
           const cartItems = (await Promise.all(cartItemsPromises)).filter(item => item !== null);
           
-          console.log('✅ Cart items after fetching product data:', cartItems.map(item => ({
-            id: item.product.id,
-            name: item.product.name,
-            hasImage: !!item.product.image_urls?.length,
-            hasPricing: !!item.product.pricing?.final_price
-          })));
           
           // Update all carts to set the new active one
           set(state => {
@@ -692,7 +675,6 @@ const useCartStore = create<CartState>()(
             };
           });
           
-          console.log('✅ Switched to cart:', cartId, 'with', cartItems.length, 'items');
         } catch (error) {
           console.error('❌ Failed to switch cart:', error);
           throw error;
@@ -706,9 +688,7 @@ const useCartStore = create<CartState>()(
           const response = await getUserCarts();
           
           // Convert backend cart format to our Cart interface
-          console.log('🔍 Backend cart data:', response.owned_carts);
           const carts: Cart[] = (response.owned_carts || []).map((cart: any) => {
-            console.log(`Processing cart ${cart.id}: status="${cart.status}"`);
             // Safely convert cart items
             const cartItems = (cart.items || []).map((item: any) => ({
               product: {
@@ -772,12 +752,6 @@ const useCartStore = create<CartState>()(
             isActive: cart.id === activeCartId
           }));
           
-          console.log('✅ Final processed carts:', updatedCarts.map(cart => ({
-            id: cart.id,
-            name: cart.name,
-            status: cart.status,
-            itemCount: cart.itemCount
-          })));
           
           set({
             carts: updatedCarts,
@@ -794,7 +768,6 @@ const useCartStore = create<CartState>()(
             }
           }
           
-          console.log('✅ User carts loaded:', carts.length);
         } catch (error) {
           console.error('❌ Failed to load user carts:', error);
           set({ isLoadingCarts: false });
@@ -823,7 +796,6 @@ const useCartStore = create<CartState>()(
             };
           });
           
-          console.log('✅ Cart deleted:', cartId);
         } catch (error) {
           console.error('❌ Failed to delete cart:', error);
           throw error;
@@ -850,7 +822,6 @@ const useCartStore = create<CartState>()(
             )
           }));
           
-          console.log('✅ Cart name updated:', cartId);
         } catch (error) {
           console.error('❌ Failed to update cart name:', error);
           throw error;
@@ -920,7 +891,6 @@ const useCartStore = create<CartState>()(
             items: convertedItems
           }));
           
-          console.log('✅ Active cart synced with backend:', convertedItems.length, 'items');
         } catch (error) {
           console.error('❌ Failed to sync active cart:', error);
           throw error;

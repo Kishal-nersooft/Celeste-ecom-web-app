@@ -7,7 +7,6 @@
 export function clearStaleAddressData(): void {
   if (typeof window === 'undefined') return;
   
-  console.log('🧹 Clearing stale address data from localStorage...');
   
   // Clear all address-related localStorage keys
   const keysToRemove = [
@@ -31,7 +30,6 @@ export function clearStaleAddressData(): void {
     }
   });
   
-  console.log('✅ Stale address data cleared');
 }
 
 /**
@@ -43,12 +41,10 @@ export async function validateAddressOwnership(addressId: number): Promise<boole
     const addresses = await getUserAddresses();
     
     if (!addresses || !Array.isArray(addresses)) {
-      console.log('❌ No addresses found or invalid response');
       return false;
     }
     
     const addressExists = addresses.some(addr => addr.id === addressId);
-    console.log(`🔍 Address ${addressId} exists:`, addressExists);
     
     return addressExists;
   } catch (error) {
@@ -67,7 +63,6 @@ export async function getValidAddressId(): Promise<number | null> {
     const addresses = await getUserAddresses();
     
     if (!addresses || !Array.isArray(addresses) || addresses.length === 0) {
-      console.log('❌ No addresses found for user');
       return null;
     }
     
@@ -75,7 +70,6 @@ export async function getValidAddressId(): Promise<number | null> {
     const defaultAddress = addresses.find(addr => addr.is_default);
     const validAddress = defaultAddress || addresses[0];
     
-    console.log(`✅ Found valid address ID: ${validAddress.id}`);
     return validAddress.id;
   } catch (error) {
     console.error('❌ Error getting valid address ID:', error);
@@ -88,7 +82,6 @@ export async function getValidAddressId(): Promise<number | null> {
  * Clears stale data and forces address re-selection
  */
 export function handleAddressValidationError(): void {
-  console.log('🔄 Handling address validation error...');
   
   // Clear stale data
   clearStaleAddressData();

@@ -162,22 +162,16 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log('💳 PAYMENT FORM SUBMITTED');
-    console.log('📋 FORM DATA:', formData);
-    console.log('💰 TOTAL AMOUNT:', totalAmount);
     
     if (!validateForm()) {
-      console.log('❌ Form validation failed');
       toast.error("Please fix the errors below");
       return;
     }
 
-    console.log('✅ Form validation passed, processing payment...');
     setIsProcessing(true);
     
     // Simulate payment processing
     try {
-      console.log('⏳ Simulating payment processing...');
       await new Promise(resolve => setTimeout(resolve, 2000));
       
       const paymentData = {
@@ -192,7 +186,6 @@ const PaymentForm: React.FC<PaymentFormProps> = ({
         timestamp: new Date().toISOString()
       };
       
-      console.log('✅ Payment processed successfully, calling onPaymentSuccess:', paymentData);
       toast.success("Payment processed successfully!");
       onPaymentSuccess(paymentData);
     } catch (error) {
