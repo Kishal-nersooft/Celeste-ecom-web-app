@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Container from "@/components/Container";
 import { useAuth } from "@/components/FirebaseAuthProvider";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { Camera, ChevronRight, Edit2, ArrowLeft, Plus, Trash2, MapPin, HomeIcon, BriefcaseBusiness } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,8 @@ interface SavedAddress {
   latitude: number;
   longitude: number;
   is_default: boolean;
+  name?: string;
+  ondemand_delivery_available?: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -31,10 +33,13 @@ interface UserProfile {
   addresses?: SavedAddress[];
 }
 
+const PROFILE_SECTIONS = ["profile", "security", "privacy", "saved-locations"] as const;
+type ProfileSection = (typeof PROFILE_SECTIONS)[number];
+
 const ProfilePage = () => {
   const { user, loading } = useAuth();
   const router = useRouter();
-  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const searchParams = useSearchParams();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     personalInfo: "",
@@ -50,16 +55,89 @@ const ProfilePage = () => {
   const [savedLocations, setSavedLocations] = useState<SavedAddress[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
+  const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [showPasswordForm, setShowPasswordForm] = useState(false);
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
+
+  const ProfileSkeleton = ({ section }: { section: ProfileSection | null }) => {
+    if (section) {
+      return (
+        <Container className="py-0">
+          <div className="flex min-h-screen bg-gray-50">
+            {/* Left Sidebar skeleton */}
+            <div className="w-64 bg-white border-r border-gray-200 min-h-screen">
+              <div className="p-6">
+                <div className="h-5 w-40 bg-gray-200 rounded animate-pulse mb-6" />
+                <div className="space-y-2">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <div
+                      key={idx}
+                      className="w-full px-4 py-3 rounded-lg bg-gray-100 flex items-center justify-between"
+                    >
+                      <div className="h-4 w-28 bg-gray-200 rounded animate-pulse" />
+                      <div className="h-4 w-4 bg-gray-200 rounded animate-pulse" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Main Content skeleton */}
+            <div className="flex-1 bg-white p-8">
+              <div className="max-w-2xl space-y-4">
+                <div className="h-7 w-56 bg-gray-200 rounded animate-pulse" />
+                <div className="h-4 w-full bg-gray-200 rounded animate-pulse" />
+                <div className="h-4 w-5/6 bg-gray-200 rounded animate-pulse" />
+                <div className="h-24 w-full bg-gray-100 rounded-lg animate-pulse" />
+                <div className="h-24 w-full bg-gray-100 rounded-lg animate-pulse" />
+              </div>
+            </div>
+          </div>
+        </Container>
+      );
+    }
+
+    return (
+      <Container className="py-10">
+        <div className="max-w-md mx-auto bg-white min-h-screen">
+          <div className="flex flex-col items-center pt-8 pb-12">
+            <div className="relative w-24 h-24 bg-gray-200 rounded-full mb-4 shadow-sm animate-pulse" />
+            <div className="h-6 w-40 bg-gray-200 rounded animate-pulse" />
+          </div>
+
+          <div className="space-y-3 px-4">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="w-full bg-gray-100 rounded-lg px-4 py-4 flex items-center justify-between shadow-sm"
+              >
+                <div className="h-4 w-28 bg-gray-200 rounded animate-pulse" />
+                <div className="h-5 w-5 bg-gray-200 rounded animate-pulse" />
+              </div>
+            ))}
+          </div>
+        </div>
+      </Container>
+    );
+  };
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login?returnUrl=" + encodeURIComponent("/profile"));
     }
   }, [user, loading, router]);
+
+  const navigateToSection = (section: ProfileSection | null) => {
+    const next = section ? `/profile?section=${encodeURIComponent(section)}` : "/profile";
+    router.push(next);
+  };
+
+  const sectionParam = searchParams.get("section");
+  const activeSection: ProfileSection | null = PROFILE_SECTIONS.includes(sectionParam as ProfileSection)
+    ? (sectionParam as ProfileSection)
+    : null;
 
   // Load user profile from backend
   useEffect(() => {
@@ -71,7 +149,6 @@ const ProfilePage = () => {
         try {
           const profileData = await getCurrentUser(true);
           setUserProfile(profileData);
-          setSavedLocations(profileData.addresses || []);
           
           setFormData({
             personalInfo: profileData.name || user.displayName || user.email?.split('@')[0] || 'User',
@@ -98,8 +175,39 @@ const ProfilePage = () => {
     loadUserProfile();
   }, [user]);
 
+  const loadSavedLocations = async () => {
+    if (!user) return;
+    setLoadingAddresses(true);
+    try {
+      const addresses = await getUserAddresses();
+      if (Array.isArray(addresses)) {
+        const storedNames =
+          typeof window !== "undefined"
+            ? JSON.parse(localStorage.getItem("addressNames") || "{}")
+            : {};
+        const addressesWithNames = addresses.map((addr: SavedAddress) => ({
+          ...addr,
+          name: addr.name ?? storedNames[addr.id],
+        }));
+        setSavedLocations(addressesWithNames);
+      } else {
+        setSavedLocations([]);
+      }
+    } catch (error) {
+      console.error("Error loading addresses:", error);
+      setSavedLocations([]);
+    } finally {
+      setLoadingAddresses(false);
+    }
+  };
+
+  useEffect(() => {
+    loadSavedLocations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   if (loading || loadingProfile) {
-    return <div>Loading...</div>;
+    return <ProfileSkeleton section={activeSection} />;
   }
 
   if (!user) {
@@ -107,7 +215,7 @@ const ProfilePage = () => {
   }
 
   const menuItems = [
-    { label: "Profile", key: "profile" },
+    { label: "Personal Info", key: "profile" },
     { label: "Security", key: "security" },
     { label: "Privacy & Data", key: "privacy" },
     { label: "Saved Locations", key: "saved-locations" },
@@ -196,12 +304,17 @@ const ProfilePage = () => {
         address: addressData.fullAddress,
         latitude: addressData.coordinates.lat,
         longitude: addressData.coordinates.lng,
-        is_default: savedLocations.length === 0
+        is_default: savedLocations.length === 0,
+        name: addressData.name,
       });
       
-      // Reload addresses from backend
-      const addresses = await getUserAddresses();
-      setSavedLocations(addresses);
+      if (newAddress?.id && addressData.name && typeof window !== "undefined") {
+        const storedNames = JSON.parse(localStorage.getItem("addressNames") || "{}");
+        storedNames[newAddress.id] = addressData.name;
+        localStorage.setItem("addressNames", JSON.stringify(storedNames));
+      }
+
+      await loadSavedLocations();
       toast.success("Address saved successfully!");
     } catch (error) {
       console.error('Error adding address:', error);
@@ -226,12 +339,17 @@ const ProfilePage = () => {
       await updateUserAddress(editingAddress.id, {
         address: addressData.fullAddress,
         latitude: addressData.coordinates.lat,
-        longitude: addressData.coordinates.lng
+        longitude: addressData.coordinates.lng,
+        name: addressData.name,
       });
       
-      // Reload addresses from backend
-      const addresses = await getUserAddresses();
-      setSavedLocations(addresses);
+      if (addressData.name && typeof window !== "undefined") {
+        const storedNames = JSON.parse(localStorage.getItem("addressNames") || "{}");
+        storedNames[editingAddress.id] = addressData.name;
+        localStorage.setItem("addressNames", JSON.stringify(storedNames));
+      }
+
+      await loadSavedLocations();
       setEditingAddress(null);
       toast.success("Address updated successfully!");
     } catch (error) {
@@ -244,9 +362,13 @@ const ProfilePage = () => {
     try {
       await deleteUserAddress(id);
       
-      // Reload addresses from backend
-      const addresses = await getUserAddresses();
-      setSavedLocations(addresses);
+      if (typeof window !== "undefined") {
+        const storedNames = JSON.parse(localStorage.getItem("addressNames") || "{}");
+        delete storedNames[id];
+        localStorage.setItem("addressNames", JSON.stringify(storedNames));
+      }
+
+      await loadSavedLocations();
       toast.success("Address deleted successfully!");
     } catch (error) {
       console.error('Error deleting address:', error);
@@ -258,9 +380,7 @@ const ProfilePage = () => {
     try {
       await setDefaultAddress(id);
       
-      // Reload addresses from backend
-      const addresses = await getUserAddresses();
-      setSavedLocations(addresses);
+      await loadSavedLocations();
       toast.success("Default address updated!");
     } catch (error) {
       console.error('Error setting default address:', error);
@@ -292,6 +412,9 @@ const ProfilePage = () => {
     return <MapPin className="h-5 w-5 text-gray-600" />;
   };
 
+  const getDisplayLabel = (addr: SavedAddress, index: number) =>
+    addr.name || (addr.is_default ? "Default address" : `Address #${index + 1}`);
+
   const fields = [
     {
       key: "personalInfo",
@@ -304,12 +427,6 @@ const ProfilePage = () => {
       label: "Phone Number",
       value: formData.phoneNumber,
       type: "tel"
-    },
-    {
-      key: "email",
-      label: "Email", 
-      value: formData.email,
-      type: "email"
     },
     {
       key: "language",
@@ -334,7 +451,7 @@ const ProfilePage = () => {
                 {menuItems.map((item, index) => (
                   <button
                     key={index}
-                    onClick={() => setActiveSection(item.key)}
+                    onClick={() => navigateToSection(item.key as ProfileSection)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-left transition-colors duration-200 ${
                       activeSection === item.key
                         ? "bg-black text-white"
@@ -454,7 +571,7 @@ const ProfilePage = () => {
                 {menuItems.map((item, index) => (
                   <button
                     key={index}
-                    onClick={() => setActiveSection(item.key)}
+                    onClick={() => navigateToSection(item.key as ProfileSection)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-left transition-colors duration-200 ${
                       activeSection === item.key
                         ? "bg-black text-white"
@@ -471,12 +588,39 @@ const ProfilePage = () => {
 
           {/* Main Content */}
           <div className="flex-1 bg-white p-8">
-            <div className="max-w-2xl">
+            <div className="max-w-6xl w-full">
               <div className="flex justify-between items-center mb-6">
                 <h1 className="text-2xl font-bold text-gray-900">Saved Locations</h1>
               </div>
               
-              {savedLocations.length === 0 ? (
+              {loadingAddresses ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {Array.from({ length: 4 }).map((_, idx) => (
+                    <Card key={idx} className="relative">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-start justify-between">
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <div className="h-5 w-5 rounded-full bg-gray-200 animate-pulse flex-shrink-0" />
+                            <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+                          </div>
+                          <div className="flex gap-1">
+                            <div className="h-8 w-8 rounded bg-gray-200 animate-pulse" />
+                            <div className="h-8 w-8 rounded bg-gray-200 animate-pulse" />
+                          </div>
+                        </div>
+                        <div className="mt-2 h-5 w-20 bg-gray-200 rounded animate-pulse" />
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2 mb-3">
+                          <div className="h-4 w-full bg-gray-200 rounded animate-pulse" />
+                          <div className="h-4 w-4/5 bg-gray-200 rounded animate-pulse" />
+                        </div>
+                        <div className="h-9 w-full bg-gray-200 rounded animate-pulse" />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              ) : savedLocations.length === 0 ? (
                 <div className="text-center py-8">
                   <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No saved locations</h3>
@@ -508,14 +652,14 @@ const ProfilePage = () => {
                       Add New Location
                     </Button>
                   </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {savedLocations.map((location) => (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {savedLocations.map((location, index) => (
                     <Card key={location.id} className="relative">
                       <CardHeader className="pb-3">
                         <div className="flex items-start justify-between">
                           <div className="flex items-center gap-2">
                             {getAddressIcon(location.address)}
-                            <CardTitle className="text-lg">Address {location.id}</CardTitle>
+                            <CardTitle className="text-lg">{getDisplayLabel(location, index)}</CardTitle>
                           </div>
                           <div className="flex gap-1">
                             <Button
@@ -581,7 +725,7 @@ const ProfilePage = () => {
                 {menuItems.map((item, index) => (
                   <button
                     key={index}
-                    onClick={() => setActiveSection(item.key)}
+                    onClick={() => navigateToSection(item.key as ProfileSection)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-left transition-colors duration-200 ${
                       activeSection === item.key
                         ? "bg-black text-white"
@@ -622,7 +766,7 @@ const ProfilePage = () => {
                 {menuItems.map((item, index) => (
                   <button
                     key={index}
-                    onClick={() => setActiveSection(item.key)}
+                    onClick={() => navigateToSection(item.key as ProfileSection)}
                     className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-left transition-colors duration-200 ${
                       activeSection === item.key
                         ? "bg-black text-white"
@@ -745,7 +889,7 @@ const ProfilePage = () => {
             <button
               key={index}
               className="w-full bg-gray-100 hover:bg-gray-200 rounded-lg px-4 py-4 flex items-center justify-between transition-colors duration-200 shadow-sm"
-              onClick={() => setActiveSection(item.key)}
+              onClick={() => navigateToSection(item.key as ProfileSection)}
             >
               <span className="text-black font-medium text-left">
                 {item.label}

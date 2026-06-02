@@ -67,6 +67,45 @@ const SavedCardsPage = () => {
     masked: string | null;
   }>({ open: false, cardId: null, masked: null });
 
+  const SavedCardsSkeleton = ({ count = 6 }: { count?: number }) => {
+    return (
+      <Container className="py-10">
+        <div className="flex justify-between items-center mb-8">
+          <div className="space-y-2">
+            <div className="h-9 w-52 bg-gray-200 rounded animate-pulse" />
+            <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+          </div>
+          <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: count }).map((_, idx) => (
+            <Card key={idx} className="relative">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="h-5 w-5 rounded bg-gray-200 animate-pulse flex-shrink-0" />
+                    <div className="h-5 w-36 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-24 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-8 w-8 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  <div className="h-4 w-48 bg-gray-200 rounded animate-pulse" />
+                  <div className="h-4 w-32 bg-gray-200 rounded animate-pulse" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </Container>
+    );
+  };
+
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login?returnUrl=" + encodeURIComponent("/saved-cards"));
@@ -146,16 +185,7 @@ const SavedCardsPage = () => {
   }, [cards.length]);
 
   if (loading || loadingCards) {
-    return (
-      <Container className="py-10">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-            <p>Loading...</p>
-          </div>
-        </div>
-      </Container>
-    );
+    return <SavedCardsSkeleton />;
   }
 
   if (!user) return null;

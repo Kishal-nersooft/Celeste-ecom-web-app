@@ -38,6 +38,38 @@ const Categories = ({ onSelectCategory }: Props) => {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
+  const CategorySelectorSkeleton = ({ count = 14 }: { count?: number }) => {
+    return (
+      <div className="py-2 sm:py-3 md:py-4 px-4">
+        <div className="relative">
+          <button
+            disabled
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full bg-gray-100 text-gray-400 cursor-not-allowed"
+          >
+            <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
+          </button>
+          <button
+            disabled
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full bg-gray-100 text-gray-400 cursor-not-allowed"
+          >
+            <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
+          </button>
+
+          <div className="flex overflow-x-auto space-x-2 sm:space-x-3 md:space-x-4 pb-2 px-6 sm:px-7 md:px-8 scrollbar-hide">
+            {Array.from({ length: count }).map((_, idx) => (
+              <div key={idx} className="flex flex-col animate-pulse">
+                <div className="flex flex-col items-center min-w-[60px] sm:min-w-[70px] md:min-w-[80px]">
+                  <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gray-200" />
+                  <div className="mt-1 sm:mt-1.5 md:mt-2 h-3 sm:h-3.5 md:h-4 w-12 sm:w-14 md:w-16 rounded bg-gray-200" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   useEffect(() => {
     async function fetchCategories() {
       try {
@@ -97,7 +129,7 @@ const Categories = ({ onSelectCategory }: Props) => {
   // Add "All" and "Deals" options at the beginning of categories
   const displayCategories = [allCategoryOption, dealsCategoryOption, ...categories];
 
-  if (loading) return <div>Loading categories...</div>;
+  if (loading) return <CategorySelectorSkeleton />;
   if (error) return <div>Error: {error}</div>;
 
   const scrollLeft = () => {

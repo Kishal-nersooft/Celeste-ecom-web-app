@@ -38,6 +38,47 @@ const SavedAddressPage = () => {
   const [loadingAddresses, setLoadingAddresses] = useState(false);
   const [showDeliveryWarning, setShowDeliveryWarning] = useState(false);
 
+  const SavedAddressSkeleton = ({ count = 6 }: { count?: number }) => {
+    return (
+      <Container className="py-10">
+        <div className="flex justify-between items-center mb-8">
+          <div className="space-y-2">
+            <div className="h-9 w-56 bg-gray-200 rounded animate-pulse" />
+            <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
+          </div>
+          <div className="h-10 w-40 bg-gray-200 rounded animate-pulse" />
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: count }).map((_, idx) => (
+            <Card key={idx} className="relative">
+              <CardHeader className="pb-3">
+                <div className="flex items-start justify-between">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="h-5 w-5 rounded-full bg-gray-200 animate-pulse flex-shrink-0" />
+                    <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
+                  </div>
+                  <div className="flex gap-1">
+                    <div className="h-8 w-8 rounded bg-gray-200 animate-pulse" />
+                    <div className="h-8 w-8 rounded bg-gray-200 animate-pulse" />
+                  </div>
+                </div>
+                <div className="mt-2 h-5 w-20 bg-gray-200 rounded animate-pulse" />
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2 mb-3">
+                  <div className="h-4 w-full bg-gray-200 rounded animate-pulse" />
+                  <div className="h-4 w-4/5 bg-gray-200 rounded animate-pulse" />
+                </div>
+                <div className="h-9 w-full bg-gray-200 rounded animate-pulse" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </Container>
+    );
+  };
+
   useEffect(() => {
     if (!loading && !user) {
       router.push("/login?returnUrl=" + encodeURIComponent("/saved-address"));
@@ -299,16 +340,7 @@ const SavedAddressPage = () => {
   };
 
   if (loading || loadingAddresses) {
-    return (
-      <Container className="py-10">
-        <div className="flex items-center justify-center h-64">
-          <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-            <p>Loading...</p>
-          </div>
-        </div>
-      </Container>
-    );
+    return <SavedAddressSkeleton />;
   }
 
   if (!user) {
