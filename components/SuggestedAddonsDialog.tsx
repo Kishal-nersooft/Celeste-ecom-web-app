@@ -7,6 +7,7 @@ import { getPopularProducts } from "@/lib/api";
 import { useLocation } from "@/contexts/LocationContext";
 import { Product } from "@/store";
 import ProductCard from "@/components/ProductCard";
+import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 
 type SuggestedAddonsDialogProps = {
   open: boolean;
@@ -93,7 +94,13 @@ export default function SuggestedAddonsDialog({
 
         <div className="max-h-[60vh] overflow-y-auto pr-1">
           {loading ? (
-            <div className="py-8 text-center text-sm text-gray-500">Loading popular items...</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3">
+              {Array.from({ length: limit }).map((_, idx) => (
+                <div key={idx} className="w-full flex justify-center">
+                  <ProductCardSkeleton />
+                </div>
+              ))}
+            </div>
           ) : products.length === 0 ? (
             <div className="py-8 text-center text-sm text-gray-500">No popular items found.</div>
           ) : (

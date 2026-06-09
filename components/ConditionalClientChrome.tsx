@@ -4,6 +4,7 @@ import React, { Suspense } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Header } from "@/components/Header";
 import Footer from "@/components/Footer";
+import { ScrollToTopButton } from "@/components/ScrollToTopButton";
 import Link from "next/link";
 
 function CheckoutBreadcrumb() {
@@ -37,6 +38,8 @@ function ChromeInner({ children }: { children: React.ReactNode }) {
     );
   }
 
+  const scrollToTop = <ScrollToTopButton />;
+
   const isCheckoutRoute = pathname === "/checkout" || pathname.startsWith("/checkout/");
 
   if (isCheckoutRoute) {
@@ -49,6 +52,7 @@ function ChromeInner({ children }: { children: React.ReactNode }) {
           {children}
         </div>
         <Footer />
+        {scrollToTop}
       </>
     );
   }
@@ -58,6 +62,7 @@ function ChromeInner({ children }: { children: React.ReactNode }) {
       <Header />
       <div className="main-content pt-36 lg:pt-20">{children}</div>
       <Footer />
+      {scrollToTop}
     </>
   );
 }

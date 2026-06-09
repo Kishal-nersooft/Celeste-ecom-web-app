@@ -26,7 +26,8 @@ import QuantityButtons from "@/components/QuantityButtons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { CalendarClock, Timer } from "lucide-react";
+import Image from "next/image";
+import { CalendarClock, Timer, Store, Package } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -61,6 +62,7 @@ const CheckoutPage = () => {
   const [orderDetails, setOrderDetails] = useState<any>(null);
   const [previewData, setPreviewData] = useState<any>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [refreshingPreview, setRefreshingPreview] = useState(false);
   const [showQuantityMismatchAlert, setShowQuantityMismatchAlert] = useState(false);
   const [mismatchedItems, setMismatchedItems] = useState<any[]>([]);
   const [processingQuantityMismatch, setProcessingQuantityMismatch] = useState(false);
@@ -147,8 +149,10 @@ const CheckoutPage = () => {
       return;
     }
 
+    const shouldShowSkeleton = !previewData;
     try {
-      setLoadingPreview(true);
+      if (shouldShowSkeleton) setLoadingPreview(true);
+      else setRefreshingPreview(true);
       
       // Prepare location data based on order type
       const locationData = selectedOrderType === 'pickup' 
@@ -191,9 +195,41 @@ const CheckoutPage = () => {
       
       toast.error('Failed to load order details');
     } finally {
-      setLoadingPreview(false);
+      if (shouldShowSkeleton) setLoadingPreview(false);
+      setRefreshingPreview(false);
     }
-  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, selectedDeliveryOption, selectedStore, router]);
+  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, selectedDeliveryOption, selectedStore, router, previewData]);
+
+  const previewRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Match product cards: instant local cart update, debounced backend sync, then refresh preview.
+  const schedulePreviewRefresh = React.useCallback(() => {
+    if (previewRefreshTimeoutRef.current) {
+      clearTimeout(previewRefreshTimeoutRef.current);
+    }
+    previewRefreshTimeoutRef.current = setTimeout(async () => {
+      const waitStart = Date.now();
+      await new Promise<void>((resolve) => {
+        const t = setInterval(() => {
+          const syncing = useCartStore.getState().isSyncing;
+          const elapsed = Date.now() - waitStart;
+          if (!syncing || elapsed > 2000) {
+            clearInterval(t);
+            resolve();
+          }
+        }, 100);
+      });
+      await fetchPreviewData();
+    }, 400);
+  }, [fetchPreviewData]);
+
+  React.useEffect(() => {
+    return () => {
+      if (previewRefreshTimeoutRef.current) {
+        clearTimeout(previewRefreshTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const refreshCheckoutAfterSuggestions = React.useCallback(async () => {
     try {
@@ -880,80 +916,99 @@ const CheckoutPage = () => {
             onDeliveryServiceChange={setSelectedDeliveryService}
             selectedDeliveryOption={selectedDeliveryOption}
             onDeliveryOptionChange={setSelectedDeliveryOption}
+            loading={loadingPreview}
           />
 
-          <Card>
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between gap-3">
-                <CardTitle className="text-sm sm:text-base md:text-lg flex items-center gap-2 min-w-0">
-                  <Timer
-                    className="h-4 w-4 sm:h-[18px] sm:w-[18px] md:h-5 md:w-5 shrink-0 text-neutral-600"
-                    aria-hidden
-                  />
-                  <span className="truncate">Schedule order</span>
-                </CardTitle>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={isScheduled}
-                  aria-label={isScheduled ? "Turn off scheduled order" : "Schedule this order for later"}
-                  onClick={() => {
-                    setIsScheduled((prev) => {
-                      const next = !prev;
-                      if (!next) setScheduledLocal("");
-                      return next;
-                    });
-                  }}
-                  className={[
-                    "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors",
-                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2",
-                    isScheduled ? "bg-black" : "bg-neutral-300",
-                  ].join(" ")}
-                >
-                  <span
+          {loadingPreview ? (
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Timer
+                      className="h-4 w-4 shrink-0 text-neutral-400 sm:h-[18px] sm:w-[18px] md:h-5 md:w-5"
+                      aria-hidden
+                    />
+                    <div className="h-4 sm:h-5 w-36 rounded-md bg-gray-200 animate-pulse md:w-40" />
+                  </div>
+                  <div className="h-7 w-12 shrink-0 rounded-full bg-gray-200 animate-pulse" />
+                </div>
+              </CardHeader>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="flex items-center justify-between gap-3">
+                  <CardTitle className="text-sm sm:text-base md:text-lg flex items-center gap-2 min-w-0">
+                    <Timer
+                      className="h-4 w-4 sm:h-[18px] sm:w-[18px] md:h-5 md:w-5 shrink-0 text-neutral-600"
+                      aria-hidden
+                    />
+                    <span className="truncate">Schedule order</span>
+                  </CardTitle>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={isScheduled}
+                    aria-label={isScheduled ? "Turn off scheduled order" : "Schedule this order for later"}
+                    onClick={() => {
+                      setIsScheduled((prev) => {
+                        const next = !prev;
+                        if (!next) setScheduledLocal("");
+                        return next;
+                      });
+                    }}
                     className={[
-                      "inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform",
-                      isScheduled ? "translate-x-6" : "translate-x-1",
+                      "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2",
+                      isScheduled ? "bg-black" : "bg-neutral-300",
                     ].join(" ")}
-                  />
-                </button>
-              </div>
-            </CardHeader>
-            {(isScheduled || (selectedOrderType === "delivery" && isFarDelivery)) && (
-              <CardContent className="space-y-3">
-                {selectedOrderType === "delivery" && isFarDelivery && (
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                    This address is eligible for far delivery. Scheduled orders require a minimum 2-day lead time.
-                  </div>
-                )}
-                {isScheduled && (
-                  <div className="space-y-2">
-                    <div className="relative rounded-xl border-2 border-neutral-200 bg-neutral-50/90 p-1 shadow-sm transition-colors hover:border-neutral-300 focus-within:border-black focus-within:bg-white focus-within:shadow-md focus-within:ring-2 focus-within:ring-black/10">
-                      <CalendarClock
-                        className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-neutral-500 sm:h-[18px] sm:w-[18px]"
-                        aria-hidden
-                      />
-                      <Input
-                        id="scheduled-at"
-                        type="datetime-local"
-                        value={scheduledLocal}
-                        min={minScheduledDateLocal}
-                        onChange={(e) => setScheduledLocal(e.target.value)}
-                        className="h-11 border-0 bg-transparent pl-10 pr-2 text-sm font-medium text-neutral-900 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:text-sm [color-scheme:light]"
-                      />
+                  >
+                    <span
+                      className={[
+                        "inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform",
+                        isScheduled ? "translate-x-6" : "translate-x-1",
+                      ].join(" ")}
+                    />
+                  </button>
+                </div>
+              </CardHeader>
+              {(isScheduled || (selectedOrderType === "delivery" && isFarDelivery)) && (
+                <CardContent className="space-y-3">
+                  {selectedOrderType === "delivery" && isFarDelivery && (
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                      This address is eligible for far delivery. Scheduled orders require a minimum 2-day lead time.
                     </div>
-                    {scheduleValidationError && (
-                      <div className="text-xs text-red-600">{scheduleValidationError}</div>
-                    )}
-                  </div>
-                )}
-              </CardContent>
-            )}
-          </Card>
-          
+                  )}
+                  {isScheduled && (
+                    <div className="space-y-2">
+                      <div className="relative rounded-xl border-2 border-neutral-200 bg-neutral-50/90 p-1 shadow-sm transition-colors hover:border-neutral-300 focus-within:border-black focus-within:bg-white focus-within:shadow-md focus-within:ring-2 focus-within:ring-black/10">
+                        <CalendarClock
+                          className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-neutral-500 sm:h-[18px] sm:w-[18px]"
+                          aria-hidden
+                        />
+                        <Input
+                          id="scheduled-at"
+                          type="datetime-local"
+                          value={scheduledLocal}
+                          min={minScheduledDateLocal}
+                          onChange={(e) => setScheduledLocal(e.target.value)}
+                          className="h-11 border-0 bg-transparent pl-10 pr-2 text-sm font-medium text-neutral-900 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:text-sm [color-scheme:light]"
+                        />
+                      </div>
+                      {scheduleValidationError && (
+                        <div className="text-xs text-red-600">{scheduleValidationError}</div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              )}
+            </Card>
+          )}
+
           <PaymentMethod
             selectedCardId={selectedCardId}
             onCardSelect={setSelectedCardId}
+            previewLoading={loadingPreview}
           />
         </div>
 
@@ -1026,9 +1081,7 @@ const CheckoutPage = () => {
                                   <QuantityButtons
                                     product={fullProduct}
                                     className="text-[10px] sm:text-xs"
-                                    onQuantityChange={() => {
-                                      void fetchPreviewData();
-                                    }}
+                                    onQuantityChange={schedulePreviewRefresh}
                                   />
                                 </div>
                               )}
@@ -1049,7 +1102,7 @@ const CheckoutPage = () => {
             localSubtotal={cartStore.getSubTotalPrice()}
             onCheckout={handleCheckout}
             loadingCheckout={loadingCheckout}
-            onQuantityChange={fetchPreviewData}
+            onQuantityChange={schedulePreviewRefresh}
             onEditMultiStore={handleEnterEditMode}
             editMultiStoreDisabled={editorMode}
           />
@@ -1068,27 +1121,125 @@ const CheckoutPage = () => {
 
       {/* Multi-store confirmation dialog */}
       <Dialog open={showMultiStoreDialog} onOpenChange={setShowMultiStoreDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-sm sm:text-base md:text-lg">Multiple stores will fulfill this order</DialogTitle>
-            <DialogDescription className="text-xs sm:text-sm">
-              {fulfillableStores.length} stores will fulfill your items. Review counts and totals below.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-3">
-            {fulfillableStores.map((s: any, sIdx: number) => (
-              <div key={s.store_id ?? `store-${sIdx}`} className="border rounded-lg p-2 sm:p-3 text-xs sm:text-sm space-y-1">
-                <div className="font-medium">{s.store_name}</div>
-                <div className="text-gray-600">{(s.items?.length || 0)} items</div>
-                <div className="text-gray-900">Subtotal LKR {(s.subtotal || 0).toFixed(2)}</div>
+        <DialogContent className="max-w-[92vw] gap-5 rounded-2xl border-0 p-6 shadow-xl sm:max-w-xl">
+          <DialogHeader className="space-y-3 text-left">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
+                <Store className="h-5 w-5 text-muted-foreground" />
               </div>
-            ))}
+              <div className="space-y-1">
+                <DialogTitle className="text-[15px] font-semibold leading-snug">
+                  Split across {fulfillableStores.length} stores
+                </DialogTitle>
+                <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">
+                  Items will be fulfilled separately. You&apos;ll place {fulfillableStores.length} orders at checkout.
+                </DialogDescription>
+              </div>
+            </div>
+          </DialogHeader>
+
+          <div className="max-h-[min(50vh,320px)] overflow-y-auto pr-0.5">
+            <div className="grid grid-cols-2 gap-3">
+              {fulfillableStores.map((s: any, sIdx: number) => {
+                const storeItems = s.items || [];
+                const itemCount = storeItems.length;
+                const previewItems = storeItems.slice(0, 4);
+
+                return (
+                  <div
+                    key={s.store_id ?? `store-${sIdx}`}
+                    className="flex min-h-[120px] flex-col rounded-xl border border-border/50 bg-muted/40 p-3"
+                  >
+                    <div className="mb-2.5 flex flex-wrap gap-1">
+                      {previewItems.map((it: any, idx: number) => {
+                        const beProduct = it.product;
+                        const cartProduct = cartStore.items.find(
+                          (ci: any) => ci.product.id === it.product_id
+                        )?.product;
+                        const imageUrl =
+                          beProduct?.image_urls?.[0] ||
+                          beProduct?.imageUrl ||
+                          cartProduct?.image_urls?.[0] ||
+                          cartProduct?.imageUrl;
+                        const hasImage =
+                          imageUrl &&
+                          typeof imageUrl === "string" &&
+                          imageUrl.trim() !== "" &&
+                          imageUrl.startsWith("http");
+
+                        return (
+                          <div
+                            key={`${s.store_id}-${it.product_id ?? idx}`}
+                            className="relative h-9 w-9 overflow-hidden rounded-md ring-1 ring-background"
+                          >
+                            {hasImage ? (
+                              <Image
+                                src={imageUrl as string}
+                                alt=""
+                                width={36}
+                                height={36}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              <div className="flex h-full w-full items-center justify-center bg-muted">
+                                <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                      {itemCount > 4 && (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted text-[10px] font-medium text-muted-foreground ring-1 ring-background">
+                          +{itemCount - 4}
+                        </div>
+                      )}
+                      {itemCount === 0 && (
+                        <div className="flex h-9 w-9 items-center justify-center rounded-md bg-muted ring-1 ring-background">
+                          <Store className="h-3.5 w-3.5 text-muted-foreground" />
+                        </div>
+                      )}
+                    </div>
+                    <p className="line-clamp-2 text-sm font-medium leading-snug text-foreground">
+                      {s.store_name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {itemCount} {itemCount === 1 ? "item" : "items"}
+                    </p>
+                    <p className="mt-auto pt-2 text-sm font-semibold tabular-nums text-foreground">
+                      LKR {(s.subtotal || 0).toFixed(2)}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div className="mt-2 text-right font-semibold text-xs sm:text-sm md:text-base">Overall total: LKR {(backendData?.overall_total || 0).toFixed(2)}</div>
-          <DialogFooter>
-            <Button variant="outline" onClick={handleConfirmSplitNo} className="text-xs sm:text-sm">No, I'll adjust</Button>
-            <Button onClick={handleConfirmSplitYes} className="text-xs sm:text-sm">Yes, place {fulfillableStores.length} orders</Button>
-          </DialogFooter>
+
+          <div className="flex items-center justify-between rounded-xl bg-muted/60 px-3 py-2.5">
+            <span className="text-sm text-muted-foreground">Order total</span>
+            <span className="text-sm font-semibold tabular-nums">
+              LKR {(backendData?.overall_total || 0).toFixed(2)}
+            </span>
+          </div>
+
+          <div className="flex flex-col-reverse gap-2 sm:flex-row">
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={handleConfirmSplitNo}
+              disabled={loadingPreview}
+              className="h-10 flex-1 text-muted-foreground hover:text-foreground"
+            >
+              Adjust items
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmSplitYes}
+              disabled={loadingPreview}
+              className="h-10 flex-1"
+            >
+              Place {fulfillableStores.length} orders
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

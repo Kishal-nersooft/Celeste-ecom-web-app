@@ -129,17 +129,15 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
     imageUrl && imageUrl.trim() !== "" && imageUrl.startsWith("http");
 
   const handleShare = async () => {
-    const url = typeof window !== "undefined" ? window.location.href : "";
-    const title = product?.name || "Product";
-    const text = product?.description ? `${product.name} - ${product.description}` : product?.name;
+    const url =
+      typeof window !== "undefined"
+        ? `${window.location.origin}${getProductPath(product)}`
+        : "";
 
     try {
       if (typeof navigator !== "undefined" && navigator.share) {
-        await navigator.share({
-          title,
-          text,
-          url,
-        });
+        // Share only the URL — title/text often get concatenated when users copy from the share sheet.
+        await navigator.share({ url });
         toast.success("Link shared!");
       } else {
         await navigator.clipboard.writeText(url);
@@ -329,7 +327,7 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
           <p className="text-xs sm:text-sm text-gray-600 tracking-wide">
             {product?.description}
           </p>
-          <AddToCartButton product={product} />
+          <AddToCartButton product={product} variant="label" />
           
           {/* Add note or edit replacement button */}
           <Dialog>

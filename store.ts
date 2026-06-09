@@ -127,9 +127,9 @@ interface CartState {
   isLoadingCarts: boolean;
   
   // Legacy cart functions (now work with active cart)
-  addItem: (product: Product) => Promise<void>;
-  removeItem: (productId: number) => Promise<void>;
-  updateItemQuantity: (productId: number, newQuantity: number) => Promise<void>;
+  addItem: (product: Product, opts?: { immediateSync?: boolean }) => Promise<void>;
+  removeItem: (productId: number, opts?: { immediateSync?: boolean }) => Promise<void>;
+  updateItemQuantity: (productId: number, newQuantity: number, opts?: { immediateSync?: boolean }) => Promise<void>;
   deleteCartProduct: (
     productId: number,
     opts?: { skipBackendSync?: boolean; quantity?: number }
@@ -181,7 +181,7 @@ const useCartStore = create<CartState>()(
       activeCartId: null,
       isLoadingCarts: false,
 
-      addItem: async (product: Product) => {
+      addItem: async (product: Product, opts?: { immediateSync?: boolean }) => {
         const state = get();
         
         // Check if item already exists in active cart
@@ -244,27 +244,34 @@ const useCartStore = create<CartState>()(
           )
         });
 
-        // Debounced backend sync
-        debounce('addItem', async () => {
+        const syncKey = `addItem:${product.id}`;
+        const syncFn = async () => {
           const currentState = get();
           if (!currentState.activeCartId) return;
 
           try {
             set({ isSyncing: true });
-            const { addItemToCart } = await import('./lib/api');
-            await addItemToCart(currentState.activeCartId, { 
-              product_id: product.id, 
-              quantity: 1 
+            const { addItemToCart } = await import("./lib/api");
+            await addItemToCart(currentState.activeCartId, {
+              product_id: product.id,
+              quantity: 1,
             });
           } catch (error) {
-            console.error('❌ Failed to sync item:', error);
+            console.error("❌ Failed to sync item:", error);
           } finally {
             set({ isSyncing: false });
           }
-        }, 500);
+        };
+
+        if (opts?.immediateSync) {
+          if (debounceTimeouts[syncKey]) clearTimeout(debounceTimeouts[syncKey]);
+          await syncFn();
+        } else {
+          debounce(syncKey, syncFn, 500);
+        }
       },
 
-      removeItem: async (productId: number) => {
+      removeItem: async (productId: number, opts?: { immediateSync?: boolean }) => {
         const state = get();
         const existingItem = state.items.find(item => item && item.product && item.product.id === productId);
         
@@ -303,26 +310,33 @@ const useCartStore = create<CartState>()(
           )
         }));
 
-        // Debounced backend sync
-        debounce('removeItem', async () => {
+        const syncKey = `removeItem:${productId}`;
+        const syncFn = async () => {
           const currentState = get();
           if (!currentState.activeCartId) return;
 
           try {
             set({ isSyncing: true });
-            const { removeFromCart } = await import('./lib/api');
+            const { removeFromCart } = await import("./lib/api");
             await removeFromCart(currentState.activeCartId, productId);
           } catch (error) {
-            console.error('❌ Failed to sync removal:', error);
+            console.error("❌ Failed to sync removal:", error);
           } finally {
             set({ isSyncing: false });
           }
-        }, 500);
+        };
+
+        if (opts?.immediateSync) {
+          if (debounceTimeouts[syncKey]) clearTimeout(debounceTimeouts[syncKey]);
+          await syncFn();
+        } else {
+          debounce(syncKey, syncFn, 500);
+        }
       },
 
-      updateItemQuantity: async (productId: number, newQuantity: number) => {
+      updateItemQuantity: async (productId: number, newQuantity: number, opts?: { immediateSync?: boolean }) => {
         if (newQuantity <= 0) {
-          get().removeItem(productId);
+          await get().removeItem(productId, opts);
           return;
         }
 
@@ -352,23 +366,28 @@ const useCartStore = create<CartState>()(
           )
         }));
 
-        // Debounced backend sync
-        debounce('updateQuantity', async () => {
+        const syncKey = `updateQuantity:${productId}`;
+        const syncFn = async () => {
           const currentState = get();
           if (!currentState.activeCartId) return;
 
           try {
             set({ isSyncing: true });
-            const { updateCartItemQuantityByProductId } = await import('./lib/api');
-            
-            // Update quantity directly using the new API function
+            const { updateCartItemQuantityByProductId } = await import("./lib/api");
             await updateCartItemQuantityByProductId(currentState.activeCartId, productId, newQuantity);
           } catch (error) {
-            console.error('❌ Failed to sync quantity update:', error);
+            console.error("❌ Failed to sync quantity update:", error);
           } finally {
             set({ isSyncing: false });
           }
-        }, 300);
+        };
+
+        if (opts?.immediateSync) {
+          if (debounceTimeouts[syncKey]) clearTimeout(debounceTimeouts[syncKey]);
+          await syncFn();
+        } else {
+          debounce(syncKey, syncFn, 300);
+        }
       },
 
       deleteCartProduct: async (productId: number, opts?: { skipBackendSync?: boolean; quantity?: number }) => {
@@ -397,7 +416,7 @@ const useCartStore = create<CartState>()(
         // Debounced backend sync (optional)
         if (opts?.skipBackendSync) return;
 
-        debounce('deleteProduct', async () => {
+        debounce(`deleteProduct:${productId}`, async () => {
           const currentState = get();
           if (!currentState.activeCartId) return;
 

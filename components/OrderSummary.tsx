@@ -53,7 +53,15 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   const [isCartExpanded, setIsCartExpanded] = useState(true);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
-  const cartStore = useCartStore();
+  // Subscribe directly so line-item prices update instantly (same as cart preview / order total).
+  const liveCartItems = useCartStore((state) => state.items);
+  const liveSubtotal = useCartStore((state) =>
+    state.items.reduce((total, item) => {
+      if (!item?.product) return total;
+      const price = item.product.pricing?.final_price ?? item.product.base_price ?? 0;
+      return total + price * item.quantity;
+    }, 0)
+  );
 
   const TermsDialog = (
     <Dialog open={isTermsOpen} onOpenChange={setIsTermsOpen}>
@@ -99,6 +107,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
     </Dialog>
   );
   if (loading) {
+    const itemCount = liveCartItems.length || cartItems.length;
+    const skeletonRows = Math.min(Math.max(itemCount, 2), 4);
+
     return (
       <Card>
         <CardHeader>
@@ -107,16 +118,74 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             Order Summary
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
-              <div className="h-4 bg-gray-200 rounded w-2/3"></div>
+        <CardContent className="space-y-3 sm:space-y-4">
+          {/* Fulfilled-by banner */}
+          <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-2.5 sm:p-3 space-y-2">
+            <div className="h-3.5 sm:h-4 w-3/5 rounded-md bg-blue-200/70 animate-pulse" />
+            <div className="h-2.5 sm:h-3 w-1/4 rounded-md bg-blue-200/50 animate-pulse" />
+          </div>
+
+          {/* Cart items */}
+          <div className="space-y-2 sm:space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="h-3.5 sm:h-4 w-24 rounded-md bg-gray-200 animate-pulse" />
+              <div className="h-6 w-6 rounded-md bg-gray-100 animate-pulse" />
             </div>
-            <div className="text-center text-xs sm:text-sm text-gray-500">
-              Calculating pricing...
+            <div className="space-y-2">
+              {Array.from({ length: skeletonRows }).map((_, i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 sm:gap-3 rounded-lg border border-gray-100 bg-gray-50/50 p-2 sm:p-3"
+                >
+                  <div className="h-10 w-10 sm:h-12 sm:w-12 shrink-0 rounded-lg bg-gray-200 animate-pulse" />
+                  <div className="flex-1 space-y-2 min-w-0">
+                    <div className="h-3.5 sm:h-4 w-[85%] rounded-md bg-gray-200 animate-pulse" />
+                    <div className="h-2.5 sm:h-3 w-1/3 rounded-md bg-gray-100 animate-pulse" />
+                    <div className="h-3.5 w-16 rounded-md bg-gray-200 animate-pulse" />
+                  </div>
+                  <div className="h-8 w-[72px] shrink-0 rounded-full bg-gray-200 animate-pulse" />
+                </div>
+              ))}
             </div>
+          </div>
+
+          <Separator />
+
+          {/* Order total */}
+          <div className="space-y-2.5 sm:space-y-3">
+            <div className="h-4 sm:h-5 w-28 rounded-md bg-gray-300 animate-pulse" />
+            <div className="flex items-center justify-between gap-4">
+              <div className="h-3 sm:h-3.5 w-20 rounded-md bg-gray-100 animate-pulse" />
+              <div className="h-3 sm:h-3.5 w-16 rounded-md bg-gray-200 animate-pulse" />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="h-3 sm:h-3.5 w-24 rounded-md bg-gray-100 animate-pulse" />
+              <div className="h-3 sm:h-3.5 w-14 rounded-md bg-gray-200 animate-pulse" />
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <div className="h-3 sm:h-3.5 w-16 rounded-md bg-gray-100 animate-pulse" />
+              <div className="h-3 sm:h-3.5 w-20 rounded-md bg-gray-200 animate-pulse" />
+            </div>
+            <Separator />
+            <div className="flex items-center justify-between gap-4 pt-0.5">
+              <div className="h-4 sm:h-5 w-14 rounded-md bg-gray-300 animate-pulse" />
+              <div className="h-4 sm:h-5 w-24 rounded-md bg-gray-300 animate-pulse" />
+            </div>
+          </div>
+
+          {/* Terms + checkout */}
+          <div className="rounded-lg border bg-gray-50 p-3 space-y-2.5">
+            <div className="flex items-start gap-2">
+              <div className="mt-0.5 h-4 w-4 shrink-0 rounded border border-gray-200 bg-gray-100 animate-pulse" />
+              <div className="flex-1 space-y-1.5">
+                <div className="h-2.5 w-full rounded bg-gray-100 animate-pulse" />
+                <div className="h-2.5 w-4/5 rounded bg-gray-100 animate-pulse" />
+              </div>
+            </div>
+          </div>
+          <div className="h-10 sm:h-11 w-full rounded-lg bg-gray-200 animate-pulse" />
+          <div className="flex justify-center pt-1">
+            <div className="h-3 w-24 rounded bg-gray-100 animate-pulse" />
           </div>
         </CardContent>
       </Card>
@@ -169,7 +238,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             </div>
             <button
               onClick={onCheckout}
-              disabled={loadingCheckout || cartItems.length === 0 || !acceptedTerms}
+              disabled={loadingCheckout || liveCartItems.length === 0 || !acceptedTerms}
               className="w-full bg-blue-600 text-white py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm"
             >
               {loadingCheckout ? (
@@ -182,7 +251,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
               )}
             </button>
             
-            {cartItems.length === 0 && (
+            {liveCartItems.length === 0 && (
               <p className="text-center text-gray-500 text-xs sm:text-sm">
                 Your cart is empty. Add some products to continue.
               </p>
@@ -207,7 +276,6 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   const primaryStore = fulfillable_stores[0] || {};
   const {
     store_name = 'Store',
-    store_id = null,
     subtotal = 0,
     delivery_cost = 0,
     total = 0,
@@ -225,6 +293,76 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   const backendItems = items || [];
 
   const isMultiStore = (fulfillable_stores?.length || 0) > 1;
+
+  const fulfillmentLabel = fulfillment_mode === "delivery" ? "Delivery" : "Pickup";
+
+  const getCartItem = (productId: number) =>
+    liveCartItems.find((ci) => ci?.product?.id === productId);
+
+  const getLineFromCart = (cartItem: (typeof liveCartItems)[number]) => {
+    const unitPrice =
+      cartItem.product.pricing?.final_price ??
+      cartItem.product.base_price ??
+      cartItem.product.price ??
+      0;
+    const unitBasePrice =
+      cartItem.product.pricing?.base_price ??
+      cartItem.product.base_price ??
+      cartItem.product.price ??
+      0;
+    const qty = cartItem.quantity || 0;
+    return {
+      qty,
+      unitPrice,
+      unitBasePrice,
+      lineTotal: unitPrice * qty,
+      lineBaseTotal: unitBasePrice * qty,
+    };
+  };
+
+  const getOptimisticLine = (backendItem: any) => {
+    const cartItem = getCartItem(backendItem.product_id);
+    if (cartItem) {
+      return getLineFromCart(cartItem);
+    }
+    const qty = backendItem.quantity || 0;
+    const unitPrice = backendItem.final_price ?? backendItem.base_price ?? 0;
+    const unitBasePrice = backendItem.base_price ?? unitPrice;
+    return {
+      qty,
+      unitPrice,
+      unitBasePrice,
+      lineTotal: backendItem.total_price ?? unitPrice * qty,
+      lineBaseTotal: unitBasePrice * qty,
+    };
+  };
+
+  const allPreviewItems = isMultiStore
+    ? fulfillable_stores.flatMap((s: any) => s.items || [])
+    : backendItems;
+
+  const hasPendingQtyChanges =
+    allPreviewItems.some((it: any) => {
+      const cartQty = getCartItem(it.product_id)?.quantity;
+      return cartQty != null && cartQty !== it.quantity;
+    }) ||
+    liveCartItems.some((ci) => {
+      if (!ci?.product?.id) return false;
+      return !allPreviewItems.some((it: any) => it.product_id === ci.product.id);
+    });
+
+  const multiStoreDeliveryTotal = fulfillable_stores.reduce(
+    (sum: number, s: any) => sum + (s?.delivery_cost || 0),
+    0
+  );
+  const serviceCharge = primaryStore.service_charge || 0;
+  const displaySubtotal = hasPendingQtyChanges ? liveSubtotal : subtotal_after_discounts;
+  const displayDelivery = isMultiStore ? multiStoreDeliveryTotal : delivery_charge;
+  const displayTotal = hasPendingQtyChanges
+    ? liveSubtotal + displayDelivery + serviceCharge
+    : isMultiStore
+      ? overall_total
+      : final_total;
 
 
   return (
@@ -251,19 +389,20 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
       </CardHeader>
       <CardContent className="space-y-3 sm:space-y-4">
         {/* Store Information */}
-        {store_name && store_name !== 'Store' && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 sm:p-3">
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <Truck className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
-              <span className="text-xs sm:text-sm font-medium text-blue-800">
-                Fulfilled by: {store_name}
-              </span>
+        {/* For multi-store carts, store name is already shown inside the "Items by store" cards. */}
+        {!isMultiStore ? (
+          store_name && store_name !== "Store" ? (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 sm:p-3">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <Truck className="h-3 w-3 sm:h-4 sm:w-4 text-blue-600" />
+                <span className="text-xs sm:text-sm font-medium text-blue-800">
+                  Fulfilled by: {store_name}
+                </span>
+              </div>
+              <div className="text-[10px] sm:text-xs text-blue-600 mt-1">{fulfillmentLabel}</div>
             </div>
-            <div className="text-[10px] sm:text-xs text-blue-600 mt-1">
-              {fulfillment_mode === 'delivery' ? 'Delivery' : 'Pickup'} • Store ID: {store_id}
-            </div>
-          </div>
-        )}
+          ) : null
+        ) : null}
 
         {/* Unavailable Items - Detailed list */}
         {unavailable_items && unavailable_items.length > 0 && (
@@ -305,19 +444,27 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4">
                 {fulfillable_stores.map((store: any, sIdx: number) => (
                   <div key={store.store_id ?? `store-${sIdx}`} className="border rounded-lg p-2 sm:p-3 space-y-2">
-                    <div className="font-medium text-xs sm:text-sm">{store.store_name}</div>
-                    <div className="text-[10px] sm:text-xs text-gray-500">{(store.items?.length || 0)} items • Subtotal LKR {(store.subtotal || 0).toFixed(2)}</div>
+                    <div className="font-medium text-xs sm:text-sm">Fulfilled by: {store.store_name || "Store"}</div>
+                    <div className="text-[10px] sm:text-xs text-gray-500">
+                      {(store.items?.length || 0)} items • Subtotal LKR{" "}
+                      {(store.items || [])
+                        .reduce((sum: number, it: any) => sum + getOptimisticLine(it).lineTotal, 0)
+                        .toFixed(2)}
+                    </div>
                     <div className="max-h-56 overflow-y-auto space-y-2">
                       {(store.items || []).map((it: any, idx: number) => {
                         const beProduct = it.product;
-                        const cartProduct = cartItems.find((ci: any) => ci.product.id === it.product_id)?.product;
+                        const cartProduct = getCartItem(it.product_id)?.product;
                         const productName = beProduct?.name || cartProduct?.name || `Product ${it.product_id}`;
-                        const imageUrl = beProduct?.image_urls?.[0] || beProduct?.imageUrl || cartProduct?.image_urls?.[0] || cartProduct?.imageUrl || cartProduct?.image;
+                        const imageUrl =
+                          beProduct?.image_urls?.[0] ||
+                          beProduct?.imageUrl ||
+                          cartProduct?.image_urls?.[0] ||
+                          cartProduct?.imageUrl;
                         const hasValidImage = imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== "" && imageUrl.startsWith("http");
-                        const unitPrice = (it.final_price ?? it.base_price ?? 0);
-                        const lineTotal = (it.total_price ?? (unitPrice * (it.quantity || 0)));
+                        const { unitPrice, lineTotal } = getOptimisticLine(it);
                         // Find the full product from cart store for QuantityButtons
-                        const fullProduct = cartStore.items.find((ci: any) => ci.product.id === it.product_id)?.product || cartProduct;
+                        const fullProduct = cartProduct;
                         return (
                           <div key={`${store.store_id ?? `store-${sIdx}`}-${it.product_id ?? it.id ?? idx}`} className="flex items-center gap-2 sm:gap-3 p-2 border rounded-lg text-xs sm:text-sm relative">
                             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden flex-shrink-0">
@@ -350,12 +497,20 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                       })}
                     </div>
                     <div className="text-xs sm:text-sm flex justify-between pt-2 border-t">
-                      <span>Delivery</span>
+                      <span>{fulfillmentLabel}</span>
                       <span>LKR {(store.delivery_cost || 0).toFixed(2)}</span>
                     </div>
                     <div className="font-semibold flex justify-between text-xs sm:text-sm">
                       <span>Total</span>
-                      <span>LKR {(store.total || (store.subtotal || 0) + (store.delivery_cost || 0)).toFixed(2)}</span>
+                      <span>
+                        LKR{" "}
+                        {(
+                          (store.items || []).reduce(
+                            (sum: number, it: any) => sum + getOptimisticLine(it).lineTotal,
+                            0
+                          ) + (store.delivery_cost || 0)
+                        ).toFixed(2)}
+                      </span>
                     </div>
                   </div>
                 ))}
@@ -368,7 +523,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                 onClick={() => setIsCartExpanded(!isCartExpanded)}
               >
                 <h4 className="font-medium text-gray-900 text-xs sm:text-sm">
-                  Cart ({backendItems.length} {backendItems.length === 1 ? 'item' : 'items'})
+                  Cart ({liveCartItems.length} {liveCartItems.length === 1 ? "item" : "items"})
                 </h4>
                 <Button variant="ghost" size="sm" className="p-1 h-auto">
                   {isCartExpanded ? (
@@ -381,55 +536,75 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
               {isCartExpanded && (
                 <div className="space-y-2 sm:space-y-3">
                   <div className="max-h-60 overflow-y-auto space-y-2">
-                    {backendItems.map((backendItem: any, index: number) => {
-                      const product = backendItem.product;
-                      const productName = product?.name || `Product ${backendItem.product_id}`;
-                      const imageUrl = product?.image_urls?.[0] || product?.imageUrl || product?.image;
-                      const hasValidImage = imageUrl && imageUrl.trim() !== "" && imageUrl.startsWith("http");
-                      const isDiscounted = (backendItem?.discount_percentage || 0) > 0;
-                      const basePrice = backendItem?.base_price || 0;
-                      const finalPrice = backendItem?.final_price || 0;
-                      const totalPrice = backendItem?.total_price || (finalPrice * backendItem.quantity);
-                      const totalBasePrice = basePrice * backendItem.quantity;
-                      // Find the full product from cart store for QuantityButtons
-                      const fullProduct = cartStore.items.find((ci: any) => ci.product.id === backendItem.product_id)?.product || product;
+                    {liveCartItems.map((cartItem, index) => {
+                      if (!cartItem?.product) return null;
+                      const backendItem = backendItems.find(
+                        (b: any) => b.product_id === cartItem.product.id
+                      );
+                      const product = cartItem.product;
+                      const productName = product.name || `Product ${product.id}`;
+                      const imageUrl =
+                        product.image_urls?.[0] ||
+                        product.imageUrl ||
+                        backendItem?.product?.image_urls?.[0] ||
+                        backendItem?.product?.imageUrl;
+                      const hasValidImage =
+                        imageUrl && imageUrl.trim() !== "" && imageUrl.startsWith("http");
+                      const isDiscounted =
+                        (product.pricing?.discount_applied ?? 0) > 0 ||
+                        (backendItem?.discount_percentage || 0) > 0;
+                      const { unitPrice, lineTotal, lineBaseTotal } = getLineFromCart(cartItem);
                       return (
-                        <div key={`${backendItem.product_id ?? index}`} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg relative">
+                        <div
+                          key={`${product.id ?? index}`}
+                          className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg relative"
+                        >
                           <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden flex-shrink-0">
                             {hasValidImage ? (
-                              <Image src={imageUrl} alt={productName} width={40} height={40} className="w-full h-full object-cover sm:w-12 sm:h-12" />
+                              <Image
+                                src={imageUrl}
+                                alt={productName}
+                                width={40}
+                                height={40}
+                                className="w-full h-full object-cover sm:w-12 sm:h-12"
+                              />
                             ) : (
                               <ShoppingCart className="h-5 w-5 sm:h-6 sm:w-6 text-gray-400" />
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
                             <h5 className="font-medium text-xs sm:text-sm truncate">{productName}</h5>
-                            <p className="text-[9px] sm:text-[11px] text-gray-500">ID: {backendItem.product_id}</p>
-                            <p className="text-[10px] sm:text-xs text-gray-500">Unit: LKR {finalPrice.toFixed(2)}</p>
+                            <p className="text-[10px] sm:text-xs text-gray-500">
+                              Unit: LKR {unitPrice.toFixed(2)}
+                            </p>
                             <div className="flex items-center gap-2">
                               {isDiscounted ? (
                                 <>
-                                  <span className="text-xs sm:text-sm font-bold text-red-600">LKR {totalPrice.toFixed(2)}</span>
-                                  <span className="text-[10px] sm:text-xs text-gray-400 line-through">LKR {totalBasePrice.toFixed(2)}</span>
+                                  <span className="text-xs sm:text-sm font-bold text-red-600">
+                                    LKR {lineTotal.toFixed(2)}
+                                  </span>
+                                  <span className="text-[10px] sm:text-xs text-gray-400 line-through">
+                                    LKR {lineBaseTotal.toFixed(2)}
+                                  </span>
                                 </>
                               ) : (
-                                <span className="text-xs sm:text-sm font-medium text-gray-900">LKR {totalPrice.toFixed(2)}</span>
+                                <span className="text-xs sm:text-sm font-medium text-gray-900">
+                                  LKR {lineTotal.toFixed(2)}
+                                </span>
                               )}
                             </div>
                           </div>
-                          {fullProduct && (
-                            <div className="flex-shrink-0">
-                              <QuantityButtons
-                                product={fullProduct}
-                                className="text-[10px] sm:text-xs"
-                                onQuantityChange={() => {
-                                  if (onQuantityChange) {
-                                    onQuantityChange();
-                                  }
-                                }}
-                              />
-                            </div>
-                          )}
+                          <div className="flex-shrink-0">
+                            <QuantityButtons
+                              product={product}
+                              className="text-[10px] sm:text-xs"
+                              onQuantityChange={() => {
+                                if (onQuantityChange) {
+                                  onQuantityChange();
+                                }
+                              }}
+                            />
+                          </div>
                         </div>
                       );
                     })}
@@ -442,25 +617,15 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
 
         <Separator />
 
-        {/* Inventory Status - Only show if all items are available */}
-        {unavailable_items && unavailable_items.length === 0 && backendItems.length > 0 && (
-          <div className="flex items-center gap-2 p-2 sm:p-3 bg-green-50 rounded-lg">
-            <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-            <div className="flex-1">
-              <p className="text-xs sm:text-sm font-medium text-green-800">All items available</p>
-              <p className="text-[10px] sm:text-xs text-green-600">
-                {backendItems.length} item{backendItems.length !== 1 ? 's' : ''} ready for {fulfillment_mode}
-              </p>
-            </div>
-          </div>
-        )}
+        {/* Intentionally no "All items available" banner.
+            Only show inventory issues when backend reports unavailable items. */}
 
         <Separator />
 
 
-        {/* Pricing Breakdown */}
+        {/* Order total */}
         <div className="space-y-2 sm:space-y-3">
-          <h4 className="font-medium text-gray-900 text-xs sm:text-sm">Pricing Breakdown</h4>
+          <h4 className="text-black font-bold text-sm sm:text-base md:text-lg">Order total</h4>
           
           {/* Subtotal with strikethrough before discount */}
           <div className="flex justify-between text-xs sm:text-sm">
@@ -472,7 +637,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                 </span>
               )}
               <span className="font-medium">
-                LKR {subtotal_after_discounts.toFixed(2)}
+                LKR {displaySubtotal.toFixed(2)}
               </span>
             </div>
           </div>
@@ -487,6 +652,27 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                 Delivery Fee
               </span>
               <span>LKR {delivery_charge.toFixed(2)}</span>
+            </div>
+          )}
+          {isMultiStore && (
+            <div className="flex justify-between text-xs sm:text-sm">
+              <span className="flex min-w-0 items-center gap-1">
+                <Truck className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
+                <span className="truncate">
+                  {fulfillmentLabel} Fee (
+                  {fulfillable_stores
+                    .map((s: any) => s?.store_name)
+                    .filter(Boolean)
+                    .join(" + ") || "Stores"}
+                  )
+                </span>
+              </span>
+              <span className="tabular-nums">
+                LKR{" "}
+                {fulfillable_stores
+                  .reduce((sum: number, s: any) => sum + (s?.delivery_cost || 0), 0)
+                  .toFixed(2)}
+              </span>
             </div>
           )}
 
@@ -506,7 +692,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           {/* Total */}
           <div className="flex justify-between text-sm sm:text-base md:text-lg font-bold">
             <span>Total</span>
-            <span>LKR {(isMultiStore ? overall_total : final_total).toFixed(2)}</span>
+            <span>LKR {displayTotal.toFixed(2)}</span>
           </div>
         </div>
 
@@ -538,7 +724,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         </div>
         <button
           onClick={onCheckout}
-          disabled={loadingCheckout || cartItems.length === 0 || !acceptedTerms}
+          disabled={loadingCheckout || liveCartItems.length === 0 || !acceptedTerms}
           className="w-full bg-black text-white py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg font-bold hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm"
         >
           {loadingCheckout ? (
@@ -547,7 +733,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
               Processing...
             </div>
           ) : (
-            `Place Order - LKR ${(isMultiStore ? overall_total : final_total).toFixed(2)}`
+            `Place Order - LKR ${displayTotal.toFixed(2)}`
           )}
         </button>
 
@@ -567,7 +753,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           </div>
         </div>
         
-        {cartItems.length === 0 && (
+        {liveCartItems.length === 0 && (
           <p className="text-center text-gray-500 text-xs sm:text-sm">
             Your cart is empty. Add some products to continue.
           </p>

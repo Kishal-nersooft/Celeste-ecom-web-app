@@ -63,7 +63,7 @@ const ProductPageSkeleton = () => {
           </div>
 
           {/* Add to Cart Button Skeleton */}
-          <div className="h-12 sm:h-14 bg-gray-200 rounded-md w-full"></div>
+          <div className="h-9 bg-gray-200 rounded-md w-36"></div>
 
           {/* Replacement Note Button Skeleton */}
           <div className="h-14 sm:h-16 md:h-20 bg-gray-200 rounded-md w-full border border-gray-300"></div>

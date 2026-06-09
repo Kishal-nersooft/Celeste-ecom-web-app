@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { CreditCard, CheckCircle, Loader2, ArrowLeft } from "lucide-react";
+import { CreditCard, CheckCircle, ArrowLeft } from "lucide-react";
 import { getSavedCards } from "@/lib/api";
 import toast from "react-hot-toast";
 import visaLogo from "@/images/Payment images/Visa_Brandmark_Blue_RGB_2021.png";
@@ -26,11 +26,51 @@ interface SavedCard {
 interface PaymentMethodProps {
   selectedCardId?: number | null;
   onCardSelect?: (cardId: number | null) => void;
+  previewLoading?: boolean;
+}
+
+function PaymentMethodSkeleton() {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between gap-3 text-sm sm:text-base md:text-lg">
+          <span className="flex items-center gap-2">
+            <CreditCard className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
+            Payment Method
+          </span>
+          <span className="flex items-center gap-1.5 sm:gap-2">
+            {[0, 1, 2].map((i) => (
+              <span
+                key={i}
+                className="inline-flex h-8 w-12 items-center justify-center rounded-md border border-gray-100 bg-gray-50"
+              >
+                <span className="h-4 w-8 rounded bg-gray-200 animate-pulse" />
+              </span>
+            ))}
+          </span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-center gap-3">
+          <div className="flex flex-1 items-center gap-3 rounded-lg border-2 border-blue-100 bg-blue-50/60 p-3">
+            <div className="h-5 w-5 shrink-0 rounded bg-blue-200/70 animate-pulse" />
+            <div className="min-w-0 flex-1 space-y-2">
+              <div className="h-4 w-44 max-w-full rounded-md bg-gray-200 animate-pulse" />
+              <div className="h-3 w-32 rounded-md bg-gray-100 animate-pulse" />
+            </div>
+            <div className="h-5 w-5 shrink-0 rounded-full bg-blue-200/70 animate-pulse" />
+          </div>
+          <div className="h-9 w-[4.5rem] shrink-0 rounded-md bg-gray-200 animate-pulse" />
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 const PaymentMethod: React.FC<PaymentMethodProps> = ({
   selectedCardId,
   onCardSelect,
+  previewLoading = false,
 }) => {
   const [savedCards, setSavedCards] = useState<SavedCard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -115,6 +155,10 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
     handleSelect(null);
   };
 
+  if (previewLoading) {
+    return <PaymentMethodSkeleton />;
+  }
+
   return (
       <Card>
         <CardHeader>
@@ -130,6 +174,7 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
                   alt="Visa"
                   width={44}
                   height={16}
+                  style={{ width: "auto", height: "auto" }}
                   className="h-4 w-auto object-contain"
                 />
               </span>
@@ -139,6 +184,7 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
                   alt="Mastercard"
                   width={44}
                   height={16}
+                  style={{ width: "auto", height: "auto" }}
                   className="h-4 w-auto object-contain"
                 />
               </span>
@@ -148,6 +194,7 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
                   alt="UnionPay"
                   width={44}
                   height={16}
+                  style={{ width: "auto", height: "auto" }}
                   className="h-4 w-auto object-contain"
                 />
               </span>
@@ -156,8 +203,16 @@ const PaymentMethod: React.FC<PaymentMethodProps> = ({
         </CardHeader>
         <CardContent>
         {loading ? (
-          <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+          <div className="flex items-center gap-3">
+            <div className="flex flex-1 items-center gap-3 rounded-lg border-2 border-blue-100 bg-blue-50/60 p-3">
+              <div className="h-5 w-5 shrink-0 rounded bg-blue-200/70 animate-pulse" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-4 w-44 max-w-full rounded-md bg-gray-200 animate-pulse" />
+                <div className="h-3 w-32 rounded-md bg-gray-100 animate-pulse" />
+              </div>
+              <div className="h-5 w-5 shrink-0 rounded-full bg-blue-200/70 animate-pulse" />
+            </div>
+            <div className="h-9 w-[4.5rem] shrink-0 rounded-md bg-gray-200 animate-pulse" />
           </div>
         ) : savedCards.length > 0 ? (
           <>

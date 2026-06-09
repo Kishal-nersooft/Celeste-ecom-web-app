@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { ShoppingCart, Trash2, ArrowRight, Plus, AlertTriangle, Package, MoreVertical } from "lucide-react";
+import { Trash2, ArrowRight, Plus, Package, MoreVertical, X } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import useCartStore from "@/store";
@@ -13,8 +13,7 @@ import QuantityButtons from "./QuantityButtons";
 import toast from "react-hot-toast";
 import EmptyCart from "./EmptyCart";
 import { useLocation } from "@/contexts/LocationContext";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
 interface CartPreviewPanelProps {
@@ -90,15 +89,24 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
       <SheetTrigger asChild>
         {children}
       </SheetTrigger>
-      <SheetContent side="right" className="w-[280px] sm:w-[320px] flex flex-col">
+      <SheetContent side="right" hideClose className="w-[280px] sm:w-[320px] flex flex-col">
         <SheetHeader className="mb-3 sm:mb-4 md:mb-6">
+          <SheetTitle className="sr-only">Cart</SheetTitle>
+          <SheetDescription className="sr-only">Review items in your cart and proceed to checkout.</SheetDescription>
           <div className="flex items-center justify-between gap-2">
-            <SheetTitle className="flex items-center gap-1.5 sm:gap-2 text-sm sm:text-base md:text-xl">
-              <ShoppingCart className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />
-              <span className="hidden sm:inline">Cart({itemCount} {itemCount === 1 ? 'item' : 'items'})</span>
-              <span className="sm:hidden">Cart({itemCount})</span>
-            </SheetTitle>
-            
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 w-8 p-0"
+              aria-label="Close cart preview"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+
             {/* Menu Dropdown Button */}
             <Popover open={menuOpen} onOpenChange={setMenuOpen}>
               <PopoverTrigger asChild>
@@ -106,6 +114,7 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
                   variant="ghost"
                   size="sm"
                   className="h-8 w-8 p-0"
+                  aria-label="Cart actions"
                   onClick={(e) => {
                     e.stopPropagation();
                   }}
@@ -151,6 +160,13 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
             <div className="flex-1 overflow-y-auto space-y-2 sm:space-y-3 md:space-y-4 pr-1 sm:pr-2">
               {safeItems.map((item) => {
                 if (!item || !item.product) return null;
+                const quantity = item.quantity || 0;
+                const unitFinalPrice =
+                  item.product.pricing?.final_price ?? item.product.base_price ?? item.product.price ?? 0;
+                const unitBasePrice =
+                  item.product.pricing?.base_price ?? item.product.base_price ?? item.product.price ?? 0;
+                const lineFinalPrice = unitFinalPrice * quantity;
+                const lineBasePrice = unitBasePrice * quantity;
                 return (
                   <div
                     key={item.product.id}
@@ -180,17 +196,17 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
                               {Math.round(item.product.pricing.discount_percentage || 0)}% OFF
                             </span>
                             <PriceFormatter 
-                              amount={item.product.pricing.final_price || 0} 
+                              amount={lineFinalPrice} 
                               className="text-red-600 font-semibold"
                             />
                             <PriceFormatter 
-                              amount={item.product.pricing.base_price || 0} 
+                              amount={lineBasePrice} 
                               className="line-through text-gray-400 text-xs"
                             />
                           </div>
                         ) : (
                           <PriceFormatter 
-                            amount={item.product.pricing?.final_price || item.product.base_price || item.product.price || 0} 
+                            amount={lineFinalPrice} 
                           />
                         )}
                       </div>
@@ -223,23 +239,23 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
             <div className="mt-3 sm:mt-4 md:mt-6 space-y-2 sm:space-y-3 md:space-y-4">
               <Separator />
               <div className="space-y-1.5 sm:space-y-2">
-                <div className="flex items-center justify-between mb-1 sm:mb-2">
+                {/* <div className="flex items-center justify-between mb-1 sm:mb-2">
                   <h3 className="font-semibold text-xs sm:text-sm">Order Summary</h3>
                   <div className="text-[10px] sm:text-xs text-gray-500 hidden sm:block">
                     Delivery fees calculated at checkout
                   </div>
-                </div>
+                </div> */}
                 
-                <div className="flex justify-between text-xs sm:text-sm">
+                {/* <div className="flex justify-between text-xs sm:text-sm">
                   <span>Subtotal</span>
                   <span>
                     <PriceFormatter amount={cartStore.getSubTotalPrice()} />
                   </span>
-                </div>
+                </div> */}
                 
                 {/* Delivery fees, service charges, and tax calculated at checkout */}
                 
-                <Separator />
+                {/* <Separator /> */}
                 <div className="flex justify-between font-semibold text-sm sm:text-base md:text-lg">
                   <span>Subtotal</span>
                   <span>
@@ -263,51 +279,87 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
       
       {/* New Cart Confirmation Dialog */}
       <Dialog open={showNewCartDialog} onOpenChange={setShowNewCartDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
-              Create New Cart?
+        <DialogContent className="max-w-[340px] gap-5 rounded-2xl border-0 p-6 shadow-xl sm:max-w-sm">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="text-[15px] font-semibold leading-snug">
+              Create a new cart?
             </DialogTitle>
-            <DialogDescription>
-              You currently have {itemCount} {itemCount === 1 ? 'item' : 'items'} in your cart. 
-              Creating a new cart will start fresh with an empty cart.
+            <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">
+              You&apos;ll start with an empty cart. Your current cart is saved and you can switch back anytime.
             </DialogDescription>
           </DialogHeader>
-          
-          <Alert className="mt-4">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertDescription>
-              <strong>Note:</strong> Your current cart will be saved and you can switch back to it later.
-            </AlertDescription>
-          </Alert>
-          
-          <DialogFooter className="flex gap-2 mt-6">
+
+          <div className="flex items-center gap-3 rounded-xl bg-muted/60 px-3 py-2.5">
+            <div className="flex shrink-0 -space-x-2">
+              {safeItems.slice(0, 3).map((item) => {
+                if (!item?.product) return null;
+                const img = item.product.image_urls?.[0] || item.product.imageUrl;
+                return (
+                  <div
+                    key={item.product.id}
+                    className="relative h-8 w-8 overflow-hidden rounded-full ring-2 ring-background"
+                  >
+                    {img ? (
+                      <Image
+                        src={img as string}
+                        alt=""
+                        width={32}
+                        height={32}
+                        className="h-full w-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center bg-muted">
+                        <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {itemCount > 3 && (
+                <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-2 ring-background">
+                  +{itemCount - 3}
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-foreground">
+                {activeCart?.name || "Current cart"}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {itemCount} {itemCount === 1 ? "item" : "items"} saved
+              </p>
+            </div>
+          </div>
+
+          <div className="flex gap-2">
             <Button
-              variant="outline"
+              type="button"
+              variant="ghost"
               onClick={() => setShowNewCartDialog(false)}
               disabled={isCreatingCart}
+              className="h-10 flex-1 text-muted-foreground hover:text-foreground"
             >
               Cancel
             </Button>
             <Button
+              type="button"
               onClick={createNewCart}
               disabled={isCreatingCart}
-              className="flex items-center gap-2"
+              className="h-10 flex-1 gap-1.5"
             >
               {isCreatingCart ? (
                 <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  Creating...
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+                  Creating
                 </>
               ) : (
                 <>
-                  <Plus className="h-4 w-4" />
-                  Create New Cart
+                  <Plus className="h-3.5 w-3.5" />
+                  New cart
                 </>
               )}
             </Button>
-          </DialogFooter>
+          </div>
         </DialogContent>
       </Dialog>
     </Sheet>

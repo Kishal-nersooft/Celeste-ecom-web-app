@@ -24,8 +24,27 @@ export function getProductPath(product: ProductSlugInput): string {
   return `/product/${toProductSlug(product)}`;
 }
 
+/** Normalize a slug segment (handles pasted share text with title or full URL appended). */
+export function sanitizeProductSlug(slug: string): string {
+  let normalized = slug.trim();
+
+  try {
+    normalized = decodeURIComponent(normalized);
+  } catch {
+    // keep original if percent-encoding is malformed
+  }
+
+  const fromUrl = normalized.match(/\/product\/([^/?#\s]+)/i);
+  if (fromUrl) {
+    normalized = fromUrl[1];
+  }
+
+  return normalized.split(/\s/)[0].trim();
+}
+
 /** Parse slug → product id when URL uses our name-id or legacy numeric format. */
 export function resolveProductSlug(slug: string): number | null {
+  slug = sanitizeProductSlug(slug);
   if (/^\d+$/.test(slug)) {
     return parseInt(slug, 10);
   }
@@ -138,6 +157,7 @@ export async function resolveProductSlugToProduct(
   slug: string,
   options?: ResolveOptions
 ): Promise<Product | null> {
+  slug = sanitizeProductSlug(slug);
   const parsedId = resolveProductSlug(slug);
 
   if (parsedId !== null) {

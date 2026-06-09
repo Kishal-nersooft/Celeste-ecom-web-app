@@ -12,9 +12,11 @@ interface Props {
   className?: string;
   borderStyle?: string;
   onQuantityChange?: () => void;
+  /** When true, sync cart changes to backend immediately (no debounce). */
+  immediateSync?: boolean;
 }
 
-const QuantityButtons = ({ product, className, borderStyle, onQuantityChange }: Props) => {
+const QuantityButtons = ({ product, className, borderStyle, onQuantityChange, immediateSync }: Props) => {
   const { addItem, removeItem, updateItemQuantity, getItemCount } = useCartStore();
   const itemCount = getItemCount(product?.id);
   const isDiscounted = product?.pricing && product.pricing.discount_applied > 0;
@@ -38,11 +40,11 @@ const QuantityButtons = ({ product, className, borderStyle, onQuantityChange }: 
     try {
       if (newQuantity === 0) {
         // Use removeItem for complete removal
-        await removeItem(product?.id);
+        await removeItem(product?.id, { immediateSync });
         toast.success(`${product?.name?.substring(0, 12)} removed successfully!`);
       } else {
         // Use updateItemQuantity for quantity changes
-        await updateItemQuantity(product?.id, newQuantity);
+        await updateItemQuantity(product?.id, newQuantity, { immediateSync });
         toast.success("Quantity Decreased successfully!");
       }
       // Call the quantity change callback
@@ -85,7 +87,7 @@ const QuantityButtons = ({ product, className, borderStyle, onQuantityChange }: 
       <span className={`font-bold text-sm px-2 ${
         isDiscounted ? 'text-gray-700' : 'text-gray-700'
       }`}>
-        {itemCount}
+        {localItemCount}
       </span>
       
       {/* Plus Button */}
@@ -105,10 +107,10 @@ const QuantityButtons = ({ product, className, borderStyle, onQuantityChange }: 
           try {
             if (itemCount === 0) {
               // Use addItem for adding new items
-              await addItem(product);
+              await addItem(product, { immediateSync });
             } else {
               // Use updateItemQuantity for existing items
-              await updateItemQuantity(product?.id, newQuantity);
+              await updateItemQuantity(product?.id, newQuantity, { immediateSync });
             }
             toast.success("Quantity increased successfully!");
             // Call the quantity change callback

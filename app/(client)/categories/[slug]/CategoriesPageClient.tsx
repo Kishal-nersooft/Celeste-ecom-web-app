@@ -48,7 +48,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
   const [loadingMore, setLoadingMore] = useState<boolean>(false);
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [totalProducts, setTotalProducts] = useState<number>(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   // Load more products for parent category
@@ -66,7 +65,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
       setProducts(prev => [...prev, ...result.products]);
       setNextCursor(result.pagination.nextCursor);
       setHasMore(result.pagination.hasMore);
-      setTotalProducts(result.pagination.totalCount);
     } catch (error) {
       console.error("Error loading more products:", error);
     } finally {
@@ -139,7 +137,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
       setProducts(nextProducts);
       setDisplayCategoryName(displayName);
       setParentCategoryName(displayName);
-      setTotalProducts(nextProducts.length);
       apiLog(
         "GET /categories/similar-products",
         `stored · ${nextProducts.length} products`,
@@ -151,7 +148,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
       setProducts([]);
       setDisplayCategoryName(SIMILAR_PRODUCTS_TITLE);
       setParentCategoryName(SIMILAR_PRODUCTS_TITLE);
-      setTotalProducts(0);
     } finally {
       setIsStoredProductList(true);
       setIsParentCategory(false);
@@ -203,7 +199,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
           setProducts(result.products);
           setNextCursor(result.pagination.nextCursor);
           setHasMore(result.pagination.hasMore);
-          setTotalProducts(result.pagination.totalCount);
           
         } else {
           // This is a subcategory - use existing logic
@@ -329,7 +324,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
     return <Loader />;
   }
 
-  const productCount = products?.length ?? 0;
   const selectedSubcategory = selectedSubcategoryId
     ? subcategories.find((s) => s.id === selectedSubcategoryId) ?? null
     : null;
@@ -362,9 +356,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
               <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-black">
                 {displayCategoryName || SIMILAR_PRODUCTS_TITLE}
               </h1>
-              <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">
-                {productCount} {productCount === 1 ? 'product' : 'products'} found
-              </p>
             </div>
 
             <div className="overflow-y-auto max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] pr-1 sm:pr-2">
@@ -398,9 +389,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
               <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-black">
                 {displayCategoryName} - All Products
               </h1>
-              <p className="text-xs sm:text-sm md:text-base text-gray-600 mt-1">
-                {totalProducts > 0 ? `${productCount} of ${totalProducts}` : productCount} {productCount === 1 ? 'product' : 'products'} found
-              </p>
             </div>
             
             {/* Responsive Products Grid - Full Width */}
@@ -485,9 +473,6 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
                       : displayCategoryName || "All Products"}
                   </h1>
                 </div>
-                <p className="text-xs sm:text-sm text-gray-600 mt-1">
-                  {productCount} {productCount === 1 ? 'product' : 'products'} found
-                </p>
               </div>
               
               {/* Scrollable Products Container - 2 columns on mobile */}

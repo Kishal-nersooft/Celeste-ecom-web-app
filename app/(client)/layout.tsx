@@ -3,7 +3,7 @@ import localFont from "next/font/local";
 import "../globals.css";
 import { Poppins } from "next/font/google";
 import { ConditionalClientChrome } from "@/components/ConditionalClientChrome";
-import { Toaster } from "react-hot-toast";
+import { AppToaster } from "@/components/AppToaster";
 import { FirebaseAuthProvider } from "@/components/FirebaseAuthProvider";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { CategoryProvider } from "@/contexts/CategoryContext";
@@ -39,15 +39,7 @@ export default async function RootLayout({
             <CategoryProvider>
               <FavoritesProvider>
               <ConditionalClientChrome>{children}</ConditionalClientChrome>
-              <Toaster
-                position="bottom-right"
-                toastOptions={{
-                  style: {
-                    background: "#000000",
-                    color: "#fff",
-                  },
-                }}
-              />
+              <AppToaster />
               </FavoritesProvider>
             </CategoryProvider>
           </LocationProvider>

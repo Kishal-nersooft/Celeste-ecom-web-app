@@ -7,6 +7,7 @@ import { useLocation } from "../contexts/LocationContext";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 
 const PopularItemsSection = () => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -119,8 +120,15 @@ const PopularItemsSection = () => {
   if (loading) {
     return (
       <div className="w-full py-8">
-        <div className="text-center py-10 text-gray-500">
-          <p>Loading popular items...</p>
+        <div className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px] flex justify-center"
+            >
+              <ProductCardSkeleton />
+            </div>
+          ))}
         </div>
       </div>
     );

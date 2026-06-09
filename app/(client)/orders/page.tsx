@@ -3,7 +3,7 @@ import Container from "@/components/Container";
 import { FileX, Package, CheckCircle, XCircle, Clock, Truck, CheckSquare, X, RotateCcw, Plus, ShoppingBag, Phone, User, CalendarClock } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect, useState, useCallback, Suspense } from "react";
+import React, { useEffect, useState, useCallback, Suspense, useRef } from "react";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,8 +34,10 @@ import useCartStore from "@/store";
 const OrdersPageContent = () => {
   const { user, loading: authLoading } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [activeFilter, setActiveFilter] = useState<OrderFilterTab>('ongoing');
+  const isInitialOrdersLoad = useRef(true);
   const [showReorderDialog, setShowReorderDialog] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
@@ -85,9 +87,15 @@ const OrdersPageContent = () => {
   };
 
   // Fetch orders function - extracted to be reusable
-  const fetchOrders = useCallback(async (showLoading = true, filter: OrderFilterTab = activeFilter) => {
+  const fetchOrders = useCallback(async (
+    filter: OrderFilterTab,
+    options: { showInitialLoading?: boolean; showOrdersLoading?: boolean } = {}
+  ) => {
+    const { showInitialLoading = false, showOrdersLoading = false } = options;
+
     if (!authLoading && user) {
-      if (showLoading) setLoading(true);
+      if (showInitialLoading) setInitialLoading(true);
+      if (showOrdersLoading) setOrdersLoading(true);
       try {
         const statuses = getOrderStatusesForTab(filter);
         const response = await getUserOrders(1, 50, statuses, true, true, true, true);
@@ -224,13 +232,14 @@ const OrdersPageContent = () => {
         toast.error('Failed to load orders');
         setOrders([]);
       } finally {
-        if (showLoading) setLoading(false);
+        if (showInitialLoading) setInitialLoading(false);
+        if (showOrdersLoading) setOrdersLoading(false);
       }
     } else if (!authLoading && !user) {
-      setLoading(false);
+      setInitialLoading(false);
       router.push("/login?returnUrl=" + encodeURIComponent("/orders"));
     }
-  }, [user, authLoading, router, activeFilter]);
+  }, [user, authLoading, router]);
 
   // Handle payment success redirect (separate effect to avoid re-triggering)
   useEffect(() => {
@@ -272,7 +281,7 @@ const OrdersPageContent = () => {
       
       // Refresh orders after a short delay to ensure backend has processed
       setTimeout(() => {
-        fetchOrders(false); // Don't show loading spinner for refresh
+        fetchOrders(activeFilter);
       }, 1000);
     } else if (success === 'true' && orderId && !paymentSuccessHandled.current) {
       paymentSuccessHandled.current = true;
@@ -284,14 +293,26 @@ const OrdersPageContent = () => {
       }
       // Refresh orders after a short delay to ensure backend has processed
       setTimeout(() => {
-        fetchOrders(false); // Don't show loading spinner for refresh
+        fetchOrders(activeFilter);
       }, 1000);
     }
-  }, [searchParams, cartStore, fetchOrders, authLoading, user]);
+  }, [searchParams, cartStore, fetchOrders, authLoading, user, activeFilter]);
+
+  useEffect(() => {
+    isInitialOrdersLoad.current = true;
+  }, [user?.uid]);
 
   // Fetch orders when auth is ready or when the status tab changes (API filters via `status` query)
   useEffect(() => {
-    fetchOrders(true, activeFilter);
+    if (authLoading || !user) return;
+
+    if (isInitialOrdersLoad.current) {
+      isInitialOrdersLoad.current = false;
+      fetchOrders(activeFilter, { showInitialLoading: true });
+      return;
+    }
+
+    fetchOrders(activeFilter, { showOrdersLoading: true });
   }, [user, authLoading, activeFilter, fetchOrders]);
 
   // Reorder handlers
@@ -329,7 +350,7 @@ const OrdersPageContent = () => {
       setCancelDialogOpen(false);
       setCancelTargetOrder(null);
       setCancelReason("");
-      await fetchOrders(false);
+      await fetchOrders(activeFilter);
     } catch (error) {
       console.error("Cancel order error:", error);
       toast.error(error instanceof Error ? error.message : "Failed to cancel order");
@@ -398,18 +419,18 @@ const OrdersPageContent = () => {
     </Card>
   );
 
-  if (loading || authLoading || !user) {
+  if (authLoading || initialLoading || !user) {
     return (
       <div>
         <Container className="py-10">
           <div className="space-y-6">
             {/* Header Skeleton */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
               <div className="h-8 bg-gray-200 rounded w-32 animate-pulse"></div>
-              <div className="flex gap-2">
-                <div className="h-10 bg-gray-200 rounded w-24 animate-pulse"></div>
-                <div className="h-10 bg-gray-200 rounded w-24 animate-pulse"></div>
-                <div className="h-10 bg-gray-200 rounded w-24 animate-pulse"></div>
+              <div className="grid grid-cols-3 gap-1 sm:flex sm:gap-2 sm:w-auto">
+                <div className="h-7 sm:h-10 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-7 sm:h-10 bg-gray-200 rounded animate-pulse"></div>
+                <div className="h-7 sm:h-10 bg-gray-200 rounded animate-pulse"></div>
               </div>
             </div>
 
@@ -430,50 +451,62 @@ const OrdersPageContent = () => {
       <Container className="py-4 sm:py-6 md:py-10">
         <div className="space-y-4 sm:space-y-6">
           {/* Header */}
-          <div className="flex flex-col gap-3 sm:gap-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <h1 className="text-xl sm:text-2xl md:text-3xl font-bold">My Orders</h1>
-            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-2">
+            <div className="grid grid-cols-3 gap-1 sm:flex sm:gap-2 sm:w-auto">
               <Button
+                size="sm"
                 variant={activeFilter === 'ongoing' ? 'default' : 'outline'}
                 onClick={() => setActiveFilter('ongoing')}
-                className={`whitespace-nowrap text-xs sm:text-sm ${
+                disabled={ordersLoading}
+                className={`h-7 px-1.5 text-[11px] sm:h-8 sm:px-3 sm:text-sm ${
                   activeFilter === 'ongoing' 
                     ? 'bg-black text-white hover:bg-gray-800' 
                     : 'bg-white text-black border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                <Clock className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1.5 shrink-0" />
                 Ongoing
               </Button>
               <Button
+                size="sm"
                 variant={activeFilter === 'completed' ? 'default' : 'outline'}
                 onClick={() => setActiveFilter('completed')}
-                className={`whitespace-nowrap text-xs sm:text-sm ${
+                disabled={ordersLoading}
+                className={`h-7 px-1.5 text-[11px] sm:h-8 sm:px-3 sm:text-sm ${
                   activeFilter === 'completed' 
                     ? 'bg-black text-white hover:bg-gray-800' 
                     : 'bg-white text-black border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1.5 shrink-0" />
                 Completed
               </Button>
               <Button
+                size="sm"
                 variant={activeFilter === 'cancelled' ? 'default' : 'outline'}
                 onClick={() => setActiveFilter('cancelled')}
-                className={`whitespace-nowrap text-xs sm:text-sm ${
+                disabled={ordersLoading}
+                className={`h-7 px-1.5 text-[11px] sm:h-8 sm:px-3 sm:text-sm ${
                   activeFilter === 'cancelled' 
                     ? 'bg-black text-white hover:bg-gray-800' 
                     : 'bg-white text-black border-gray-300 hover:bg-gray-50'
                 }`}
               >
-                <XCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
+                <XCircle className="w-3 h-3 sm:w-4 sm:h-4 mr-0.5 sm:mr-1.5 shrink-0" />
                 Cancelled
               </Button>
             </div>
           </div>
 
           {/* Orders List */}
-          {orders?.length ? (
+          {ordersLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map((index) => (
+                <OrderSkeleton key={index} />
+              ))}
+            </div>
+          ) : orders?.length ? (
             <div className="space-y-4">
               {orders.map((order) => {
                 const statusInfo = getStatusInfo(order.status);

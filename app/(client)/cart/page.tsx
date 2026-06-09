@@ -12,7 +12,8 @@ import { ShoppingCart, Plus, Trash2, ArrowRight, Calendar, Package, AlertTriangl
 import useCartStore from "@/store";
 import PriceFormatter from "@/components/PriceFormatter";
 import toast from "react-hot-toast";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import Image from "next/image";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getProductById } from "@/lib/api";
 
@@ -24,6 +25,7 @@ const CartPage = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [cartToDelete, setCartToDelete] = useState<number | null>(null);
   const [isCreatingCart, setIsCreatingCart] = useState(false);
+  const [isDeletingCart, setIsDeletingCart] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [productDetails, setProductDetails] = useState<{[key: number]: any}>({});
   const [loadingProducts, setLoadingProducts] = useState<{[key: number]: boolean}>({});
@@ -107,6 +109,7 @@ const CartPage = () => {
 
   const handleDeleteCart = async (cartId: number) => {
     try {
+      setIsDeletingCart(true);
       await cartStore.deleteCart(cartId);
       toast.success('Cart deleted successfully!');
       setShowDeleteDialog(false);
@@ -114,6 +117,8 @@ const CartPage = () => {
     } catch (error) {
       console.error('Failed to delete cart:', error);
       toast.error('Failed to delete cart. Please try again.');
+    } finally {
+      setIsDeletingCart(false);
     }
   };
 
@@ -167,6 +172,11 @@ const CartPage = () => {
   if (!user) {
     return <NoAccessToCart />;
   }
+
+  const cartBeingDeleted =
+    cartToDelete != null ? activeCarts.find((cart) => cart.id === cartToDelete) : null;
+  const deleteItemCount =
+    cartBeingDeleted?.itemCount ?? cartBeingDeleted?.items.length ?? 0;
 
   // Error state
   if (error) {
@@ -233,7 +243,10 @@ const CartPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 md:gap-5 lg:gap-6">
             {activeCarts.map((cart) => {
               return (
-              <Card key={cart.id} className={`relative ${cart.isActive ? 'ring-2 ring-blue-500' : ''}`}>
+              <Card
+                key={cart.id}
+                className={`relative flex h-full flex-col ${cart.isActive ? 'ring-2 ring-blue-500' : ''}`}
+              >
                 <CardHeader className="pb-2 sm:pb-3">
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-sm sm:text-base md:text-lg font-semibold truncate">
@@ -261,14 +274,17 @@ const CartPage = () => {
                   </div>
                 </CardHeader>
                 
-                <CardContent className="space-y-4">
-                  {/* Cart Items Preview */}
-                  <div className="space-y-2 max-h-32 overflow-y-auto">
-                    {cart.items.slice(0, 3).map((item, index) => {
+                <CardContent className="flex flex-1 flex-col gap-4">
+                  {/* Cart Items Preview — fixed height for 2 rows; scroll to see more */}
+                  <div className="h-24 shrink-0 space-y-2 overflow-y-auto pr-1">
+                    {cart.items.map((item, index) => {
                       // Add safety checks for item structure
                       if (!item || !item.product) {
                         return (
-                          <div key={index} className="flex items-center gap-2 text-sm text-gray-500">
+                          <div
+                            key={index}
+                            className="flex h-11 shrink-0 items-center gap-2 text-sm text-gray-500"
+                          >
                             <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center text-xs font-medium">
                               {item?.quantity || 0}
                             </div>
@@ -298,7 +314,7 @@ const CartPage = () => {
                       const totalPrice = unitPrice * item.quantity;
                       
                       return (
-                        <div key={index} className="flex items-center gap-2 text-sm">
+                        <div key={index} className="flex h-11 shrink-0 items-center gap-2 text-sm">
                           {/* Product Image */}
                           <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
                             {isLoading ? (
@@ -334,15 +350,10 @@ const CartPage = () => {
                         </div>
                       );
                     })}
-                    {cart.items.length > 3 && (
-                      <div className="text-xs text-gray-500 text-center">
-                        +{cart.items.length - 3} more items
-                      </div>
-                    )}
                   </div>
 
                   {/* Total Price */}
-                  <div className="border-t pt-3">
+                  <div className="mt-auto border-t pt-3">
                     <div className="flex items-center justify-between text-lg font-semibold">
                       <span>Total:</span>
                       <PriceFormatter amount={cart.totalPrice} />
@@ -387,39 +398,103 @@ const CartPage = () => {
         )}
 
         {/* Delete Confirmation Dialog */}
-        <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-          <DialogContent className="sm:max-w-md">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-red-500" />
-                Delete Cart?
+        <Dialog
+          open={showDeleteDialog}
+          onOpenChange={(open) => {
+            if (isDeletingCart) return;
+            setShowDeleteDialog(open);
+            if (!open) setCartToDelete(null);
+          }}
+        >
+          <DialogContent className="max-w-[340px] gap-5 rounded-2xl border-0 p-6 shadow-xl sm:max-w-sm">
+            <DialogHeader className="space-y-2 text-left">
+              <DialogTitle className="text-[15px] font-semibold leading-snug">
+                Delete this cart?
               </DialogTitle>
-              <DialogDescription>
-                Are you sure you want to delete this cart? This action cannot be undone.
+              <DialogDescription className="text-[13px] leading-relaxed text-muted-foreground">
+                All items in this cart will be permanently removed. This can&apos;t be undone.
               </DialogDescription>
             </DialogHeader>
-            
-            <Alert className="mt-4">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertDescription>
-                <strong>Warning:</strong> All items in this cart will be permanently removed.
-              </AlertDescription>
-            </Alert>
-            
-            <DialogFooter className="flex gap-2 mt-6">
+
+            {cartBeingDeleted && (
+              <div className="flex items-center gap-3 rounded-xl bg-muted/60 px-3 py-2.5">
+                <div className="flex shrink-0 -space-x-2">
+                  {cartBeingDeleted.items.slice(0, 3).map((item, index) => {
+                    if (!item?.product) return null;
+                    const productId = item.product.id;
+                    const fetchedProduct = productDetails[productId];
+                    const img =
+                      fetchedProduct?.image_urls?.[0] ||
+                      item.product.image_urls?.[0] ||
+                      item.product.imageUrl;
+                    return (
+                      <div
+                        key={productId ?? index}
+                        className="relative h-8 w-8 overflow-hidden rounded-full ring-2 ring-background"
+                      >
+                        {img ? (
+                          <Image
+                            src={img as string}
+                            alt=""
+                            width={32}
+                            height={32}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex h-full w-full items-center justify-center bg-muted">
+                            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {deleteItemCount > 3 && (
+                    <div className="relative flex h-8 w-8 items-center justify-center rounded-full bg-muted text-[10px] font-medium text-muted-foreground ring-2 ring-background">
+                      +{deleteItemCount - 3}
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {cartBeingDeleted.name}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {deleteItemCount} {deleteItemCount === 1 ? "item" : "items"}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
               <Button
-                variant="outline"
+                type="button"
+                variant="ghost"
                 onClick={() => setShowDeleteDialog(false)}
+                disabled={isDeletingCart}
+                className="h-10 flex-1 text-muted-foreground hover:text-foreground"
               >
                 Cancel
               </Button>
               <Button
+                type="button"
                 variant="destructive"
                 onClick={() => cartToDelete && handleDeleteCart(cartToDelete)}
+                disabled={isDeletingCart}
+                className="h-10 flex-1 gap-1.5"
               >
-                Delete Cart
+                {isDeletingCart ? (
+                  <>
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-destructive-foreground/30 border-t-destructive-foreground" />
+                    Deleting
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Delete cart
+                  </>
+                )}
               </Button>
-            </DialogFooter>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

@@ -7,16 +7,17 @@ import PriceFormatter from "./PriceFormatter";
 import { Button } from "./ui/button";
 import useCartStore from "@/store";
 import QuantityButtons from "./QuantityButtons";
-import { Plus } from "lucide-react";
+import { Plus, ShoppingCart } from "lucide-react";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useRouter } from "next/navigation";
 
 interface Props {
   product: Product;
   className?: string;
+  variant?: "icon" | "label";
 }
 
-const AddToCartButton = ({ product, className }: Props) => {
+const AddToCartButton = ({ product, className, variant = "icon" }: Props) => {
   const { addItem, getItemCount } = useCartStore();
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
@@ -63,8 +64,15 @@ const AddToCartButton = ({ product, className }: Props) => {
 
   const buttonContent = getButtonContent();
 
+  const isLabelVariant = variant === "label";
+
   return (
-    <div className="h-8 flex items-center justify-start">
+    <div
+      className={twMerge(
+        isLabelVariant ? "flex items-center justify-start" : "h-8 flex items-center justify-start",
+        className
+      )}
+    >
       {buttonContent === null ? (
         // Show quantity buttons when item is in cart
         <div className="text-xs">
@@ -101,12 +109,29 @@ const AddToCartButton = ({ product, className }: Props) => {
           }}
           disabled={isAdding || authLoading}
           title="Add to cart"
-          className={twMerge(
-            "rounded-full p-1 h-7 w-7 flex items-center justify-center border border-gray-300 bg-white shadow-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed",
-            className
-          )}
+          className={
+            isLabelVariant
+              ? "inline-flex items-center gap-1.5 h-9 px-4 rounded-md font-medium text-sm bg-black text-white hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              : twMerge(
+                  "rounded-full p-1 h-7 w-7 flex items-center justify-center border border-gray-300 bg-white shadow-sm hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed",
+                  className
+                )
+          }
         >
-          {isAdding ? "..." : <Plus className="h-3 w-3 text-black" />}
+          {isAdding ? (
+            isLabelVariant ? (
+              "Adding..."
+            ) : (
+              "..."
+            )
+          ) : isLabelVariant ? (
+            <>
+              <ShoppingCart className="h-4 w-4 shrink-0" />
+              <span>Add to cart</span>
+            </>
+          ) : (
+            <Plus className="h-3 w-3 text-black" />
+          )}
         </Button>
       ) : (
         // Show unavailable/out of stock text with new styling

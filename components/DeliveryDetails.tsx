@@ -29,6 +29,7 @@ interface DeliveryDetailsProps {
   onDeliveryServiceChange?: (service: 'standard' | 'premium' | 'priority') => void;
   selectedDeliveryOption: CheckoutDeliveryOption;
   onDeliveryOptionChange: (option: CheckoutDeliveryOption) => void;
+  loading?: boolean;
 }
 
 const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
@@ -38,6 +39,7 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
   onDeliveryServiceChange,
   selectedDeliveryOption,
   onDeliveryOptionChange,
+  loading = false,
 }) => {
   // Use LocationContext for order type
   const { deliveryType: selectedOrderType, setDeliveryType } = useLocation();
@@ -51,6 +53,91 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
   };
 
   const isLocationSelected = selectedLocation && selectedLocation !== "Location";
+
+  if (loading) {
+    const showDeliveryExtras = selectedOrderType === "delivery" && !!onDeliveryServiceChange;
+
+    return (
+      <Card className="h-fit">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
+            <MapPin className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
+            Delivery Details
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4 sm:space-y-5 md:space-y-6">
+          {/* Location */}
+          <div className="space-y-2 sm:space-y-3">
+            <div className="h-3.5 sm:h-4 w-32 rounded-md bg-gray-200 animate-pulse" />
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-green-100 bg-green-50/60 p-2 sm:p-3">
+              <div className="flex min-w-0 flex-1 items-center gap-2">
+                <div className="h-3.5 w-3.5 shrink-0 rounded-full bg-green-200/80 animate-pulse sm:h-4 sm:w-4" />
+                <div className="h-3.5 sm:h-4 w-3/4 max-w-[220px] rounded-md bg-green-200/70 animate-pulse" />
+              </div>
+              <div className="h-7 w-14 shrink-0 rounded-md bg-gray-100 animate-pulse" />
+            </div>
+          </div>
+
+          {/* Order type */}
+          <div className="space-y-2 sm:space-y-3">
+            <div className="h-3.5 sm:h-4 w-24 rounded-md bg-gray-200 animate-pulse" />
+            <div className="grid grid-cols-2 gap-2 sm:gap-3">
+              {[0, 1].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center gap-2 sm:gap-3 rounded-lg border border-gray-100 bg-gray-50/50 p-2 sm:p-3"
+                >
+                  <div className="h-4 w-4 shrink-0 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 shrink-0 rounded-lg bg-gray-200 animate-pulse" />
+                      <div className="h-3.5 w-16 rounded-md bg-gray-200 animate-pulse" />
+                    </div>
+                    <div className="h-2.5 w-full rounded-md bg-gray-100 animate-pulse" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {showDeliveryExtras && (
+            <div className="space-y-2 sm:space-y-3">
+              <div className="h-3.5 sm:h-4 w-28 rounded-md bg-gray-200 animate-pulse" />
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
+                {[0, 1, 2].map((i) => (
+                  <div
+                    key={i}
+                    className="flex min-h-[64px] items-start gap-2.5 rounded-lg border border-gray-100 bg-gray-50/50 p-3 sm:min-h-[74px] sm:gap-3 sm:p-4"
+                  >
+                    <div className="h-8 w-8 shrink-0 rounded-lg bg-gray-200 animate-pulse" />
+                    <div className="min-w-0 flex-1 space-y-2 pt-0.5">
+                      <div className="h-3.5 w-20 rounded-md bg-gray-200 animate-pulse" />
+                      <div className="h-2.5 w-full rounded-md bg-gray-100 animate-pulse" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                <div className="h-3.5 w-36 rounded-md bg-gray-300 animate-pulse" />
+                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                  {[0, 1, 2].map((i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-1.5 rounded-md border border-gray-100 bg-gray-50/50 px-2 py-2 sm:gap-2 sm:px-2.5"
+                    >
+                      <div className="h-3.5 w-3.5 shrink-0 rounded-full bg-gray-200 animate-pulse" />
+                      <div className="h-2.5 flex-1 rounded bg-gray-100 animate-pulse" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <Card className="h-fit">
