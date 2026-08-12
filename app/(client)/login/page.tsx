@@ -42,8 +42,9 @@ export default function LoginPage() {
           return;
         }
         // Not registered yet: keep them on this page and collect name.
+        // Custom-token users may not have phoneNumber on the Firebase user — keep the number from OTP if already set.
         setIdToken(token);
-        setPhoneNumber(user.phoneNumber ?? "");
+        setPhoneNumber((prev) => user.phoneNumber || prev || "");
         setStep("name");
       } catch (err) {
         // On mobile networks, this check can hang; don't keep the user on an infinite loader.
@@ -119,9 +120,6 @@ export default function LoginPage() {
   return (
     <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] px-4">
       <Title className="!text-3xl">Login</Title>
-
-      {/* Persistent reCAPTCHA container so it's never unmounted (avoids "Cannot read properties of null (reading 'style')" when switching to name step) */}
-      <div id="recaptcha-container" className="hidden" aria-hidden="true" />
 
       {step === "phone" ? (
         <div className="w-full max-w-md mt-8">

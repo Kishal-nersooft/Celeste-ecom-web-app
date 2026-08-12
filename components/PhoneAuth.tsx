@@ -1,105 +1,24 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  signInWithPhoneNumber, 
-  RecaptchaVerifier, 
-  ConfirmationResult,
-} from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import React, { useState } from 'react';
 import PhoneInput, { isValidPhoneNumber } from 'react-phone-number-input';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
+import { sendOtp, verifyOtpAndSignIn } from '@/lib/otpAuth';
 import toast from 'react-hot-toast';
 
 interface PhoneAuthProps {
-  onSuccess: (idToken: string, phoneNumber: string) => void;
+  onSuccess: (idToken: string, phoneNumber: string, isNewUser?: boolean) => void;
   onError: (error: string) => void;
   isSignUp?: boolean;
 }
 
-export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: PhoneAuthProps) {
+export default function PhoneAuth({ onSuccess, onError }: PhoneAuthProps) {
   const [phoneNumber, setPhoneNumber] = useState<string | undefined>(undefined);
   const [otp, setOtp] = useState('');
   const [step, setStep] = useState<'phone' | 'otp'>('phone');
   const [loading, setLoading] = useState(false);
-  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
-
-  // Helper function to reinitialize reCAPTCHA verifier
-  const reinitializeRecaptcha = () => {
-    if (typeof window !== 'undefined') {
-      try {
-        if (window.recaptchaVerifier) {
-          window.recaptchaVerifier.clear();
-        }
-        
-        const container = document.getElementById('recaptcha-container');
-        if (container) {
-          window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-            size: 'invisible',
-            callback: () => {},
-            'expired-callback': () => {
-              reinitializeRecaptcha();
-            }
-          });
-          return true;
-        }
-      } catch (error) {
-        console.error('Error reinitializing reCAPTCHA:', error);
-      }
-    }
-    return false;
-  };
-
-  useEffect(() => {
-    // Initialize reCAPTCHA
-    const initializeRecaptcha = () => {
-      if (typeof window !== 'undefined') {
-        // Clean up existing verifier if it exists
-        if (window.recaptchaVerifier) {
-          try {
-            window.recaptchaVerifier.clear();
-          } catch (error) {
-          }
-        }
-
-        // Check if the container exists
-        const container = document.getElementById('recaptcha-container');
-        if (!container) {
-          console.error('reCAPTCHA container not found');
-          return;
-        }
-
-        try {
-          window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-            size: 'invisible',
-            callback: () => {},
-            'expired-callback': () => {
-              // Reset the verifier when expired
-              initializeRecaptcha();
-            }
-          });
-        } catch (error) {
-          console.error('Error initializing reCAPTCHA:', error);
-        }
-      }
-    };
-
-    // Initialize with a small delay to ensure DOM is ready
-    const timer = setTimeout(initializeRecaptcha, 100);
-    
-    return () => {
-      clearTimeout(timer);
-      // Cleanup on unmount
-      if (typeof window !== 'undefined' && window.recaptchaVerifier) {
-        try {
-          window.recaptchaVerifier.clear();
-        } catch (error) {
-        }
-      }
-    };
-  }, []);
 
   const sendOTP = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -115,34 +34,14 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
 
     setLoading(true);
     try {
-      // Validate reCAPTCHA verifier exists
-      if (!window.recaptchaVerifier) {
-        throw new Error('reCAPTCHA verifier not initialized. Please refresh the page and try again.');
-      }
-
-      // Check if the container still exists
-      const container = document.getElementById('recaptcha-container');
-      if (!container) {
-        throw new Error('reCAPTCHA container not found. Please refresh the page and try again.');
-      }
-
-      const appVerifier = window.recaptchaVerifier;
-      // `phoneNumber` is already in E.164 format from react-phone-number-input (e.g. +9477xxxxxxx)
-      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-      
-      setConfirmationResult(confirmation);
+      await sendOtp(phoneNumber);
       setStep('otp');
       toast.success('OTP sent successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to send OTP';
       console.error('Error sending OTP:', error);
-      
-      // If it's a reCAPTCHA error, try to reinitialize
-      if (error.message.includes('reCAPTCHA') || error.message.includes('verifier')) {
-        reinitializeRecaptcha();
-      }
-      
-      onError(error.message);
-      toast.error('Failed to send OTP: ' + error.message);
+      onError(message);
+      toast.error('Failed to send OTP: ' + message);
     } finally {
       setLoading(false);
     }
@@ -150,16 +49,15 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
 
   const verifyOTP = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Sanitize OTP - remove all non-digit characters
+
     const sanitizedOtp = otp.replace(/\D/g, '');
-    
+
     if (!sanitizedOtp || sanitizedOtp.length !== 6) {
       toast.error('Please enter a valid 6-digit OTP');
       return;
     }
-    
-    if (!confirmationResult) {
+
+    if (!phoneNumber) {
       toast.error('OTP session expired. Please request a new OTP.');
       setStep('phone');
       return;
@@ -167,39 +65,16 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
 
     setLoading(true);
     try {
-      // Use sanitized OTP (digits only)
-      const result = await confirmationResult.confirm(sanitizedOtp);
-      const user = result.user;
-      
-      // Get the ID token
+      const { user, isNewUser } = await verifyOtpAndSignIn(phoneNumber, sanitizedOtp);
       const idToken = await user.getIdToken();
-      
-      // Get phone number
-      const phoneNumber = user.phoneNumber || '';
-      
-      onSuccess(idToken, phoneNumber);
+      // Prefer the number the user entered; custom-token users may not have phoneNumber set on the Firebase user.
+      onSuccess(idToken, phoneNumber, isNewUser);
       toast.success('Phone number verified successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Invalid OTP. Please try again.';
       console.error('Error verifying OTP:', error);
-      
-      // More specific error messages
-      let errorMessage = 'Invalid OTP. Please try again.';
-      if (error.code === 'auth/invalid-verification-code') {
-        errorMessage = 'Invalid OTP code. Please check and try again.';
-      } else if (error.code === 'auth/code-expired') {
-        errorMessage = 'OTP code has expired. Please request a new one.';
-        setStep('phone');
-        setConfirmationResult(null);
-      } else if (error.code === 'auth/session-expired') {
-        errorMessage = 'Session expired. Please request a new OTP.';
-        setStep('phone');
-        setConfirmationResult(null);
-      } else if (error.message) {
-        errorMessage = error.message;
-      }
-      
-      onError(errorMessage);
-      toast.error(errorMessage);
+      onError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -207,34 +82,15 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
 
   const resendOTP = async () => {
     if (!phoneNumber) return;
-    
+
     setLoading(true);
     try {
-      // Validate reCAPTCHA verifier exists
-      if (!window.recaptchaVerifier) {
-        throw new Error('reCAPTCHA verifier not initialized. Please refresh the page and try again.');
-      }
-
-      // Check if the container still exists
-      const container = document.getElementById('recaptcha-container');
-      if (!container) {
-        throw new Error('reCAPTCHA container not found. Please refresh the page and try again.');
-      }
-
-      const appVerifier = window.recaptchaVerifier;
-      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
-      
-      setConfirmationResult(confirmation);
+      await sendOtp(phoneNumber);
       toast.success('OTP resent successfully!');
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'Failed to resend OTP';
       console.error('Error resending OTP:', error);
-      
-      // If it's a reCAPTCHA error, try to reinitialize
-      if (error.message.includes('reCAPTCHA') || error.message.includes('verifier')) {
-        reinitializeRecaptcha();
-      }
-      
-      toast.error('Failed to resend OTP: ' + error.message);
+      toast.error('Failed to resend OTP: ' + message);
     } finally {
       setLoading(false);
     }
@@ -242,7 +98,6 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
 
   return (
     <div className="w-full max-w-md space-y-4">
-      {/* reCAPTCHA container is rendered by the parent (e.g. login page) so it stays in DOM when step changes and avoids "Cannot read properties of null (reading 'style')" */}
       {step === 'phone' ? (
         <form onSubmit={sendOTP} className="space-y-4">
           <div>
@@ -255,7 +110,7 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
               placeholder="Enter phone number"
               value={phoneNumber}
               onChange={setPhoneNumber}
-              inputComponent={Input as any}
+              inputComponent={Input as React.ComponentType<React.InputHTMLAttributes<HTMLInputElement>>}
             />
             <p className="text-xs text-gray-500 mt-1">
               Select your country and enter your number (e.g., +94771234567)
@@ -297,22 +152,21 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
             <Button type="submit" className="flex-1" disabled={loading}>
               {loading ? 'Verifying...' : 'Verify OTP'}
             </Button>
-            <Button 
-              type="button" 
-              variant="outline" 
+            <Button
+              type="button"
+              variant="outline"
               onClick={resendOTP}
               disabled={loading}
             >
               Resend
             </Button>
           </div>
-          <Button 
-            type="button" 
-            variant="ghost" 
+          <Button
+            type="button"
+            variant="ghost"
             onClick={() => {
               setStep('phone');
               setOtp('');
-              setConfirmationResult(null);
             }}
             className="w-full"
           >
@@ -322,11 +176,4 @@ export default function PhoneAuth({ onSuccess, onError, isSignUp = false }: Phon
       )}
     </div>
   );
-}
-
-// Extend Window interface for reCAPTCHA
-declare global {
-  interface Window {
-    recaptchaVerifier: RecaptchaVerifier;
-  }
 }
