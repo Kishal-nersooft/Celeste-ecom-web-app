@@ -1,5 +1,5 @@
 // Backend API integration for authentication
-import { API_BASE_URL, NEXT_PUBLIC_API_BASE_URL } from './api';
+import { getBaseUrl } from './api';
 
 export interface RegisterUserRequest {
   idToken: string;
@@ -18,13 +18,14 @@ export interface RegisterUserResponse {
  */
 export async function registerUser(data: RegisterUserRequest): Promise<RegisterUserResponse> {
   try {
-    // Note: API base URL already includes `/api/v1` in this project env.
-    // In browser builds, only NEXT_PUBLIC_* env vars are available.
-    const baseUrl = NEXT_PUBLIC_API_BASE_URL || API_BASE_URL;
-    const response = await fetch(`${baseUrl}/auth/register`, {
+    // Browser uses /api/backend proxy; server uses API_BASE_URL + secret.
+    const response = await fetch(`${getBaseUrl()}/auth/register`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        ...(typeof window === 'undefined' && process.env.BACKEND_CLIENT_SECRET
+          ? { 'X-Client-Secret': process.env.BACKEND_CLIENT_SECRET }
+          : {}),
       },
       body: JSON.stringify(data)
     });
