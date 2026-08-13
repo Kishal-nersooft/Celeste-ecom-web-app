@@ -1,11 +1,14 @@
 /**
  * Backend API base URL.
  *
- * - Server: prefer `API_BASE_URL`
- * - Browser: MUST use `NEXT_PUBLIC_API_BASE_URL` (non-public env vars are not available client-side)
+ * - Browser: same-origin Next.js proxy (`/api/backend`) so `BACKEND_CLIENT_SECRET` never ships to the client
+ * - Server: direct `API_BASE_URL` with `X-Client-Secret` attached in getAuthHeaders()
  */
 export const API_BASE_URL = process.env.API_BASE_URL ?? "";
 export const NEXT_PUBLIC_API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
+/** Same-origin proxy prefix used by browser fetches */
+export const BACKEND_PROXY_BASE = "/api/backend";
 
 // Import product caching functions
 import { getCachedProducts, setCachedProducts, hasCachedProducts } from './product-cache';
@@ -14,14 +17,19 @@ import { apiLog, devLog } from './debug-log';
 export { apiLog, apiError, devLog, resetApiLogDedupe, isDebugEnabled } from './debug-log';
 
 // Helper function to get the appropriate base URL for server vs client
-function getBaseUrl() {
-  // Browser must use NEXT_PUBLIC_* env var.
+export function getBaseUrl() {
+  // Browser always goes through the Next.js proxy (adds X-Client-Secret server-side).
   if (typeof window !== 'undefined') {
-    return NEXT_PUBLIC_API_BASE_URL || API_BASE_URL;
+    return BACKEND_PROXY_BASE;
   }
 
-  // Server-side can read non-public env var.
+  // Server-side can call the real API directly.
   return API_BASE_URL || NEXT_PUBLIC_API_BASE_URL;
+}
+
+function getServerClientSecretHeaders(): Record<string, string> {
+  const secret = process.env.BACKEND_CLIENT_SECRET;
+  return secret ? { "X-Client-Secret": secret } : {};
 }
 
 // Helper function to get authentication headers
@@ -31,11 +39,14 @@ export async function getAuthHeaders(): Promise<Record<string, string>> {
   };
   
   if (typeof window === 'undefined') {
-    // Server-side: no auth headers (server-side rendering doesn't have access to localStorage)
-    return headers;
+    // Server-side: attach backend client secret (Firebase token is not available in SSR).
+    return {
+      ...headers,
+      ...getServerClientSecretHeaders(),
+    };
   }
   
-  // Client-side: try to get Firebase user token
+  // Client-side: try to get Firebase user token (proxy adds X-Client-Secret).
   try {
     // Import Firebase auth dynamically to avoid SSR issues
     const { getAuth } = await import('firebase/auth');
@@ -71,6 +82,7 @@ export async function getCurrentUserWithToken(
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${idToken}`,
+        ...(typeof window === 'undefined' ? getServerClientSecretHeaders() : {}),
       },
       signal: options?.signal,
     }
@@ -234,6 +246,7 @@ export async function registerUser(idToken: string, name: string) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(typeof window === 'undefined' ? getServerClientSecretHeaders() : {}),
     },
     body: JSON.stringify({ idToken, name }),
   });
@@ -700,11 +713,12 @@ export async function getParentCategoryFromSubcategory(subcategoryId: number) {
 }
 
 export async function revalidateAllProducts() {
-  const response = await fetch(`${API_BASE_URL}/revalidate-products`, {
+  const response = await fetch(`${getBaseUrl()}/revalidate-products`, {
     method: 'POST',
     mode: 'cors',
     headers: {
       'Content-Type': 'application/json',
+      ...(typeof window === 'undefined' ? getServerClientSecretHeaders() : {}),
     }
   });
   if (!response.ok) {
