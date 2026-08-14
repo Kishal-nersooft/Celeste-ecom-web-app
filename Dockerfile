@@ -26,12 +26,20 @@ ARG NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 ARG NEXT_PUBLIC_API_BASE_URL
 ARG NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL
 
-# Fail fast instead of producing a broken build
-RUN test -n "$NEXT_PUBLIC_FIREBASE_API_KEY" && \
-    test -n "$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" && \
-    test -n "$NEXT_PUBLIC_FIREBASE_PROJECT_ID" && \
-    test -n "$NEXT_PUBLIC_FIREBASE_APP_ID" && \
-    test -n "$NEXT_PUBLIC_API_BASE_URL"
+# Fail fast instead of producing a broken build.
+# Empty values mean the Cloud Build trigger did not pass --build-arg (runtime
+# Cloud Run secrets are not visible here).
+RUN missing="" && \
+    [ -n "$NEXT_PUBLIC_FIREBASE_API_KEY" ] || missing="$missing NEXT_PUBLIC_FIREBASE_API_KEY" && \
+    [ -n "$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" ] || missing="$missing NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" && \
+    [ -n "$NEXT_PUBLIC_FIREBASE_PROJECT_ID" ] || missing="$missing NEXT_PUBLIC_FIREBASE_PROJECT_ID" && \
+    [ -n "$NEXT_PUBLIC_FIREBASE_APP_ID" ] || missing="$missing NEXT_PUBLIC_FIREBASE_APP_ID" && \
+    [ -n "$NEXT_PUBLIC_API_BASE_URL" ] || missing="$missing NEXT_PUBLIC_API_BASE_URL" && \
+    if [ -n "$missing" ]; then \
+      echo "Missing Docker build-args:$missing" >&2; \
+      echo "Cloud Run runtime secrets are not available during docker build. The trigger must use cloudbuild.yaml and pass --build-arg from Secret Manager." >&2; \
+      exit 1; \
+    fi
 
 ENV NEXT_PUBLIC_GOOGLE_API_KEY=$NEXT_PUBLIC_GOOGLE_API_KEY
 ENV NEXT_PUBLIC_FIREBASE_API_KEY=$NEXT_PUBLIC_FIREBASE_API_KEY
