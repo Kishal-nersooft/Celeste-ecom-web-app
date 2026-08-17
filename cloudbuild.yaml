@@ -1,8 +1,10 @@
 steps:
-  # Build Docker image
+  # NEXT_PUBLIC_* must be Docker build-args. Cloud Run runtime secrets are too late.
+  # Secrets must be expanded via bash ($$VAR). Plain --build-arg NAME does not receive secretEnv values.
   - name: "gcr.io/cloud-builders/docker"
+    id: Build
+    entrypoint: bash
     secretEnv:
-      - NEXT_PUBLIC_GOOGLE_API_KEY
       - NEXT_PUBLIC_FIREBASE_API_KEY
       - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
       - NEXT_PUBLIC_FIREBASE_PROJECT_ID
@@ -12,72 +14,62 @@ steps:
       - NEXT_PUBLIC_API_BASE_URL
       - NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL
     args:
-      - build
-      - -t
-      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_TAG}
-      - --build-arg
-      - NEXT_PUBLIC_GOOGLE_API_KEY
-      - --build-arg
-      - NEXT_PUBLIC_FIREBASE_API_KEY
-      - --build-arg
-      - NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
-      - --build-arg
-      - NEXT_PUBLIC_FIREBASE_PROJECT_ID
-      - --build-arg
-      - NEXT_PUBLIC_FIREBASE_APP_ID
-      - --build-arg
-      - NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
-      - --build-arg
-      - NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
-      - --build-arg
-      - NEXT_PUBLIC_API_BASE_URL
-      - --build-arg
-      - NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL
-      - .
+      - -c
+      - |
+        IMAGE="${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_SERVICE_NAME}"
+        docker build \
+          -t "$$IMAGE:$COMMIT_SHA" \
+          -t "$$IMAGE:latest" \
+          --build-arg "NEXT_PUBLIC_GOOGLE_API_KEY=$$NEXT_PUBLIC_FIREBASE_API_KEY" \
+          --build-arg "NEXT_PUBLIC_FIREBASE_API_KEY=$$NEXT_PUBLIC_FIREBASE_API_KEY" \
+          --build-arg "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=$$NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN" \
+          --build-arg "NEXT_PUBLIC_FIREBASE_PROJECT_ID=$$NEXT_PUBLIC_FIREBASE_PROJECT_ID" \
+          --build-arg "NEXT_PUBLIC_FIREBASE_APP_ID=$$NEXT_PUBLIC_FIREBASE_APP_ID" \
+          --build-arg "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=$$NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET" \
+          --build-arg "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID" \
+          --build-arg "NEXT_PUBLIC_API_BASE_URL=$$NEXT_PUBLIC_API_BASE_URL" \
+          --build-arg "NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL=$$NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL" \
+          .
 
-  # Push Docker image
   - name: "gcr.io/cloud-builders/docker"
+    id: Push
+    entrypoint: bash
     args:
-      - push
-      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_TAG}
+      - -c
+      - |
+        IMAGE="${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_SERVICE_NAME}"
+        docker push "$$IMAGE:$COMMIT_SHA"
+        docker push "$$IMAGE:latest"
 
-  # Deploy to Cloud Run
-  - name: "gcr.io/cloud-builders/gcloud"
+  # Image-only update so Cloud Run UI secrets/env stay as you set them.
+  - name: "gcr.io/google.com/cloudsdktool/cloud-sdk:slim"
+    id: Deploy
+    entrypoint: gcloud
     args:
       - run
-      - deploy
+      - services
+      - update
       - ${_SERVICE_NAME}
-      - --image
-      - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_TAG}
-      - --region
-      - ${_REGION}
-      - --platform
-      - managed
-      - --allow-unauthenticated
-      - --memory
-      - 512Mi
-      - --cpu
-      - "1"
-      - --timeout
-      - "300"
-      - --max-instances
-      - "10"
-      - --set-secrets
-      - NEXT_PUBLIC_API_BASE_URL=NEXT_PUBLIC_API_BASE_URL:latest,NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL=NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL:latest,API_BASE_URL=API_BASE_URL:latest,BACKEND_CLIENT_SECRET=BACKEND_CLIENT_SECRET:latest
+      - --platform=${_PLATFORM}
+      - --image=${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_SERVICE_NAME}:$COMMIT_SHA
+      - --region=${_DEPLOY_REGION}
+      - --quiet
 
 images:
-  - gcr.io/$PROJECT_ID/${_SERVICE_NAME}:${_TAG}
+  - ${_AR_HOSTNAME}/${_AR_PROJECT_ID}/${_AR_REPOSITORY}/${_SERVICE_NAME}:$COMMIT_SHA
 
 substitutions:
-  _SERVICE_NAME: nextjs-web
-  _REGION: asia-south1
-  _TAG: latest
+  _SERVICE_NAME: nextjs-web-staging
+  _DEPLOY_REGION: asia-south1
+  _PLATFORM: managed
+  _AR_HOSTNAME: asia-south1-docker.pkg.dev
+  _AR_PROJECT_ID: hallowed-byte-498805-g8
+  _AR_REPOSITORY: cloud-run-source-deploy
 
 availableSecrets:
   secretManager:
-    - versionName: projects/$PROJECT_ID/secrets/NEXT_PUBLIC_GOOGLE_API_KEY/versions/latest
-      env: NEXT_PUBLIC_GOOGLE_API_KEY
-
+    # Staging has no separate Maps secret. Cloud Build forbids using the same
+    # secret version twice, so Maps reuses this env as a Docker build-arg.
     - versionName: projects/$PROJECT_ID/secrets/NEXT_PUBLIC_FIREBASE_API_KEY/versions/latest
       env: NEXT_PUBLIC_FIREBASE_API_KEY
 
@@ -96,20 +88,15 @@ availableSecrets:
     - versionName: projects/$PROJECT_ID/secrets/NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID/versions/latest
       env: NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
 
-    - versionName: projects/$PROJECT_ID/secrets/NEXT_PUBLIC_API_BASE_URL/versions/latest
+    - versionName: projects/$PROJECT_ID/secrets/NEXT_PUBLIC_API_BASE_URL_STAGING/versions/latest
       env: NEXT_PUBLIC_API_BASE_URL
 
     - versionName: projects/$PROJECT_ID/secrets/NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL/versions/latest
       env: NEXT_PUBLIC_OTP_FUNCTIONS_BASE_URL
 
-    - versionName: projects/$PROJECT_ID/secrets/API_BASE_URL/versions/latest
-      env: API_BASE_URL
-
-    - versionName: projects/$PROJECT_ID/secrets/BACKEND_CLIENT_SECRET/versions/latest
-      env: BACKEND_CLIENT_SECRET
-
 options:
   logging: CLOUD_LOGGING_ONLY
   machineType: N1_HIGHCPU_8
+  substitutionOption: ALLOW_LOOSE
 
 timeout: 1200s
