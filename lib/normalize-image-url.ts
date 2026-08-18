@@ -45,6 +45,38 @@ export function extractGoogleDriveFileId(url: string): string | null {
   return null;
 }
 
+/** Decode percent-encoding repeatedly so `%2520` becomes a real space. */
+function decodePathSegment(segment: string): string {
+  let current = segment;
+  for (let i = 0; i < 4; i++) {
+    try {
+      const next = decodeURIComponent(current.replace(/\+/g, "%20"));
+      if (next === current) break;
+      current = next;
+    } catch {
+      break;
+    }
+  }
+  return current;
+}
+
+/**
+ * Collapse double-encoded paths and encode spaces so Azure blob URLs
+ * stay valid for both Next.js Image and the blob host.
+ */
+function normalizeRemotePath(url: string): string {
+  try {
+    const parsed = new URL(url.replace(/ /g, "%20"));
+    parsed.pathname = parsed.pathname
+      .split("/")
+      .map((segment) => decodePathSegment(segment))
+      .join("/");
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
 /**
  * Normalize image URLs for Next.js Image, especially malformed Google Drive links.
  */
@@ -58,5 +90,5 @@ export function normalizeImageUrl(url: string): string {
     return `https://drive.google.com/uc?export=view&id=${encodeURIComponent(fileId)}`;
   }
 
-  return trimmed;
+  return normalizeRemotePath(trimmed);
 }
