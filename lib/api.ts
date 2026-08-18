@@ -2306,7 +2306,10 @@ export async function getUserOrders(
   });
   
   if (!response.ok) {
-    throw new Error(`Failed to fetch orders: ${response.status} ${response.statusText}`);
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      `Failed to fetch orders: ${response.status} ${response.statusText}${errorText ? ` - ${errorText}` : ""}`
+    );
   }
   
   const data = await response.json();

@@ -19,7 +19,7 @@ export const ORDER_TAB_API_STATUSES: Record<
 > = {
   ongoing: ["pending", "confirmed", "processing", "packed", "shipped"],
   completed: ["delivered"],
-  cancelled: ["cancelled", "refunded"],
+  cancelled: ["cancelled"],
 };
 
 export function getOrderStatusesForTab(tab: OrderFilterTab): OrderApiStatus[] {

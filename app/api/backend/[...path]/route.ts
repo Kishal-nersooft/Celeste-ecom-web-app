@@ -16,8 +16,31 @@ function buildUpstreamUrl(request: NextRequest): string | null {
   const { pathname, search } = request.nextUrl;
   if (!pathname.startsWith(PROXY_PREFIX)) return null;
 
-  const backendPath = pathname.slice(PROXY_PREFIX.length) || "/";
+  let backendPath = pathname.slice(PROXY_PREFIX.length) || "/";
+  // Next.js strips trailing slashes (`/orders/` → `/orders`). FastAPI list routes
+  // are defined as `/`, so that becomes a 307 to `http://…/orders/` and Node's
+  // fetch follow-up drops Authorization / X-Client-Secret → 403.
+  const segments = backendPath.split("/").filter(Boolean);
+  if (segments.length === 1 && !backendPath.endsWith("/")) {
+    backendPath = `${backendPath}/`;
+  }
+
   return `${base}${backendPath}${search}`;
+}
+
+function resolveSameHostHttpsRedirect(
+  location: string,
+  currentUrl: string
+): string | null {
+  try {
+    const current = new URL(currentUrl);
+    const next = new URL(location, currentUrl);
+    if (next.hostname !== current.hostname) return null;
+    next.protocol = "https:";
+    return next.toString();
+  } catch {
+    return null;
+  }
 }
 
 function buildUpstreamHeaders(request: NextRequest): Headers {
@@ -61,6 +84,7 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
     method: request.method,
     headers: buildUpstreamHeaders(request),
     cache: "no-store",
+    redirect: "manual",
   };
 
   if (request.method !== "GET" && request.method !== "HEAD") {
@@ -68,7 +92,18 @@ async function proxy(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const upstream = await fetch(upstreamUrl, init);
+    let upstream = await fetch(upstreamUrl, init);
+
+    if ([301, 302, 307, 308].includes(upstream.status)) {
+      const location = upstream.headers.get("location");
+      const redirectedUrl = location
+        ? resolveSameHostHttpsRedirect(location, upstreamUrl)
+        : null;
+      if (redirectedUrl) {
+        upstream = await fetch(redirectedUrl, init);
+      }
+    }
+
     const responseHeaders = new Headers();
     const contentType = upstream.headers.get("content-type");
     if (contentType) responseHeaders.set("content-type", contentType);
