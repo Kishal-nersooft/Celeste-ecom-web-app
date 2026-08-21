@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { getParentCategories } from "../lib/api";
 import { Category } from "./Categories";
 import { getCategoryIconPath } from "@/lib/category-icons-config";
+import { getCategoryDisplayName } from "@/lib/category-display-name";
 
 interface Props {
   onSelectCategory: (categoryId: number | null, isDeals?: boolean) => void;
@@ -94,6 +95,10 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
           const isActive = (selectedCategoryId === null && isAllCategory) || 
                           (selectedCategoryId === -1 && isDealsCategory) ||
                           (selectedCategoryId === category.id && !isAllCategory && !isDealsCategory);
+          const displayName = getCategoryDisplayName(
+            category.name,
+            category.display_name
+          );
 
           return (
             <button
@@ -118,7 +123,7 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
                     return (
                       <Image
                         src={category.image_url as string}
-                        alt={category.name}
+                        alt={displayName}
                         width={20}
                         height={20}
                         style={{ objectFit: "contain" }}
@@ -132,7 +137,7 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
                     return (
                       <Image
                         src={localIconPath}
-                        alt={category.name}
+                        alt={displayName}
                         width={20}
                         height={20}
                         style={{ objectFit: "contain" }}
@@ -148,7 +153,7 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
                         isActive ? "text-gray-700" : "text-gray-500"
                       )}
                     >
-                      {category.name.substring(0, 2).toUpperCase()}
+                      {displayName.substring(0, 2).toUpperCase()}
                     </span>
                   );
                 })()}
@@ -159,7 +164,7 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
                   isActive ? "text-black font-bold" : "text-black font-medium"
                 )}
               >
-                {category.name}
+                {displayName}
               </span>
             </button>
           );

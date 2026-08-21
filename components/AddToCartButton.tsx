@@ -19,7 +19,7 @@ interface Props {
 
 const AddToCartButton = ({ product, className, variant = "icon" }: Props) => {
   const { addItem, getItemCount } = useCartStore();
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, unresolved, error: authError } = useAuth();
   const router = useRouter();
   const [isClient, setIsClient] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -88,6 +88,10 @@ const AddToCartButton = ({ product, className, variant = "icon" }: Props) => {
             
             // Check if user is logged in
             if (!user && !authLoading) {
+              if (unresolved) {
+                toast.error(authError || "Couldn't verify your sign-in. Please retry.");
+                return;
+              }
               toast.error("Please login to add items to cart");
               router.push("/login?returnUrl=" + encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/"));
               return;

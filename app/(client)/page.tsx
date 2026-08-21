@@ -1,15 +1,23 @@
 import Container from "@/components/Container";
+import { getHomeCatalogue } from "@/lib/home-catalogue";
 import HomeClient from "./HomeClient";
 
-// Force dynamic rendering
-export const dynamic = 'force-dynamic';
+// Catalogue is requested per visit (pricing/inventory). Data is fetched on the
+// server below so the first HTML response includes categories and product rows.
+export const dynamic = "force-dynamic";
 
-export default function Home() {
-  // Let HomeClient handle all data fetching on the client side
-  // This ensures Firebase authentication context is available for pricing calculation
+export default async function Home() {
+  const { products, categories, parentCategoryNames, parentProducts } =
+    await getHomeCatalogue();
+
   return (
     <Container className="pb-10">
-      <HomeClient products={[]} categories={[]} />
+      <HomeClient
+        products={products}
+        categories={categories}
+        parentCategoryNames={parentCategoryNames}
+        parentProducts={parentProducts}
+      />
     </Container>
   );
 }

@@ -5,6 +5,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { Header } from "@/components/Header";
 import Footer from "@/components/Footer";
 import { ScrollToTopButton } from "@/components/ScrollToTopButton";
+import AuthStatusBanner from "@/components/AuthStatusBanner";
 import Link from "next/link";
 
 function CheckoutBreadcrumb() {
@@ -75,6 +76,7 @@ export function ConditionalClientChrome({ children }: { children: React.ReactNod
       }
     >
       <ChromeInner>{children}</ChromeInner>
+      <AuthStatusBanner />
     </Suspense>
   );
 }

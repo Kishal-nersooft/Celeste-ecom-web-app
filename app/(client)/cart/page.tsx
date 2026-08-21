@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useRouter } from "next/navigation";
 import Loader from "@/components/Loader";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import NoAccessToCart from "@/components/NoAccessToCart";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,7 +19,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getProductById } from "@/lib/api";
 
 const CartPage = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, unresolved, isGuest } = useAuth();
   const router = useRouter();
   const cartStore = useCartStore();
   const [isLoading, setIsLoading] = useState(false);
@@ -31,10 +32,10 @@ const CartPage = () => {
   const [loadingProducts, setLoadingProducts] = useState<{[key: number]: boolean}>({});
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (isGuest) {
       router.push("/login?returnUrl=" + encodeURIComponent("/cart"));
     }
-  }, [user, loading, router]);
+  }, [isGuest, router]);
 
   useEffect(() => {
     if (user && cartStore.carts.length === 0) {
@@ -165,8 +166,12 @@ const CartPage = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !unresolved) {
     return <Loader />;
+  }
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
   }
 
   if (!user) {

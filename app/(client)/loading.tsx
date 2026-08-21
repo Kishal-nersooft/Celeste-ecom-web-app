@@ -1,8 +1,8 @@
-import Loader from "@/components/Loader";
+import StartupLoader from "@/components/StartupLoader";
 import React from "react";
 
 const loading = () => {
-  return <Loader />;
+  return <StartupLoader />;
 };
 
 export default loading;

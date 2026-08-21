@@ -8,12 +8,11 @@ import { getPopularProducts } from "@/lib/api";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
 import { Product } from "@/store";
-import Loader from "@/components/Loader";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 export default function PopularItemsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
   const { deliveryType, defaultAddress, selectedStore } = useLocation();
   const router = useRouter();
   const [popularProducts, setPopularProducts] = useState<Product[]>([]);
@@ -37,15 +36,11 @@ export default function PopularItemsPage() {
           } else {
             storeIds = [1, 2, 3, 4];
           }
+        } else if (defaultAddress?.latitude && defaultAddress?.longitude) {
+          latitude = parseFloat(defaultAddress.latitude);
+          longitude = parseFloat(defaultAddress.longitude);
         } else {
-          if (defaultAddress?.latitude && defaultAddress?.longitude) {
-            latitude = parseFloat(defaultAddress.latitude);
-            longitude = parseFloat(defaultAddress.longitude);
-          } else {
-            setError("Please select a delivery location to view popular items");
-            setLoading(false);
-            return;
-          }
+          storeIds = [1, 2, 3, 4];
         }
 
         const products = await getPopularProducts(
@@ -78,14 +73,8 @@ export default function PopularItemsPage() {
       }
     };
 
-    if (!authLoading) {
-      fetchProducts();
-    }
-  }, [user, authLoading, deliveryType, defaultAddress, selectedStore]);
-
-  if (authLoading || loading) {
-    return <Loader />;
-  }
+    fetchProducts();
+  }, [user, deliveryType, defaultAddress, selectedStore]);
 
   return (
     <div className="bg-gray-100 min-h-screen">

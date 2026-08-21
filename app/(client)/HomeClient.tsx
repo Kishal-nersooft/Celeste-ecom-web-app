@@ -8,162 +8,57 @@ import PopularItemsSection from "@/components/PopularItemsSection";
 import RecentItemsSection from "@/components/RecentItemsSection";
 import StoresGrid from "@/components/StoresGrid";
 import DiscountBanner from "@/components/DiscountBanner";
-import LocationLoadingIndicator from "@/components/LocationLoadingIndicator";
 import { useAuth } from "@/components/FirebaseAuthProvider";
-import Loader from "@/components/Loader";
 import PopupAds from "@/components/PopupAds";
 import { Product } from "../../store";
 import { Category } from "../../components/Categories";
-import { getProductsWithPricing, getParentCategories } from "../../lib/api";
+import { getParentCategories } from "../../lib/api";
 
 interface HomeClientProps {
   products: Product[];
   categories: Category[];
+  parentCategoryNames?: { [key: number]: string };
+  parentProducts?: { [key: number]: Product[] };
 }
 
 const HomeClient: React.FC<HomeClientProps> = ({
   products: initialProducts,
   categories: initialCategories,
+  parentCategoryNames: initialParentCategoryNames,
+  parentProducts: initialParentProducts,
 }) => {
-  const { deliveryType, defaultAddress, isLocationLoading, isLocationReady, hasLocationSelected } = useLocation();
-  const { user, loading: authLoading } = useAuth();
-  const { selectedCategoryId, isDealsSelected, setLastVisitedCategory } =
+  const { deliveryType } = useLocation();
+  const { user } = useAuth();
+  const { selectedCategoryId, isDealsSelected } =
     useCategory();
-  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [products] = useState<Product[]>(initialProducts);
   const [categories, setCategories] = useState<Category[]>(initialCategories);
-  const [loading, setLoading] = useState(false);
 
-  // Clean console logs - only show once when data changes
-  React.useEffect(() => {
-    if (
-      products.length > 0 &&
-      typeof window !== 'undefined' &&
-      products.length !== (window as any).lastHomeProductCount
-    ) {
-      (window as any).lastHomeProductCount = products.length;
-    }
-  }, [products.length]);
-
-  // Fetch data on client side - optimized for quick loading with cached location
+  // Fall back to a client fetch only when the server could not provide categories.
   useEffect(() => {
-    const fetchData = async () => {
-      // Only fetch products and categories for delivery mode
-      if (deliveryType === "delivery") {
-        // If location is still loading, wait for it
-        if (isLocationLoading) {
-          return;
-        }
+    if (initialCategories.length > 0) {
+      return;
+    }
 
-        setLoading(true);
+    let cancelled = false;
 
-        try {
-          let productsResponse, categoriesResponse;
-
-          // Case 1: No location selected and not logged in - show all products from all 4 stores
-          if (!hasLocationSelected && !isLocationReady && !user) {
-            [productsResponse, categoriesResponse] = await Promise.all([
-              getProductsWithPricing(
-                null,
-                1,
-                20,
-                false,
-                true,
-                true,
-                [1, 2, 3, 4], // All 4 store IDs - no location params
-                undefined,    // No latitude
-                undefined     // No longitude
-              ),
-              getParentCategories(),
-            ]);
-          }
-          // Case 2: Location selected (with or without login) - fetch with location coordinates
-          else if (isLocationReady && defaultAddress) {
-            const latitude = defaultAddress.latitude;
-            const longitude = defaultAddress.longitude;
-
-            [productsResponse, categoriesResponse] = await Promise.all([
-              getProductsWithPricing(
-                null,
-                1,
-                20,
-                false,
-                true,
-                true,
-                [1, 2, 3, 4], // Store IDs
-                latitude,     // Latitude for inventory data
-                longitude     // Longitude for inventory data
-              ),
-              getParentCategories(),
-            ]);
-          }
-          // Case 3: Logged in but no location - try to load from backend addresses
-          else if (user && !isLocationReady) {
-            // Wait a bit more for location to load from backend
-            setLoading(false);
-            return;
-          }
-          // Case 4: No location data available
-          else {
-            [productsResponse, categoriesResponse] = await Promise.all([
-              getProductsWithPricing(
-                null,
-                1,
-                20,
-                false,
-                true,
-                true,
-                [1, 2, 3, 4], // All 4 store IDs - no location params
-                undefined,
-                undefined
-              ),
-              getParentCategories(),
-            ]);
-          }
-
-
-          setProducts(Array.isArray(productsResponse) ? productsResponse : []);
-          setCategories(
-            Array.isArray(categoriesResponse) ? categoriesResponse : []
-          );
-        } catch (error) {
-          console.error("HomeClient - Error fetching data:", error);
-        } finally {
-          setLoading(false);
-        }
-      } else {
-        // For pickup mode, no need to fetch products or categories
-        setLoading(false);
+    const fetchCategories = async () => {
+      try {
+        const categoriesResponse = await getParentCategories();
+        if (cancelled) return;
+        setCategories(
+          Array.isArray(categoriesResponse) ? categoriesResponse : []
+        );
+      } catch (error) {
+        console.error("HomeClient - Error fetching categories:", error);
       }
     };
 
-    if (!authLoading) {
-      fetchData();
-    }
-  }, [authLoading, deliveryType, isLocationLoading, isLocationReady, defaultAddress, hasLocationSelected, user]); // Wait for authentication to be ready and watch deliveryType and address changes
-
-  // Show loading only for delivery mode or auth loading
-  if (authLoading) {
-    return <Loader />;
-  }
-
-  // Show location loading indicator only if user is logged in and location is loading
-  // For non-logged-in users, we show products even without location
-  if (deliveryType === "delivery" && user && (isLocationLoading || !isLocationReady)) {
-    return (
-      <div className="min-h-screen">
-        <LocationLoadingIndicator 
-          isLocationLoading={isLocationLoading}
-          isLocationReady={isLocationReady}
-          className="py-20"
-        />
-      </div>
-    );
-  }
-
-  // Show loading for delivery mode when fetching products
-  if (deliveryType === "delivery" && loading) {
-    return <Loader />;
-  }
+    fetchCategories();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCategories]);
 
   return (
     <>
@@ -181,8 +76,7 @@ const HomeClient: React.FC<HomeClientProps> = ({
           <DiscountBanner />
         </>
       ) : (
-        // Delivery mode: Show all products as before
-        // Note: DiscountBanner is now positioned inside ProductList (under categories, above products)
+        // Delivery mode: Show catalogue immediately; auth/location refine pricing in ProductList
         <>
           <ProductList
             title={true}
@@ -190,8 +84,10 @@ const HomeClient: React.FC<HomeClientProps> = ({
             categories={categories}
             selectedCategoryId={selectedCategoryId}
             isDealsSelected={isDealsSelected}
+            initialParentCategoryNames={initialParentCategoryNames}
+            initialParentProducts={initialParentProducts}
           />
-          <RecentItemsSection />
+          {user && <RecentItemsSection />}
           <PopularItemsSection />
         </>
       )}

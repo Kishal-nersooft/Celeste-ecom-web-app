@@ -18,10 +18,9 @@ import { useLocation } from "@/contexts/LocationContext";
 import deliveryIcon from "@/images/delivery-icon.png";
 import pickupIcon from "@/images/pickup-icon.png";
 import SearchBar from "./SearchBar";
-import Loader from "./Loader";
 
 export const Header = () => {
-  const { user, loading } = useAuth();
+  const { user, isGuest } = useAuth();
   const { selectedLocation, setSelectedLocation, deliveryType, hasSelectedDeliveryType } = useLocation();
   const cartStore = useCartStore();
   const itemCount = cartStore.items.length;
@@ -75,9 +74,7 @@ export const Header = () => {
                 </CartPreviewPanel>
               )}
               
-              {loading ? (
-                <Loader />
-              ) : user ? null : (
+              {isGuest && (
                 <Link 
                   href="/login" 
                   className="px-2 py-1 bg-gray-200 text-black font-bold rounded-full text-[10px] hover:bg-gray-300 transition-colors duration-200 shadow-sm hover:shadow-md"
@@ -163,16 +160,7 @@ export const Header = () => {
               </CartPreviewPanel>
             )}
             
-            {loading ? (
-              <Loader />
-            ) : user ? (
-              <div className="flex items-center gap-2">
-                {/* <Link href="/orders" className="flex items-center text-sm gap-2 border border-gray-200 px-2 py-1 rounded-md shadow-md hover:shadow-none hoverEffect bg-white">
-                  <FiUser className="w-6 h-6" />
-                  Orders
-                </Link> */}
-              </div>
-            ) : (
+            {isGuest && (
               <Link 
                   href="/login" 
                   className="px-4 py-2 bg-gray-200 text-black font-bold rounded-full text-sm hover:bg-gray-300 transition-colors duration-200 shadow-sm hover:shadow-md"

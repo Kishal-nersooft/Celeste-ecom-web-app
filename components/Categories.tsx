@@ -7,12 +7,18 @@ import { getParentCategories } from "../lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCategory } from "../contexts/CategoryContext";
 import { getCategoryIconPath } from "@/lib/category-icons-config";
+import {
+  getCategoryDisplayName,
+  stripCategoryEmojis,
+} from "@/lib/category-display-name";
 import { normalizeImageUrl } from "@/lib/normalize-image-url";
 
 // New Category interface matching backend schema
 export interface Category {
   id: number;
   name: string;
+  /** Storefront label from the API. Falls back to `name` when omitted. */
+  display_name?: string;
   sort_order: number;
   description?: string;
   image_url?: string;
@@ -26,13 +32,21 @@ interface Props {
     isDeals?: boolean,
     categoryName?: string
   ) => void;
+  categories?: Category[];
 }
 
-const Categories = ({ onSelectCategory }: Props) => {
+const Categories = ({
+  onSelectCategory,
+  categories: initialCategories,
+}: Props) => {
   const pathname = usePathname();
   const { selectedCategoryId, isDealsSelected } = useCategory();
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [categories, setCategories] = useState<Category[]>(
+    initialCategories ?? []
+  );
+  const [loading, setLoading] = useState(
+    !(initialCategories && initialCategories.length > 0)
+  );
   const [error, setError] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
@@ -58,9 +72,9 @@ const Categories = ({ onSelectCategory }: Props) => {
           <div className="flex overflow-x-auto space-x-2 sm:space-x-3 md:space-x-4 pb-2 px-6 sm:px-7 md:px-8 scrollbar-hide">
             {Array.from({ length: count }).map((_, idx) => (
               <div key={idx} className="flex flex-col animate-pulse">
-                <div className="flex flex-col items-center min-w-[60px] sm:min-w-[70px] md:min-w-[80px]">
+                <div className="flex flex-shrink-0 flex-col items-center w-[4.75rem] sm:w-[5.5rem] md:w-24">
                   <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-gray-200" />
-                  <div className="mt-1 sm:mt-1.5 md:mt-2 h-3 sm:h-3.5 md:h-4 w-12 sm:w-14 md:w-16 rounded bg-gray-200" />
+                  <div className="mt-1 sm:mt-1.5 md:mt-2 h-3 sm:h-3.5 md:h-4 w-14 sm:w-16 md:w-20 rounded bg-gray-200" />
                 </div>
               </div>
             ))}
@@ -71,18 +85,30 @@ const Categories = ({ onSelectCategory }: Props) => {
   };
 
   useEffect(() => {
+    if (initialCategories && initialCategories.length > 0) {
+      setCategories(initialCategories);
+      setLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
     async function fetchCategories() {
       try {
         const fetchedCategories = await getParentCategories();
+        if (cancelled) return;
         setCategories(fetchedCategories);
       } catch (err: any) {
-        setError(err.message);
+        if (!cancelled) setError(err.message);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     fetchCategories();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [initialCategories]);
 
   const checkScrollButtons = () => {
     if (scrollContainerRef.current) {
@@ -134,7 +160,7 @@ const Categories = ({ onSelectCategory }: Props) => {
 
   const scrollLeft = () => {
     if (scrollContainerRef.current) {
-      const categoryWidth = 80; // Approximate width of each category + gap
+      const categoryWidth = 96; // Approximate width of each category + gap
       scrollContainerRef.current.scrollBy({
         left: -categoryWidth * 3, // Scroll by 3 categories at a time
         behavior: "smooth",
@@ -146,7 +172,7 @@ const Categories = ({ onSelectCategory }: Props) => {
 
   const scrollRight = () => {
     if (scrollContainerRef.current) {
-      const categoryWidth = 80; // Approximate width of each category + gap
+      const categoryWidth = 96; // Approximate width of each category + gap
       scrollContainerRef.current.scrollBy({
         left: categoryWidth * 3, // Scroll by 3 categories at a time
         behavior: "smooth",
@@ -196,17 +222,23 @@ const Categories = ({ onSelectCategory }: Props) => {
             const isAllCategory = category.name === "All";
             const isDealsCategory = category.name === "Deals";
             const isActive = activeCategory === category.id;
+            const fullName = stripCategoryEmojis(category.name) || category.name;
+            const displayName = getCategoryDisplayName(
+              category.name,
+              category.display_name
+            );
             
             return (
-              <div key={category.id || 'all'} className="flex flex-col">
+              <div key={category.id || 'all'} className="flex flex-shrink-0 flex-col">
                 {/* Main Category */}
                 <div
                   className={cn(
-                    "flex flex-col items-center cursor-pointer min-w-[60px] sm:min-w-[70px] md:min-w-[80px]",
+                    "flex w-[4.75rem] sm:w-[5.5rem] md:w-24 flex-col items-center cursor-pointer",
                     isActive
                       ? "text-black"
                       : "text-black"
                   )}
+                  title={fullName}
                   onClick={() =>
                     handleCategoryClick(
                       category.id,
@@ -229,7 +261,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                         return (
                           <Image
                             src={normalizeImageUrl(category.image_url as string)}
-                            alt={category.name}
+                            alt={fullName}
                             width={30}
                             height={30}
                             className="sm:w-9 sm:h-9 md:w-10 md:h-10"
@@ -244,7 +276,7 @@ const Categories = ({ onSelectCategory }: Props) => {
                         return (
                           <Image
                             src={localIconPath}
-                            alt={category.name}
+                            alt={fullName}
                             width={30}
                             height={30}
                             className="sm:w-9 sm:h-9 md:w-10 md:h-10"
@@ -263,16 +295,16 @@ const Categories = ({ onSelectCategory }: Props) => {
                               : "text-gray-700"
                           )}
                         >
-                          {category.name.substring(0, 4)}
+                          {fullName.substring(0, 4)}
                         </span>
                       );
                     })()}
                   </div>
                   <p className={cn(
-                    "mt-1 sm:mt-1.5 md:mt-2 text-[10px] sm:text-[11px] md:text-xs text-center line-clamp-2 min-h-[2.5em]",
+                    "mt-1 sm:mt-1.5 md:mt-2 w-full text-[10px] sm:text-[11px] md:text-xs text-center leading-tight break-words line-clamp-2 min-h-[2.5em]",
                     isActive ? "text-black font-bold" : "text-black font-medium"
                   )}>
-                    {category.name}
+                    {displayName}
                   </p>
                 </div>
               </div>

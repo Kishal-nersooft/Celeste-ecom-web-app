@@ -9,7 +9,7 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
 import Image from "next/image";
 import { notFound, useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { LuStar, LuShare2 } from "react-icons/lu";
 import { FaEdit } from "react-icons/fa";
 import { FaArrowRight } from "react-icons/fa";
@@ -35,23 +35,26 @@ import toast from "react-hot-toast";
 
 const ProductPage = ({ params }: { params: { slug: string } }) => {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const { defaultAddress, isLocationLoading, selectedStore, deliveryType } =
+  const { user } = useAuth();
+  const { defaultAddress, selectedStore, deliveryType } =
     useLocation();
   const [product, setProduct] = useState<Product | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [breadcrumbItems, setBreadcrumbItems] = useState<{ label: string; href?: string }[]>([]);
+  const productRef = useRef<Product | null>(null);
+  productRef.current = product;
   
   const { slug } = params;
 
   useEffect(() => {
     const fetchProduct = async () => {
-      if (authLoading) return;
-      if (user && isLocationLoading) return;
+      const isInitialLoad = !productRef.current;
 
       try {
-        setLoading(true);
+        if (isInitialLoad) {
+          setLoading(true);
+        }
         setError(null);
 
         const latitude = defaultAddress?.latitude;
@@ -96,18 +99,15 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
     fetchProduct();
   }, [
     user,
-    authLoading,
     slug,
     defaultAddress,
-    isLocationLoading,
     deliveryType,
     selectedStore,
     router,
   ]);
 
-  // Handle loading and error states
-  // Only wait for location loading if user is logged in
-  if (authLoading || (user && isLocationLoading) || loading) {
+  // Show skeleton only while the product itself is loading — never wait on auth
+  if (loading && !product) {
     return <ProductPageSkeleton />;
   }
 

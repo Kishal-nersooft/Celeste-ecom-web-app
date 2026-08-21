@@ -9,11 +9,12 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
 import { Product } from "@/store";
 import Loader from "@/components/Loader";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 export default function RecentItemsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, unresolved, isGuest } = useAuth();
   const { deliveryType, defaultAddress, selectedStore } = useLocation();
   const router = useRouter();
   const [recentProducts, setRecentProducts] = useState<Product[]>([]);
@@ -22,10 +23,10 @@ export default function RecentItemsPage() {
 
   // Redirect to login if not authenticated
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (isGuest) {
       router.push("/login?returnUrl=" + encodeURIComponent("/recent-items"));
     }
-  }, [user, authLoading, router]);
+  }, [isGuest, router]);
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -91,8 +92,12 @@ export default function RecentItemsPage() {
     }
   }, [user, authLoading, deliveryType, defaultAddress, selectedStore]);
 
-  if (authLoading) {
+  if (authLoading && !unresolved) {
     return <Loader />;
+  }
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
   }
 
   if (!user) {

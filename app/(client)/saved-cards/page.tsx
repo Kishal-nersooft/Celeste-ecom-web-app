@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import Container from "@/components/Container";
 import Title from "@/components/Title";
 import { useAuth } from "@/components/FirebaseAuthProvider";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,7 +57,7 @@ function formatLastUsed(value?: string | null) {
 }
 
 const SavedCardsPage = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, unresolved, isGuest } = useAuth();
   const router = useRouter();
   const [loadingCards, setLoadingCards] = useState(false);
   const [cards, setCards] = useState<SavedCard[]>([]);
@@ -107,10 +108,10 @@ const SavedCardsPage = () => {
   };
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (isGuest) {
       router.push("/login?returnUrl=" + encodeURIComponent("/saved-cards"));
     }
-  }, [user, loading, router]);
+  }, [isGuest, router]);
 
   const loadCards = async () => {
     if (!user) return;
@@ -183,6 +184,10 @@ const SavedCardsPage = () => {
     if (n === 0) return null;
     return `${n} saved ${n === 1 ? "card" : "cards"}`;
   }, [cards.length]);
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
+  }
 
   if (loading || loadingCards) {
     return <SavedCardsSkeleton />;

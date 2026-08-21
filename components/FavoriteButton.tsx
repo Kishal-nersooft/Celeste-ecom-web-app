@@ -13,7 +13,7 @@ interface FavoriteButtonProps {
 }
 
 export default function FavoriteButton({ productId, className = "" }: FavoriteButtonProps) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, unresolved, error: authError } = useAuth();
   const { isFavorite, addFavorite, removeFavorite } = useFavorites();
   const router = useRouter();
   const [isToggling, setIsToggling] = useState(false);
@@ -26,6 +26,10 @@ export default function FavoriteButton({ productId, className = "" }: FavoriteBu
     if (isToggling || authLoading) return;
 
     if (!user) {
+      if (unresolved) {
+        toast.error(authError || "Couldn't verify your sign-in. Please retry.");
+        return;
+      }
       toast.error("Please sign in to add favorites");
       router.push("/login?returnUrl=" + encodeURIComponent(typeof window !== "undefined" ? window.location.pathname : "/"));
       return;

@@ -29,10 +29,11 @@ import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
 import ReorderDialog from "@/components/ReorderDialog";
 import Loader from "@/components/Loader";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import useCartStore from "@/store";
 
 const OrdersPageContent = () => {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, unresolved, isGuest } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [initialLoading, setInitialLoading] = useState(true);
   const [ordersLoading, setOrdersLoading] = useState(false);
@@ -235,11 +236,11 @@ const OrdersPageContent = () => {
         if (showInitialLoading) setInitialLoading(false);
         if (showOrdersLoading) setOrdersLoading(false);
       }
-    } else if (!authLoading && !user) {
+    } else if (isGuest) {
       setInitialLoading(false);
       router.push("/login?returnUrl=" + encodeURIComponent("/orders"));
     }
-  }, [user, authLoading, router]);
+  }, [user, authLoading, isGuest, router]);
 
   // Handle payment success redirect (separate effect to avoid re-triggering)
   useEffect(() => {
@@ -417,6 +418,10 @@ const OrdersPageContent = () => {
       </CardContent>
     </Card>
   );
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
+  }
 
   if (authLoading || initialLoading || !user) {
     return (

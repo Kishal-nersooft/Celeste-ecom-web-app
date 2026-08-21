@@ -5,6 +5,7 @@ import toast from "react-hot-toast";
 import EmptyCart from "@/components/EmptyCart";
 import NoAccessToCart from "@/components/NoAccessToCart";
 import Loader from "@/components/Loader";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useRouter, useSearchParams } from "next/navigation";
 import useCartStore from "@/store";
@@ -93,7 +94,7 @@ const CheckoutPage = () => {
   
   const cartStore = useCartStore();
   
-  const { user, loading } = useAuth();
+  const { user, loading, unresolved, isGuest } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [showSuggestedAddons, setShowSuggestedAddons] = useState(false);
@@ -105,10 +106,10 @@ const CheckoutPage = () => {
   }, [searchParams]);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (isGuest) {
       router.push("/login?returnUrl=" + encodeURIComponent("/checkout"));
     }
-  }, [user, loading, router]);
+  }, [isGuest, router]);
 
   // Ensure cart items have complete product data when page loads
   useEffect(() => {
@@ -851,8 +852,12 @@ const CheckoutPage = () => {
     setConfirmStoreId(null);
   };
 
-  if (loading) {
+  if (loading && !unresolved) {
     return <Loader />;
+  }
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
   }
 
   if (!user) {

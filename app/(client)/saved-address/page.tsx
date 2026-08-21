@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import Container from "@/components/Container";
 import Title from "@/components/Title";
 import { useAuth } from "@/components/FirebaseAuthProvider";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +30,7 @@ interface SavedAddress {
 }
 
 const SavedAddressPage = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, unresolved, isGuest } = useAuth();
   const router = useRouter();
   const { setDefaultAddress: setDefaultAddressContext, setAddressId, setSelectedLocation } = useLocation();
   const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
@@ -80,10 +81,10 @@ const SavedAddressPage = () => {
   };
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (isGuest) {
       router.push("/login?returnUrl=" + encodeURIComponent("/saved-address"));
     }
-  }, [user, loading, router]);
+  }, [isGuest, router]);
 
   // Load saved addresses from backend – show all addresses (no filtering)
   useEffect(() => {
@@ -338,6 +339,10 @@ const SavedAddressPage = () => {
     }
     return <MapPinIcon className="h-5 w-5 text-gray-600" />;
   };
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
+  }
 
   if (loading || loadingAddresses) {
     return <SavedAddressSkeleton />;

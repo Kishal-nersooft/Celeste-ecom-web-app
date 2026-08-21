@@ -17,6 +17,7 @@ import {
   type ProfileSectionKey,
 } from "@/components/profile/profile-ui";
 import { ProfileSectionSkeleton } from "@/components/profile/profile-skeletons";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import toast from "react-hot-toast";
 import { getCurrentUser, updateUserProfile, getUserAddresses, addUserAddress, updateUserAddress, deleteUserAddress, setDefaultAddress } from "@/lib/api";
 
@@ -44,7 +45,7 @@ const PROFILE_SECTIONS = PROFILE_MENU_ITEMS.map((item) => item.key);
 type ProfileSection = ProfileSectionKey;
 
 const ProfilePage = () => {
-  const { user, loading } = useAuth();
+  const { user, loading, unresolved, isGuest } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
@@ -61,10 +62,10 @@ const ProfilePage = () => {
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
 
   useEffect(() => {
-    if (!loading && !user) {
+    if (isGuest) {
       router.push("/login?returnUrl=" + encodeURIComponent("/profile"));
     }
-  }, [user, loading, router]);
+  }, [isGuest, router]);
 
   const navigateToSection = (section: ProfileSection | null) => {
     const next = section ? `/profile?section=${encodeURIComponent(section)}` : "/profile";
@@ -142,6 +143,10 @@ const ProfilePage = () => {
     loadSavedLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
+  }
 
   if (loading || loadingProfile) {
     return <ProfileSectionSkeleton section={activeSection} />;

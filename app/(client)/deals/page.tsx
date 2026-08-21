@@ -7,10 +7,10 @@ import { getProductsWithPricing, getCategories } from "@/lib/api";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { Product } from "@/store";
 import Link from "next/link";
-import Loader from "@/components/Loader";
+import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 
 export default function DealsPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isGuest } = useAuth();
   const [products, setProducts] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,14 +51,8 @@ export default function DealsPage() {
       }
     };
 
-    if (!authLoading) {
-      fetchData();
-    }
-  }, [user, authLoading]);
-
-  if (authLoading || loading) {
-    return <Loader />;
-  }
+    fetchData();
+  }, [user]);
 
   return (
     <Container className="pb-10">
@@ -66,7 +60,7 @@ export default function DealsPage() {
         <h1 className="text-3xl font-bold text-gray-900 mb-2">Deals & Discounts</h1>
         <p className="text-gray-600">Discover amazing deals on your favorite products</p>
         
-        {!user && (
+        {!authLoading && isGuest && (
           <div className="mt-4 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded">
             <p className="font-semibold">Log in to see personalized discounts!</p>
             <p className="text-sm mt-1">
@@ -101,7 +95,15 @@ export default function DealsPage() {
         )}
       </div>
       
-      {products.length > 0 ? (
+      {loading ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
+          {Array.from({ length: 12 }).map((_, index) => (
+            <div key={`skeleton-${index}`} className="w-full">
+              <ProductCardSkeleton />
+            </div>
+          ))}
+        </div>
+      ) : products.length > 0 ? (
         <ProductList title={false} products={products} categories={categories} />
       ) : null}
     </Container>

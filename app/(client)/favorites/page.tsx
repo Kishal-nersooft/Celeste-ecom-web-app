@@ -7,19 +7,20 @@ import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import Loader from "@/components/Loader";
+import AuthRetryScreen from "@/components/AuthRetryScreen";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 export default function FavoritesPage() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, unresolved, isGuest } = useAuth();
   const { favorites, loading, error, refetch } = useFavorites();
   const router = useRouter();
 
   useEffect(() => {
-    if (!authLoading && !user) {
+    if (isGuest) {
       router.push("/login?returnUrl=" + encodeURIComponent("/favorites"));
     }
-  }, [user, authLoading, router]);
+  }, [isGuest, router]);
 
   useEffect(() => {
     if (user) {
@@ -27,8 +28,12 @@ export default function FavoritesPage() {
     }
   }, [user, refetch]);
 
-  if (authLoading) {
+  if (authLoading && !unresolved) {
     return <Loader />;
+  }
+
+  if (unresolved) {
+    return <AuthRetryScreen />;
   }
 
   if (!user) {

@@ -19,7 +19,29 @@ import {
 import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
 import { useCategory } from "../contexts/CategoryContext";
 import { useLocation } from "../contexts/LocationContext";
-import Loader from "./Loader";
+import { HOME_PAGE_SIZE } from "@/lib/home-catalogue-constants";
+
+const CategoryProductsSkeleton = ({ rows = 2 }: { rows?: number }) => (
+  <div>
+    {Array.from({ length: rows }).map((_, rowIndex) => (
+      <div key={`category-skeleton-row-${rowIndex}`} className="mb-8">
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-6 w-40 bg-gray-200 rounded animate-pulse" />
+        </div>
+        <div className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-hidden pb-4">
+          {Array.from({ length: 6 }).map((_, index) => (
+            <div
+              key={`category-skeleton-card-${rowIndex}-${index}`}
+              className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
+            >
+              <ProductCardSkeleton />
+            </div>
+          ))}
+        </div>
+      </div>
+    ))}
+  </div>
+);
 
 interface Props {
   products: Product[];
@@ -28,6 +50,8 @@ interface Props {
   storeId?: number; // Optional store ID for filtering
   selectedCategoryId?: number | null; // Selected category ID from parent
   isDealsSelected?: boolean; // Whether deals is selected from parent
+  initialParentCategoryNames?: { [key: number]: string };
+  initialParentProducts?: { [key: number]: Product[] };
 }
 
 const ProductList = ({
@@ -37,6 +61,8 @@ const ProductList = ({
   storeId,
   selectedCategoryId,
   isDealsSelected,
+  initialParentCategoryNames,
+  initialParentProducts,
 }: Props) => {
   // Use category context for global state management
   const {
@@ -108,9 +134,12 @@ const ProductList = ({
     isDeals,
     storeId,
     categories,
-    pageSize: 60, // Increased page size to show more products per category
+    pageSize: HOME_PAGE_SIZE,
     latitude: shouldUseLocation ? defaultAddress?.latitude : undefined,
     longitude: shouldUseLocation ? defaultAddress?.longitude : undefined,
+    initialProducts: products,
+    initialParentCategoryNames,
+    initialParentProducts,
   });
 
   // Clean console logs - only show once when data changes
@@ -129,7 +158,12 @@ const ProductList = ({
   return (
     <div>
       {/* Add Categories component - only show on homepage (when storeId is not provided) */}
-      {!storeId && <Categories onSelectCategory={handleCategorySelect} />}
+      {!storeId && (
+        <Categories
+          onSelectCategory={handleCategorySelect}
+          categories={categories}
+        />
+      )}
 
       {/* Discount Banner - only show on homepage when "All" category is selected */}
       {!storeId && selectedCategory === null && !isDeals && (
@@ -188,7 +222,7 @@ const ProductList = ({
               );
             })
           ) : loading ? (
-            <Loader />
+            <CategoryProductsSkeleton rows={2} />
           ) : null}
         </div>
       ) : (
