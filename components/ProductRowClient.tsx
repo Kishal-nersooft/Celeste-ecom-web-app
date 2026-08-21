@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toCategorySlug } from "@/lib/category-slug";
+import { stripCategoryEmojis } from "@/lib/category-display-name";
 
 interface Props {
   products: Product[];
@@ -125,7 +126,9 @@ const ProductRowClient = ({
     <div className="mb-8">
       {/* Header with category name and See All button */}
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-2xl font-semibold text-black">{categoryName}</h2>
+        <h2 className="text-2xl font-semibold text-black">
+          {stripCategoryEmojis(categoryName) || categoryName}
+        </h2>
         <div className="flex items-center gap-2">
           <button
             onClick={handleSeeAllClick}

@@ -20,6 +20,7 @@ import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
 import { useCategory } from "../contexts/CategoryContext";
 import { useLocation } from "../contexts/LocationContext";
 import { HOME_PAGE_SIZE } from "@/lib/home-catalogue-constants";
+import { stripCategoryEmojis } from "@/lib/category-display-name";
 
 const CategoryProductsSkeleton = ({ rows = 2 }: { rows?: number }) => (
   <div>
@@ -238,7 +239,7 @@ const ProductList = ({
                   {/* Category title */}
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="text-xl font-semibold text-gray-800">
-                      {parentCategory.name}
+                      {stripCategoryEmojis(parentCategory.name) || parentCategory.name}
                     </h3>
                   </div>
                   
