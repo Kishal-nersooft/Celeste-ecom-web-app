@@ -26,6 +26,12 @@ export interface Category {
   subcategories?: Category[];
 }
 
+/** Nav items include synthetic All/Deals entries whose id may be null. */
+export type SelectableCategory = Omit<Category, "id" | "image_url"> & {
+  id: number | null;
+  image_url?: string | null;
+};
+
 interface Props {
   onSelectCategory: (
     categoryId: number | null,
@@ -135,25 +141,29 @@ const Categories = ({
   const activeCategory = isDealsSelected ? -1 : selectedCategoryId;
 
   // Create an "All" category option that will be shown first
-  const allCategoryOption = {
+  const allCategoryOption: SelectableCategory = {
     id: null,
     name: "All",
     sort_order: 0,
     description: "Show all products",
-    image_url: "/all_category_icon.png"
+    image_url: "/all_category_icon.png",
   };
 
   // Create a "Deals" category option
-  const dealsCategoryOption = {
+  const dealsCategoryOption: SelectableCategory = {
     id: -1, // Use -1 to distinguish from real categories
     name: "Deals",
     sort_order: 1,
     description: "Show all discounted products",
-    image_url: null
+    image_url: null,
   };
   
   // Add "All" and "Deals" options at the beginning of categories
-  const displayCategories = [allCategoryOption, dealsCategoryOption, ...categories];
+  const displayCategories: SelectableCategory[] = [
+    allCategoryOption,
+    dealsCategoryOption,
+    ...categories,
+  ];
 
   if (loading) return <CategorySelectorSkeleton />;
   if (error) return <div>Error: {error}</div>;

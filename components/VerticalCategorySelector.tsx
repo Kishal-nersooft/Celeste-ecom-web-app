@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
 import { getParentCategories } from "../lib/api";
-import { Category } from "./Categories";
+import { Category, type SelectableCategory } from "./Categories";
 import { getCategoryIconPath } from "@/lib/category-icons-config";
 import { getCategoryDisplayName } from "@/lib/category-display-name";
 
@@ -38,25 +38,29 @@ const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Prop
 
 
   // Create an "All" category option that will be shown first
-  const allCategoryOption = {
+  const allCategoryOption: SelectableCategory = {
     id: null,
     name: "All",
     sort_order: 0,
     description: "Show all products",
-    image_url: "/all_category_icon.png"
+    image_url: "/all_category_icon.png",
   };
 
   // Create a "Deals" category option
-  const dealsCategoryOption = {
+  const dealsCategoryOption: SelectableCategory = {
     id: -1, // Use -1 to distinguish from real categories
     name: "Deals",
     sort_order: 1,
     description: "Show all discounted products",
-    image_url: null
+    image_url: null,
   };
   
   // Add "All" and "Deals" options at the beginning of categories
-  const displayCategories = [allCategoryOption, dealsCategoryOption, ...categories];
+  const displayCategories: SelectableCategory[] = [
+    allCategoryOption,
+    dealsCategoryOption,
+    ...categories,
+  ];
 
   if (loading) {
     return (
