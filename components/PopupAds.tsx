@@ -300,6 +300,8 @@ const PopupAds: React.FC<PopupAdsProps> = ({
                   src={currentImageUrl}
                   alt="Promotional advertisement"
                   className="block w-auto h-auto max-w-[85vw] sm:max-w-[70vw] md:max-w-[600px] max-h-[80vh] object-contain rounded-2xl shadow-2xl"
+                  loading="lazy"
+                  decoding="async"
                   onError={(e) => {
                     console.error("❌ Image load error:", currentImageUrl);
                     console.error("Image element:", e.target);
@@ -308,7 +310,6 @@ const PopupAds: React.FC<PopupAdsProps> = ({
                   onLoad={(e) => {
                     const img = e.target as HTMLImageElement;
                   }}
-                  loading="eager"
                 />
               ) : imageError ? (
                 <div className="w-64 h-64 flex flex-col items-center justify-center bg-gray-100 rounded-2xl p-4">

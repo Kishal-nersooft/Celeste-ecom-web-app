@@ -14,6 +14,7 @@ interface SearchResult {
   id: number;
   name: string;
   ref: string;
+  brand?: string;
   image_url: string;
   base_price: number;
   final_price: number;
@@ -684,9 +685,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
                       <h3 className="text-sm font-medium text-gray-900 truncate">
                         {product.name}
                       </h3>
-                      <p className="text-xs text-gray-500 truncate">
-                        {product.ref}
-                      </p>
+                      {(cachedProduct?.brand || product.brand) && (
+                        <p className="text-xs text-gray-500 truncate">
+                          {cachedProduct?.brand || product.brand}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-sm font-semibold text-gray-900">
                           {formatPrice(product.final_price)}

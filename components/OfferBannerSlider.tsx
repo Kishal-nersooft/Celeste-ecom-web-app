@@ -110,10 +110,10 @@ const OfferBannerSlider: React.FC<OfferBannerSliderProps> = ({
                 src={banner.imageUrl}
                 alt={banner.altText}
                 fill
+                loading="lazy"
                 className="object-cover rounded-xl transition-transform duration-300 group-hover:scale-[1.02]"
                 // Each banner occupies ~1/3 of the container width
-                sizes="(max-width: 640px) 32vw, (max-width: 768px) 32vw, (max-width: 1024px) 33vw, 33vw"
-                priority={index < 3}
+                sizes="(max-width: 1024px) 0px, (max-width: 1280px) 380px, 420px"
               />
               
               {/* Subtle gradient overlay for better visual appeal */}

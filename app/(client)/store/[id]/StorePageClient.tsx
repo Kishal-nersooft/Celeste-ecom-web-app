@@ -6,19 +6,19 @@ import { ArrowLeft, MapPin, Phone, Home, Tag } from 'lucide-react';
 import ProductCard from '@/components/ProductCard';
 import ProductRow from '@/components/ProductRow';
 import ProductList from '@/components/ProductList';
-import Categories, { Category } from '@/components/Categories';
 import VerticalCategorySelector from '@/components/VerticalCategorySelector';
 import { Product } from '@/store';
-import { getProducts, getCategories, getStoreById } from '@/lib/api';
+import { getProducts, getStoreById } from '@/lib/api';
 import { useLocation } from '@/contexts/LocationContext';
+import { useCategory } from '@/contexts/CategoryContext';
 import { Store } from '@/types/store';
 
 const StorePageClient: React.FC<{ storeId: string }> = ({ storeId }) => {
   const router = useRouter();
   const { selectedStore } = useLocation();
+  const { categories } = useCategory();
   const [activeTab, setActiveTab] = useState<'shop' | 'deals'>('shop');
   const [products, setProducts] = useState<Product[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [isDealsSelected, setIsDealsSelected] = useState<boolean>(false);
   const [dealsProducts, setDealsProducts] = useState<Product[]>([]);
@@ -50,14 +50,18 @@ const StorePageClient: React.FC<{ storeId: string }> = ({ storeId }) => {
           }
         }
         
-        // Fetch products and categories with store filtering
-        const [productsData, categoriesData] = await Promise.all([
-          getProducts(null, 1, 100, false, true, true, true, [parseInt(storeId)]), // Include store ID for filtering
-          getCategories()
-        ]);
+        const productsData = await getProducts(
+          null,
+          1,
+          100,
+          false,
+          true,
+          true,
+          true,
+          [parseInt(storeId)]
+        );
         
         setProducts(Array.isArray(productsData) ? productsData : []);
-        setCategories(Array.isArray(categoriesData) ? categoriesData : []);
       } catch (err: any) {
         setError(err.message);
         console.error('Error fetching data:', err);

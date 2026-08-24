@@ -1,5 +1,5 @@
 // Backend API integration for authentication
-import { getBaseUrl } from './api';
+import { apiUrl } from './api';
 
 export interface RegisterUserRequest {
   idToken: string;
@@ -19,7 +19,7 @@ export interface RegisterUserResponse {
 export async function registerUser(data: RegisterUserRequest): Promise<RegisterUserResponse> {
   try {
     // Browser uses /api/backend proxy; server uses API_BASE_URL + secret.
-    const response = await fetch(`${getBaseUrl()}/auth/register`, {
+    const response = await fetch(apiUrl('/auth/register'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

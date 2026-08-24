@@ -13,8 +13,10 @@ export const BACKEND_PROXY_BASE = "/api/backend";
 // Import product caching functions
 import { getCachedProducts, setCachedProducts, hasCachedProducts } from './product-cache';
 import { apiLog, devLog } from './debug-log';
+import { canonicalBackendPath, type BackendQuery } from './backend-path';
 
 export { apiLog, apiError, devLog, resetApiLogDedupe, isDebugEnabled } from './debug-log';
+export { canonicalBackendPath } from './backend-path';
 
 // Helper function to get the appropriate base URL for server vs client
 export function getBaseUrl() {
@@ -25,6 +27,17 @@ export function getBaseUrl() {
 
   // Server-side can call the real API directly.
   return API_BASE_URL || NEXT_PUBLIC_API_BASE_URL;
+}
+
+/**
+ * Build a backend URL in FastAPI's canonical form.
+ *
+ * List roots (`/categories/`, `/products/`, `/stores/`, `/orders/`) include the
+ * trailing slash. `skipTrailingSlashRedirect` lets the proxy receive that slash
+ * instead of 308ing it away; the proxy also canonicalizes if `pathname` drops it.
+ */
+export function apiUrl(path: string, query?: BackendQuery): string {
+  return `${getBaseUrl()}${canonicalBackendPath(path, query)}`;
 }
 
 function getServerClientSecretHeaders(): Record<string, string> {
@@ -76,7 +89,7 @@ export async function getCurrentUserWithToken(
   options?: { signal?: AbortSignal }
 ): Promise<{ registered: true; profile: unknown } | { registered: false }> {
   const response = await fetch(
-    `${getBaseUrl()}/users/me?include_addresses=${includeAddresses}`,
+    apiUrl('/users/me', `include_addresses=${includeAddresses}`),
     {
       method: 'GET',
       headers: {
@@ -101,7 +114,7 @@ export async function getCurrentUserWithToken(
 // User profile functions
 export async function getUserProfile(includeAddresses: boolean = true) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me?include_addresses=${includeAddresses}`, {
+  const response = await fetch(apiUrl('/users/me', `include_addresses=${includeAddresses}`), {
     method: 'GET',
     headers: authHeaders,
   });
@@ -121,7 +134,7 @@ export async function updateUserProfile(profileData: {
   is_delivery?: boolean;
 }) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me`, {
+  const response = await fetch(apiUrl('/users/me'), {
     method: 'PUT',
     headers: authHeaders,
     body: JSON.stringify(profileData),
@@ -140,7 +153,7 @@ export async function updateUserProfile(profileData: {
 // Address management functions
 export async function getUserAddresses() {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/addresses`, {
+  const response = await fetch(apiUrl('/users/me/addresses'), {
     method: 'GET',
     headers: authHeaders,
   });
@@ -181,7 +194,7 @@ export async function createUserAddress(addressData: {
     longitude: addressData.longitude,
     is_default: addressData.is_default ?? false,
   };
-  const response = await fetch(`${getBaseUrl()}/users/me/addresses`, {
+  const response = await fetch(apiUrl('/users/me/addresses'), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(body),
@@ -205,7 +218,7 @@ export async function createUserAddress(addressData: {
           await registerUser(idToken, user.displayName || 'User');
           
           // Retry address creation
-          const retryResponse = await fetch(`${getBaseUrl()}/users/me/addresses`, {
+          const retryResponse = await fetch(apiUrl('/users/me/addresses'), {
             method: 'POST',
             headers: authHeaders,
             body: JSON.stringify(body),
@@ -242,7 +255,7 @@ export const getCurrentUser = getUserProfile;
 
 // User Registration
 export async function registerUser(idToken: string, name: string) {
-  const response = await fetch(`${getBaseUrl()}/auth/register`, {
+  const response = await fetch(apiUrl('/auth/register'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -271,7 +284,7 @@ export async function registerUser(idToken: string, name: string) {
 
 export async function getUserAddress(addressId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/addresses/${addressId}`, {
+  const response = await fetch(apiUrl(`/users/me/addresses/${addressId}`), {
     method: 'GET',
     headers: authHeaders,
   });
@@ -293,7 +306,7 @@ export async function updateUserAddress(addressId: number, addressData: {
   name?: string;
 }) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/addresses/${addressId}`, {
+  const response = await fetch(apiUrl(`/users/me/addresses/${addressId}`), {
     method: 'PUT',
     headers: authHeaders,
     body: JSON.stringify(addressData),
@@ -317,7 +330,7 @@ export async function updateUserAddress(addressId: number, addressData: {
 
 export async function deleteUserAddress(addressId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/addresses/${addressId}`, {
+  const response = await fetch(apiUrl(`/users/me/addresses/${addressId}`), {
     method: 'DELETE',
     headers: authHeaders,
   });
@@ -334,7 +347,7 @@ export async function deleteUserAddress(addressId: number) {
 
 export async function setDefaultAddress(addressId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/addresses/${addressId}/set_default`, {
+  const response = await fetch(apiUrl(`/users/me/addresses/${addressId}/set_default`), {
     method: 'PUT',
     headers: authHeaders,
   });
@@ -359,7 +372,7 @@ export async function setDefaultAddress(addressId: number) {
 
 export async function addToFavorites(productId: number): Promise<string> {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/favorites`, {
+  const response = await fetch(apiUrl('/users/me/favorites'), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ product_id: productId }),
@@ -397,7 +410,7 @@ export async function getFavorites(options?: {
     options.store_ids.forEach((id) => params.append('store_ids', String(id)));
   }
   const qs = params.toString();
-  const url = `${getBaseUrl()}/users/me/favorites${qs ? `?${qs}` : ''}`;
+  const url = apiUrl('/users/me/favorites', qs);
   const response = await fetch(url, {
     method: 'GET',
     headers: authHeaders,
@@ -416,7 +429,7 @@ export async function getFavorites(options?: {
 
 export async function removeFromFavorites(productId: number): Promise<string> {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/favorites/${productId}`, {
+  const response = await fetch(apiUrl(`/users/me/favorites/${productId}`), {
     method: 'DELETE',
     headers: authHeaders,
   });
@@ -441,40 +454,72 @@ function getServerBaseUrl() {
   return getBaseUrl();
 }
 
+/** Deduplicate concurrent identical /categories/ calls; short client TTL. */
+const categoriesInflight = new Map<string, Promise<any[]>>();
+const categoriesCache = new Map<string, { data: any[]; at: number }>();
+const CATEGORIES_CLIENT_TTL_MS = 60_000;
+
 export async function getCategories(includeSubcategories: boolean = true, parentOnly: boolean = false) {
-  const params = new URLSearchParams();
-  if (includeSubcategories !== undefined) {
-    params.append('include_subcategories', includeSubcategories.toString());
-  }
-  if (parentOnly !== undefined) {
-    params.append('parent_only', parentOnly.toString());
-  }
-  
-  const authHeaders = await getAuthHeaders();
-  // Backend canonicalizes collection endpoints with a trailing slash (e.g. `/categories/`).
-  // Hitting the non-slash variant may trigger a redirect, which browsers disallow for CORS preflight.
-  const response = await fetch(`${getBaseUrl()}/categories/?${params.toString()}`, {
-    method: 'GET',
-    cache: 'no-store', // Disable Next.js caching
-    headers: {
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      ...authHeaders
+  const cacheKey = `${includeSubcategories}:${parentOnly}`;
+
+  if (typeof window !== "undefined") {
+    const cached = categoriesCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < CATEGORIES_CLIENT_TTL_MS) {
+      return cached.data;
     }
-  });
-  
-  
-  if (!response.ok) {
-    throw new Error("Failed to fetch categories");
   }
-  const data = await response.json();
-  const categories = data.data || [];
-  apiLog('GET /categories/', `${response.status} · ${categories.length} categories`, {
-    url: `${getBaseUrl()}/categories/`,
-    categories,
+
+  const existing = categoriesInflight.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const request = (async () => {
+    const params = new URLSearchParams();
+    if (includeSubcategories !== undefined) {
+      params.append("include_subcategories", includeSubcategories.toString());
+    }
+    if (parentOnly !== undefined) {
+      params.append("parent_only", parentOnly.toString());
+    }
+
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(apiUrl("/categories/", params), {
+      method: "GET",
+      cache: "no-store", // Disable Next.js caching
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+        ...authHeaders,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch categories");
+    }
+    const data = await response.json();
+    const categories = data.data || [];
+    apiLog(
+      "GET /categories/",
+      `${response.status} · ${categories.length} categories`,
+      {
+        url: apiUrl("/categories/"),
+        categories,
+      }
+    );
+
+    if (typeof window !== "undefined") {
+      categoriesCache.set(cacheKey, { data: categories, at: Date.now() });
+    }
+
+    return categories;
+  })().finally(() => {
+    categoriesInflight.delete(cacheKey);
   });
-  return categories;
+
+  categoriesInflight.set(cacheKey, request);
+  return request;
 }
 
 export async function getProducts(
@@ -539,9 +584,7 @@ export async function getProducts(
     params.append('only_discounted', 'true');
   }
   
-  // Backend canonicalizes collection endpoints with a trailing slash (e.g. `/products/`).
-  // Avoid redirects because redirects break CORS preflight in browsers.
-  const url = `${getBaseUrl()}/products/?${params.toString()}`;
+  const url = apiUrl('/products/', params);
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
     method: 'GET',
@@ -584,7 +627,7 @@ export async function getSubcategories(parentCategoryId: number) {
   params.append('subcategories_only', 'true');
   
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/categories/?${params.toString()}`, {
+  const response = await fetch(apiUrl('/categories/', params), {
     method: 'GET',
     cache: 'no-store',
     headers: {
@@ -629,7 +672,7 @@ export async function getProductsBySubcategory(
   }
   
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/products/?${params.toString()}`, {
+  const response = await fetch(apiUrl('/products/', params), {
     method: 'GET',
     cache: 'no-store',
     headers: {
@@ -713,7 +756,7 @@ export async function getParentCategoryFromSubcategory(subcategoryId: number) {
 }
 
 export async function revalidateAllProducts() {
-  const response = await fetch(`${getBaseUrl()}/revalidate-products`, {
+  const response = await fetch(apiUrl('/revalidate-products'), {
     method: 'POST',
     mode: 'cors',
     headers: {
@@ -753,7 +796,7 @@ export async function getProductById(
     params.append('longitude', longitude.toString());
   }
   
-  const url = `${getBaseUrl()}/products/${productId}?${params.toString()}`;
+  const url = apiUrl(`/products/${productId}`, params);
 
   const authHeaders = await getAuthHeaders();
 
@@ -813,7 +856,7 @@ export async function getStores(latitude?: number, longitude?: number, radius?: 
   }
   
   const authHeaders = await getAuthHeaders();
-  const url = `${getBaseUrl()}/stores/?${params.toString()}`;
+  const url = apiUrl('/stores/', params);
   
   const response = await fetch(url, {
     method: 'GET',
@@ -839,7 +882,7 @@ export async function getStores(latitude?: number, longitude?: number, radius?: 
 
 export async function getStoreById(storeId: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/stores/${storeId}`, {
+  const response = await fetch(apiUrl(`/stores/${storeId}`), {
     method: 'GET',
     cache: 'no-store', // Disable Next.js caching
     headers: {
@@ -867,7 +910,7 @@ export async function getNearbyStores(latitude: number, longitude: number, radiu
   }
   
   const authHeaders = await getAuthHeaders();
-  const url = `${getBaseUrl()}/stores/nearby?${params.toString()}`;
+  const url = apiUrl('/stores/nearby', params);
   
   const response = await fetch(url, {
     method: 'GET',
@@ -897,7 +940,7 @@ export async function getStoreDistance(storeId: string, latitude: number, longit
   params.append('longitude', longitude.toString());
   
   const authHeaders = await getAuthHeaders();
-  const url = `${getBaseUrl()}/stores/${storeId}/distance?${params.toString()}`;
+  const url = apiUrl(`/stores/${storeId}/distance`, params);
   
   const response = await fetch(url, {
     method: 'GET',
@@ -986,7 +1029,7 @@ export async function getAllProducts(
       params.append('cursor', cursor);
     }
     
-    const url = `${getBaseUrl()}/products/?${params.toString()}`;
+    const url = apiUrl('/products/', params);
     
     const authHeaders = await getAuthHeaders();
     const response = await fetch(url, {
@@ -1119,7 +1162,7 @@ export async function getPopularProducts(
     params.append('longitude', longitude.toString());
   }
   
-  const url = `${getBaseUrl()}/products/popular?${params.toString()}`;
+  const url = apiUrl('/products/popular', params);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1194,7 +1237,7 @@ export async function getRecentProducts(
     params.append('longitude', longitude.toString());
   }
   
-  const url = `${getBaseUrl()}/products/recents?${params.toString()}`;
+  const url = apiUrl('/products/recents', params);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1291,7 +1334,7 @@ export async function getSimilarProducts(
     params.append('longitude', longitude.toString());
   }
   
-  const url = `${getBaseUrl()}/products/${productId}/similar?${params.toString()}`;
+  const url = apiUrl(`/products/${productId}/similar`, params);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1420,7 +1463,7 @@ export async function getProductsWithCursorPagination(
     params.append('only_discounted', 'true');
   }
   
-  const url = `${getBaseUrl()}/products/?${params.toString()}`;
+  const url = apiUrl('/products/', params);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -1536,7 +1579,7 @@ async function getProductPricing(productId: number, tierId: number = 1, quantity
 // Get all user carts (owned + shared)
 export async function getUserCarts() {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts`, {
+  const response = await fetch(apiUrl('/users/me/carts'), {
     method: 'GET',
     headers: authHeaders
   });
@@ -1567,7 +1610,7 @@ export async function createCart(cartData: {
   description?: string;
 }) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts`, {
+  const response = await fetch(apiUrl('/users/me/carts'), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(cartData)
@@ -1597,7 +1640,7 @@ export async function createCart(cartData: {
 // Get cart details
 export async function getCartDetails(cartId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}`), {
     method: 'GET',
     headers: authHeaders
   });
@@ -1641,7 +1684,7 @@ export async function updateCart(cartId: number, cartData: {
   description?: string;
 }) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}`), {
     method: 'PUT',
     headers: authHeaders,
     body: JSON.stringify(cartData)
@@ -1658,7 +1701,7 @@ export async function updateCart(cartId: number, cartData: {
 // Delete cart (owner only)
 export async function deleteCart(cartId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}`), {
     method: 'DELETE',
     headers: authHeaders
   });
@@ -1676,7 +1719,7 @@ export async function addItemToCart(cartId: number, itemData: {
   quantity: number;
 }) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}/items`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}/items`), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(itemData)
@@ -1698,7 +1741,7 @@ export async function addItemToCart(cartId: number, itemData: {
 // Update cart item quantity by item ID (owner only)
 export async function updateCartItemQuantity(cartId: number, itemId: number, quantity: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}/items/${itemId}`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}/items/${itemId}`), {
     method: 'PUT',
     headers: authHeaders,
     body: JSON.stringify({ quantity })
@@ -1747,7 +1790,7 @@ export async function removeFromCart(cartId: number, productId: number, quantity
     }
     
     const authHeaders = await getAuthHeaders();
-    const url = `${getBaseUrl()}/users/me/carts/${cartId}/items/${productId}?${params.toString()}`;
+    const url = apiUrl(`/users/me/carts/${cartId}/items/${productId}`, params);
     
     const response = await fetch(url, {
       method: 'DELETE',
@@ -1772,7 +1815,7 @@ export async function removeFromCart(cartId: number, productId: number, quantity
 // Share cart with another user (owner only)
 export async function shareCart(cartId: number, userId: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}/share`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}/share`), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ user_id: userId })
@@ -1789,7 +1832,7 @@ export async function shareCart(cartId: number, userId: string) {
 // Remove cart sharing (owner only)
 export async function removeCartSharing(cartId: number, targetUserId: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}/share/${targetUserId}`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}/share/${targetUserId}`), {
     method: 'DELETE',
     headers: authHeaders
   });
@@ -1804,7 +1847,7 @@ export async function removeCartSharing(cartId: number, targetUserId: string) {
 // Get cart sharing details (owner only)
 export async function getCartSharingDetails(cartId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/carts/${cartId}/shares`, {
+  const response = await fetch(apiUrl(`/users/me/carts/${cartId}/shares`), {
     method: 'GET',
     headers: authHeaders
   });
@@ -1822,7 +1865,7 @@ export async function getCartSharingDetails(cartId: number) {
 // Get available carts for checkout
 export async function getCheckoutCarts() {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/checkout/carts`, {
+  const response = await fetch(apiUrl('/users/me/checkout/carts'), {
     method: 'GET',
     headers: authHeaders
   });
@@ -1940,7 +1983,7 @@ export async function previewOrder(orderData: {
 
 
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/users/me/checkout/preview`, {
+  const response = await fetch(apiUrl('/users/me/checkout/preview'), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(requestData)
@@ -1961,7 +2004,7 @@ export async function previewOrder(orderData: {
         }
       };
       
-      const retryResponse = await fetch(`${getBaseUrl()}/users/me/checkout/preview`, {
+      const retryResponse = await fetch(apiUrl('/users/me/checkout/preview'), {
         method: 'POST',
         headers: authHeaders,
         body: JSON.stringify(retryData)
@@ -2036,7 +2079,7 @@ export async function createOrder(orderData: {
 }) {
   const authHeaders = await getAuthHeaders();
   
-  const response = await fetch(`${getBaseUrl()}/users/me/checkout/order`, {
+  const response = await fetch(apiUrl('/users/me/checkout/order'), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(orderData)
@@ -2081,7 +2124,7 @@ export async function getSavedCards() {
   const authHeaders = await getAuthHeaders();
   // NOTE: `getBaseUrl()` already points at `${API_BASE_URL}` which includes `/api/v1`.
   // Do NOT prefix `/v1` again, otherwise it becomes `/api/v1/v1/...` (404).
-  const response = await fetch(`${getBaseUrl()}/payments/saved-cards`, {
+  const response = await fetch(apiUrl('/payments/saved-cards'), {
     method: 'GET',
     headers: authHeaders,
   });
@@ -2098,7 +2141,7 @@ export async function getSavedCards() {
 
 export async function deleteSavedCard(cardId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/payments/saved-cards/${cardId}`, {
+  const response = await fetch(apiUrl(`/payments/saved-cards/${cardId}`), {
     method: "DELETE",
     headers: authHeaders,
   });
@@ -2115,7 +2158,7 @@ export async function deleteSavedCard(cardId: number) {
 
 export async function setDefaultSavedCard(cardId: number) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/payments/saved-cards/${cardId}/set-default`, {
+  const response = await fetch(apiUrl(`/payments/saved-cards/${cardId}/set-default`), {
     method: "PATCH",
     headers: authHeaders,
   });
@@ -2132,7 +2175,7 @@ export async function setDefaultSavedCard(cardId: number) {
 /** Start MPGS hosted session to add a saved card (no body). Returns API wrapper with `data.session_id`, `data.reference`, etc. */
 export async function createSavedCardMpgsSession() {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/payments/saved-cards/mpgs`, {
+  const response = await fetch(apiUrl('/payments/saved-cards/mpgs'), {
     method: "POST",
     headers: authHeaders,
   });
@@ -2151,7 +2194,7 @@ export async function checkPaymentStatus(paymentRef: string) {
   const authHeaders = await getAuthHeaders();
   // Add cache-busting timestamp to prevent caching
   const timestamp = Date.now();
-  const response = await fetch(`${getBaseUrl()}/payments/status/${paymentRef}?_t=${timestamp}`, {
+  const response = await fetch(apiUrl(`/payments/status/${paymentRef}`, `_t=${timestamp}`), {
     method: 'GET',
     headers: {
       ...authHeaders,
@@ -2191,8 +2234,9 @@ export async function checkInventoryAvailability(productIds: number[], storeId?:
   
   // Add product IDs as filters
   productIds.forEach(id => params.append('product_ids', id.toString()));
-  
-  const url = `${getBaseUrl()}/products/?${params.toString()}&_t=${Date.now()}`;
+  params.append('_t', Date.now().toString());
+
+  const url = apiUrl('/products/', params);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -2252,7 +2296,7 @@ export async function verifyOrderPayment(orderId: string, paymentData: {
   status: string;
 }) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/orders/${orderId}/payment/verify`, {
+  const response = await fetch(apiUrl(`/orders/${orderId}/payment/verify`), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify(paymentData)
@@ -2299,7 +2343,7 @@ export async function getUserOrders(
   // Add cache-busting parameter to ensure fresh data
   params.append('_t', Date.now().toString());
   
-  const response = await fetch(`${getBaseUrl()}/orders/?${params.toString()}`, {
+  const response = await fetch(apiUrl('/orders/', params), {
     method: 'GET',
     headers: authHeaders,
     cache: 'no-store' // Disable caching for real-time updates
@@ -2326,7 +2370,7 @@ export async function getUserOrders(
 // Get specific order by ID
 export async function getOrderById(orderId: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/orders/${orderId}`, {
+  const response = await fetch(apiUrl(`/orders/${orderId}`), {
     method: 'GET',
     headers: authHeaders
   });
@@ -2350,7 +2394,7 @@ export async function getOrderById(orderId: string) {
 // Cancel an order
 export async function cancelOrder(orderId: string, reason?: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/orders/${orderId}/cancel`, {
+  const response = await fetch(apiUrl(`/orders/${orderId}/cancel`), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({ reason })
@@ -2375,7 +2419,7 @@ export async function cancelOrder(orderId: string, reason?: string) {
 // Get all orders for the current user
 export async function getAllOrders() {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/orders/`, {
+  const response = await fetch(apiUrl('/orders/'), {
     method: 'GET',
     headers: authHeaders,
   });
@@ -2393,7 +2437,7 @@ export async function getAllOrders() {
 // Get order by ID (admin/general access)
 export async function getOrderByIdAdmin(orderId: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(`${getBaseUrl()}/orders/${orderId}`, {
+  const response = await fetch(apiUrl(`/orders/${orderId}`), {
     method: 'GET',
     headers: authHeaders,
   });
@@ -2629,7 +2673,7 @@ export async function searchProducts(
   }
 
   // Backend search endpoint is `/products/search` (not `/search`).
-  const url = `${getBaseUrl()}/products/search?${params.toString()}`;
+  const url = apiUrl('/products/search', params);
   
   const authHeaders = await getAuthHeaders();
   const response = await fetch(url, {
@@ -2673,7 +2717,7 @@ export async function trackSearchClick(query: string, productId: number) {
   try {
     const authHeaders = await getAuthHeaders();
     // Backend click tracking endpoint is `/products/search/click`.
-    const response = await fetch(`${getBaseUrl()}/products/search/click`, {
+    const response = await fetch(apiUrl('/products/search/click'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -2717,7 +2761,7 @@ export async function getSearchHistory(limit: number = 10) {
     
     // Add cache-busting timestamp to ensure fresh data
     const cacheBuster = `_t=${Date.now()}`;
-    const response = await fetch(`${getBaseUrl()}/users/me/search-history?limit=${validLimit}&${cacheBuster}`, {
+    const response = await fetch(apiUrl('/users/me/search-history', `limit=${validLimit}&${cacheBuster}`), {
       method: 'GET',
       cache: 'no-store', // Disable Next.js caching
       headers: {
@@ -2824,9 +2868,9 @@ export async function getActivePromotions(
     params.append('_t', Date.now().toString());
     
     const authHeaders = await getAuthHeaders();
-    const apiUrl = `${getBaseUrl()}/promotions/active/random?${params.toString()}`;
+    const url = apiUrl('/promotions/active/random', params);
     
-    const response = await fetch(apiUrl, {
+    const response = await fetch(url, {
       method: 'GET',
       headers: {
         ...authHeaders,
@@ -2860,7 +2904,7 @@ export async function getActivePromotions(
       `GET /promotions/active/random`,
       `${response.status} · ${promotions.length} · ${promotionType}`,
       {
-        url: apiUrl.split('&_t=')[0],
+        url: url.split('&_t=')[0],
         promotionType,
         options,
         promotions,

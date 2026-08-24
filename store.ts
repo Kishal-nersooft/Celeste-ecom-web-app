@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { getProductImageUrl } from "@/lib/product-image";
 
 export interface Product {
   id: number;
@@ -154,6 +155,32 @@ interface CartState {
   getCartById: (cartId: number) => Cart | null;
   updateCartName: (cartId: number, name: string) => Promise<void>;
   syncActiveCartWithBackend: () => Promise<void>;
+}
+
+function pickProductImages(
+  product: any,
+  fallback?: Product | null
+): { image_urls: string[]; imageUrl?: string } {
+  const fromProduct = Array.isArray(product?.image_urls)
+    ? product.image_urls.filter(
+        (url: unknown): url is string => typeof url === "string" && url.trim().length > 0
+      )
+    : [];
+  const fromFallback = Array.isArray(fallback?.image_urls)
+    ? fallback.image_urls.filter((url) => typeof url === "string" && url.trim().length > 0)
+    : [];
+  const resolved =
+    getProductImageUrl(product) ||
+    fromProduct[0] ||
+    getProductImageUrl(fallback) ||
+    fromFallback[0] ||
+    (typeof product?.imageUrl === "string" ? product.imageUrl : undefined) ||
+    fallback?.imageUrl;
+
+  return {
+    image_urls: fromProduct.length ? fromProduct : fromFallback.length ? fromFallback : resolved ? [resolved] : [],
+    imageUrl: resolved,
+  };
 }
 
 // Debounce utility
@@ -634,7 +661,7 @@ const useCartStore = create<CartState>()(
                     discount_percentage: fullProduct.pricing?.discount_percentage || 0,
                     applied_price_lists: fullProduct.pricing?.applied_price_lists || []
                   },
-                  image_urls: fullProduct.image_urls || [],
+                  ...pickProductImages(fullProduct),
                   unit_measure: fullProduct.unit_measure || 'piece',
                   ref: fullProduct.ref,
                   description: fullProduct.description,
@@ -648,8 +675,7 @@ const useCartStore = create<CartState>()(
                   inventory: fullProduct.inventory,
                   price: fullProduct.price,
                   unit: fullProduct.unit,
-                  categoryId: fullProduct.categoryId,
-                  imageUrl: fullProduct.image_urls?.[0]
+                  categoryId: fullProduct.categoryId
                 },
                 quantity: item.quantity || 1,
                 itemId: item.id
@@ -707,11 +733,17 @@ const useCartStore = create<CartState>()(
           const response = await getUserCarts();
           
           // Convert backend cart format to our Cart interface
+          const existingItems = get().items;
           const carts: Cart[] = (response.owned_carts || []).map((cart: any) => {
             // Safely convert cart items
-            const cartItems = (cart.items || []).map((item: any) => ({
+            const cartItems = (cart.items || []).map((item: any) => {
+              const productId = item.product?.id || item.product_id || 0;
+              const existingProduct = existingItems.find(
+                (existing) => existing?.product?.id === productId
+              )?.product;
+              return {
               product: {
-                id: item.product?.id || item.product_id || 0,
+                id: productId,
                 name: item.product?.name || 'Unknown Product',
                 base_price: item.product?.base_price || item.base_price || 0,
                 pricing: {
@@ -721,7 +753,7 @@ const useCartStore = create<CartState>()(
                   discount_percentage: item.product?.pricing?.discount_percentage || 0,
                   applied_price_lists: item.product?.pricing?.applied_price_lists || []
                 },
-                image_urls: item.product?.image_urls || [item.product?.imageUrl] || [],
+                ...pickProductImages(item.product, existingProduct),
                 unit_measure: item.product?.unit_measure || 'piece',
                 // Add other required fields
                 ref: item.product?.ref,
@@ -737,12 +769,12 @@ const useCartStore = create<CartState>()(
                 // Legacy fields
                 price: item.product?.price,
                 unit: item.product?.unit,
-                categoryId: item.product?.categoryId,
-                imageUrl: item.product?.imageUrl
+                categoryId: item.product?.categoryId
               },
               quantity: item.quantity || 1,
               itemId: item.id
-            }));
+            };
+            });
 
             return {
               id: cart.id,
@@ -857,9 +889,14 @@ const useCartStore = create<CartState>()(
           
           // Convert backend items to our CartItem format
           const backendItems = cartDetails.items || [];
-          const convertedItems = backendItems.map((item: any) => ({
+          const convertedItems = backendItems.map((item: any) => {
+            const productId = item.product?.id || item.product_id;
+            const existingProduct = state.items.find(
+              (existing) => existing?.product?.id === productId
+            )?.product;
+            return {
             product: {
-              id: item.product?.id || item.product_id,
+              id: productId,
               name: item.product?.name || 'Unknown Product',
               base_price: item.product?.base_price || item.base_price || 0,
               pricing: {
@@ -869,7 +906,7 @@ const useCartStore = create<CartState>()(
                 discount_percentage: item.product?.pricing?.discount_percentage || 0,
                 applied_price_lists: item.product?.pricing?.applied_price_lists || []
               },
-              image_urls: item.product?.image_urls || [item.product?.imageUrl] || [],
+              ...pickProductImages(item.product, existingProduct),
               unit_measure: item.product?.unit_measure || 'piece',
               // Add other required fields
               ref: item.product?.ref,
@@ -885,12 +922,12 @@ const useCartStore = create<CartState>()(
               // Legacy fields
               price: item.product?.price,
               unit: item.product?.unit,
-              categoryId: item.product?.categoryId,
-              imageUrl: item.product?.imageUrl
+              categoryId: item.product?.categoryId
             },
             quantity: item.quantity || 1,
             itemId: item.id
-          }));
+          };
+          });
           
           // Update the active cart with latest backend data
           set(state => ({

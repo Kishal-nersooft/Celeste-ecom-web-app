@@ -10,6 +10,7 @@ import useCartStore from "@/store";
 import PriceFormatter from "./PriceFormatter";
 import QuantityButtons from "./QuantityButtons";
 import toast from "react-hot-toast";
+import { getProductImageUrl } from "@/lib/product-image";
 
 interface CartItemsProps {
   onCheckout: () => void;
@@ -49,13 +50,16 @@ const CartItems: React.FC<CartItemsProps> = ({
       <CardContent className="space-y-6">
         {/* Cart Items */}
         <div className="space-y-4 max-h-96 overflow-y-auto">
-          {cartStore.items.map((item) => (
+          {cartStore.items.map((item) => {
+            const imageUrl = getProductImageUrl(item.product);
+            return (
             <div
               key={item.product.id}
               className="flex items-center gap-4 p-3 border rounded-lg hover:shadow-sm transition-shadow"
             >
+              {imageUrl ? (
               <Image
-                src={(item.product.image_urls?.[0] || item.product.imageUrl) as string}
+                src={imageUrl}
                 alt={item.product.name || 'Product image'}
                 width={80}
                 height={80}
@@ -65,6 +69,9 @@ const CartItems: React.FC<CartItemsProps> = ({
                   e.currentTarget.style.display = 'none';
                 }}
               />
+              ) : (
+                <div className="h-20 w-20 flex-shrink-0 rounded-md bg-gray-200" />
+              )}
               <div className="flex-1 min-w-0">
                 <h3 className="font-semibold text-sm line-clamp-2 mb-1">
                   {item.product.name}
@@ -88,7 +95,8 @@ const CartItems: React.FC<CartItemsProps> = ({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         <Separator />

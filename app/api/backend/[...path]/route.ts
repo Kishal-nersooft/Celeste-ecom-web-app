@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { canonicalBackendPath } from "@/lib/backend-path";
 
 export const dynamic = "force-dynamic";
 
@@ -16,16 +17,11 @@ function buildUpstreamUrl(request: NextRequest): string | null {
   const { pathname, search } = request.nextUrl;
   if (!pathname.startsWith(PROXY_PREFIX)) return null;
 
-  let backendPath = pathname.slice(PROXY_PREFIX.length) || "/";
-  // Next.js strips trailing slashes (`/orders/` → `/orders`). FastAPI list routes
-  // are defined as `/`, so that becomes a 307 to `http://…/orders/` and Node's
-  // fetch follow-up drops Authorization / X-Client-Secret → 403.
-  const segments = backendPath.split("/").filter(Boolean);
-  if (segments.length === 1 && !backendPath.endsWith("/")) {
-    backendPath = `${backendPath}/`;
-  }
-
-  return `${base}${backendPath}${search}`;
+  const backendPath = pathname.slice(PROXY_PREFIX.length) || "/";
+  // Next.js pathname has no trailing slash. FastAPI list roots (`/orders/`,
+  // `/products/`, …) need one; nested routes 307 if we add one. Canonicalize
+  // before the first upstream hop so we never follow a slash redirect.
+  return `${base}${canonicalBackendPath(backendPath)}${search}`;
 }
 
 function resolveSameHostHttpsRedirect(

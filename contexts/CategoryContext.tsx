@@ -5,6 +5,7 @@ import React, {
   useContext,
   useState,
   useEffect,
+  useRef,
   ReactNode,
   useMemo,
   useCallback,
@@ -30,6 +31,12 @@ interface CategoryContextType {
   isDealsSelected: boolean;
   lastVisitedCategory: number | null;
   lastVisitedIsDeals: boolean;
+  /** Shared parent categories — fetched once for the whole app. */
+  categories: Category[];
+  categoriesLoading: boolean;
+  categoriesError: string | null;
+  /** Seed from SSR so the client can skip a redundant fetch. */
+  seedParentCategories: (categories: Category[]) => void;
   setSelectedCategory: (
     categoryId: number | null,
     isDeals?: boolean,
@@ -65,13 +72,48 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
     lastVisitedIsDeals: false,
   });
   const [parentCategories, setParentCategories] = useState<Category[]>([]);
+  const [categoriesLoading, setCategoriesLoading] = useState(true);
+  const [categoriesError, setCategoriesError] = useState<string | null>(null);
+  const hasCategoriesRef = useRef(false);
+
+  const seedParentCategories = useCallback((categories: Category[]) => {
+    if (!Array.isArray(categories) || categories.length === 0) return;
+    hasCategoriesRef.current = true;
+    setParentCategories(categories);
+    setCategoriesLoading(false);
+    setCategoriesError(null);
+  }, []);
 
   useEffect(() => {
+    if (hasCategoriesRef.current) {
+      setCategoriesLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+
     getParentCategories()
-      .then(setParentCategories)
-      .catch((error) =>
-        console.warn("Failed to load categories for URL slugs:", error)
-      );
+      .then((cats) => {
+        if (cancelled || hasCategoriesRef.current) return;
+        const list = Array.isArray(cats) ? cats : [];
+        hasCategoriesRef.current = list.length > 0;
+        setParentCategories(list);
+        setCategoriesError(null);
+      })
+      .catch((error) => {
+        if (cancelled || hasCategoriesRef.current) return;
+        const message =
+          error instanceof Error ? error.message : "Failed to load categories";
+        setCategoriesError(message);
+        console.warn("Failed to load categories:", error);
+      })
+      .finally(() => {
+        if (!cancelled) setCategoriesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Load category state from localStorage after hydration
@@ -267,6 +309,10 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
       isDealsSelected: categoryState.isDealsSelected,
       lastVisitedCategory: categoryState.lastVisitedCategory,
       lastVisitedIsDeals: categoryState.lastVisitedIsDeals,
+      categories: parentCategories,
+      categoriesLoading,
+      categoriesError,
+      seedParentCategories,
       setSelectedCategory,
       getCategoryUrlParam,
       setLastVisitedCategory,
@@ -278,6 +324,10 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
       categoryState.isDealsSelected,
       categoryState.lastVisitedCategory,
       categoryState.lastVisitedIsDeals,
+      parentCategories,
+      categoriesLoading,
+      categoriesError,
+      seedParentCategories,
       setSelectedCategory,
       getCategoryUrlParam,
       setLastVisitedCategory,

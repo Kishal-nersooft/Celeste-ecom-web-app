@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useEffect } from "react";
 import { useLocation } from "@/contexts/LocationContext";
 import { useCategory } from "@/contexts/CategoryContext";
 import ProductList from "@/components/ProductList";
@@ -10,9 +10,9 @@ import StoresGrid from "@/components/StoresGrid";
 import DiscountBanner from "@/components/DiscountBanner";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import PopupAds from "@/components/PopupAds";
+import LazyMount from "@/components/LazyMount";
 import { Product } from "../../store";
 import { Category } from "../../components/Categories";
-import { getParentCategories } from "../../lib/api";
 
 interface HomeClientProps {
   products: Product[];
@@ -29,36 +29,22 @@ const HomeClient: React.FC<HomeClientProps> = ({
 }) => {
   const { deliveryType } = useLocation();
   const { user } = useAuth();
-  const { selectedCategoryId, isDealsSelected } =
-    useCategory();
-  const [products] = useState<Product[]>(initialProducts);
-  const [categories, setCategories] = useState<Category[]>(initialCategories);
+  const {
+    selectedCategoryId,
+    isDealsSelected,
+    categories: contextCategories,
+    seedParentCategories,
+  } = useCategory();
 
-  // Fall back to a client fetch only when the server could not provide categories.
+  // Prefer SSR categories; otherwise use the shared context list.
+  const categories =
+    initialCategories.length > 0 ? initialCategories : contextCategories;
+
   useEffect(() => {
     if (initialCategories.length > 0) {
-      return;
+      seedParentCategories(initialCategories);
     }
-
-    let cancelled = false;
-
-    const fetchCategories = async () => {
-      try {
-        const categoriesResponse = await getParentCategories();
-        if (cancelled) return;
-        setCategories(
-          Array.isArray(categoriesResponse) ? categoriesResponse : []
-        );
-      } catch (error) {
-        console.error("HomeClient - Error fetching categories:", error);
-      }
-    };
-
-    fetchCategories();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialCategories]);
+  }, [initialCategories, seedParentCategories]);
 
   return (
     <>
@@ -80,15 +66,21 @@ const HomeClient: React.FC<HomeClientProps> = ({
         <>
           <ProductList
             title={true}
-            products={products}
+            products={initialProducts}
             categories={categories}
             selectedCategoryId={selectedCategoryId}
             isDealsSelected={isDealsSelected}
             initialParentCategoryNames={initialParentCategoryNames}
             initialParentProducts={initialParentProducts}
           />
-          {user && <RecentItemsSection />}
-          <PopularItemsSection />
+          {user && (
+            <LazyMount>
+              <RecentItemsSection />
+            </LazyMount>
+          )}
+          <LazyMount>
+            <PopularItemsSection />
+          </LazyMount>
         </>
       )}
     </>

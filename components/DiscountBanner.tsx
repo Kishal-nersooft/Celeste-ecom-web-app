@@ -88,7 +88,7 @@ const DiscountBanner = () => {
         setApi={setApi}
       >
         <CarouselContent className="-ml-0">
-          {banners.map((banner) => (
+          {banners.map((banner, index) => (
             <CarouselItem key={banner.id} className="pl-0">
               <div className="w-full relative">
                 {/* Responsive height: smaller on mobile, larger on desktop */}
@@ -97,9 +97,10 @@ const DiscountBanner = () => {
                     src={banner.imageUrl}
                     alt="Discount Banner"
                     fill
-                    priority
+                    priority={index === 0}
+                    loading={index === 0 ? "eager" : "lazy"}
                     className="object-cover rounded-lg"
-                    sizes="100vw"
+                    sizes="(max-width: 640px) 100vw, (max-width: 1024px) 95vw, 1200px"
                   />
                 </div>
               </div>

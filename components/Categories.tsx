@@ -1,9 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { getParentCategories } from "../lib/api";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useCategory } from "../contexts/CategoryContext";
 import { getCategoryIconPath } from "@/lib/category-icons-config";
@@ -12,6 +10,57 @@ import {
   stripCategoryEmojis,
 } from "@/lib/category-display-name";
 import { normalizeImageUrl } from "@/lib/normalize-image-url";
+
+interface LazyCategoryImageProps {
+  src: string;
+  alt: string;
+  root: HTMLDivElement | null;
+}
+
+function LazyCategoryImage({ src, alt, root }: LazyCategoryImageProps) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect();
+        }
+      },
+      {
+        root,
+        rootMargin: "80px",
+        threshold: 0.01,
+      }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [root]);
+
+  return (
+    <div ref={ref} className="flex items-center justify-center w-full h-full">
+      {isVisible ? (
+        <Image
+          src={src}
+          alt={alt}
+          width={40}
+          height={40}
+          loading="lazy"
+          sizes="40px"
+          className="w-[30px] h-[30px] sm:w-9 sm:h-9 md:w-10 md:h-10 object-contain"
+        />
+      ) : (
+        <div className="w-[30px] h-[30px] sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-full bg-gray-200" />
+      )}
+    </div>
+  );
+}
 
 // New Category interface matching backend schema
 export interface Category {
@@ -45,15 +94,18 @@ const Categories = ({
   onSelectCategory,
   categories: initialCategories,
 }: Props) => {
-  const pathname = usePathname();
-  const { selectedCategoryId, isDealsSelected } = useCategory();
-  const [categories, setCategories] = useState<Category[]>(
-    initialCategories ?? []
-  );
-  const [loading, setLoading] = useState(
-    !(initialCategories && initialCategories.length > 0)
-  );
-  const [error, setError] = useState<string | null>(null);
+  const {
+    selectedCategoryId,
+    isDealsSelected,
+    categories: contextCategories,
+    categoriesLoading,
+    categoriesError,
+  } = useCategory();
+  const hasInitial =
+    Array.isArray(initialCategories) && initialCategories.length > 0;
+  const categories = hasInitial ? initialCategories! : contextCategories;
+  const loading = hasInitial ? false : categoriesLoading;
+  const error = hasInitial ? null : categoriesError;
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
@@ -89,32 +141,6 @@ const Categories = ({
       </div>
     );
   };
-
-  useEffect(() => {
-    if (initialCategories && initialCategories.length > 0) {
-      setCategories(initialCategories);
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function fetchCategories() {
-      try {
-        const fetchedCategories = await getParentCategories();
-        if (cancelled) return;
-        setCategories(fetchedCategories);
-      } catch (err: any) {
-        if (!cancelled) setError(err.message);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-    fetchCategories();
-    return () => {
-      cancelled = true;
-    };
-  }, [initialCategories]);
 
   const checkScrollButtons = () => {
     if (scrollContainerRef.current) {
@@ -269,13 +295,10 @@ const Categories = ({
                       // Priority 1: Use backend image_url if available
                       if (category.image_url) {
                         return (
-                          <Image
+                          <LazyCategoryImage
                             src={normalizeImageUrl(category.image_url as string)}
                             alt={fullName}
-                            width={30}
-                            height={30}
-                            className="sm:w-9 sm:h-9 md:w-10 md:h-10"
-                            style={{ objectFit: "contain" }}
+                            root={scrollContainerRef.current}
                           />
                         );
                       }
@@ -284,13 +307,10 @@ const Categories = ({
                       const localIconPath = getCategoryIconPath(category.name);
                       if (localIconPath) {
                         return (
-                          <Image
+                          <LazyCategoryImage
                             src={localIconPath}
                             alt={fullName}
-                            width={30}
-                            height={30}
-                            className="sm:w-9 sm:h-9 md:w-10 md:h-10"
-                            style={{ objectFit: "contain" }}
+                            root={scrollContainerRef.current}
                           />
                         );
                       }

@@ -1,11 +1,11 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { getParentCategories } from "../lib/api";
-import { Category, type SelectableCategory } from "./Categories";
+import { type SelectableCategory } from "./Categories";
 import { getCategoryIconPath } from "@/lib/category-icons-config";
 import { getCategoryDisplayName } from "@/lib/category-display-name";
+import { useCategory } from "@/contexts/CategoryContext";
 
 interface Props {
   onSelectCategory: (categoryId: number | null, isDeals?: boolean) => void;
@@ -13,23 +13,11 @@ interface Props {
 }
 
 const VerticalCategorySelector = ({ onSelectCategory, selectedCategoryId }: Props) => {
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    async function fetchCategories() {
-      try {
-        const fetchedCategories = await getParentCategories();
-        setCategories(fetchedCategories);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchCategories();
-  }, []);
+  const {
+    categories,
+    categoriesLoading: loading,
+    categoriesError: error,
+  } = useCategory();
 
   const handleCategoryClick = (categoryId: number | null, isDeals: boolean = false) => {
     // Directly filter products by category

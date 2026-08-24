@@ -12,6 +12,7 @@ import PriceFormatter from "./PriceFormatter";
 import QuantityButtons from "./QuantityButtons";
 import toast from "react-hot-toast";
 import EmptyCart from "./EmptyCart";
+import { getProductImageUrl } from "@/lib/product-image";
 import { useLocation } from "@/contexts/LocationContext";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -167,14 +168,15 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
                   item.product.pricing?.base_price ?? item.product.base_price ?? item.product.price ?? 0;
                 const lineFinalPrice = unitFinalPrice * quantity;
                 const lineBasePrice = unitBasePrice * quantity;
+                const imageUrl = getProductImageUrl(item.product);
                 return (
                   <div
                     key={item.product.id}
                     className="flex items-start gap-2 sm:gap-3 p-2 sm:p-3 border border-gray-200 rounded-lg hover:shadow-md transition-shadow"
                   >
-                    {item.product.image_urls?.[0] || item.product.imageUrl ? (
+                    {imageUrl ? (
                       <Image
-                        src={(item.product.image_urls?.[0] || item.product.imageUrl) as string}
+                        src={imageUrl}
                         alt={item.product.name}
                         width={60}
                         height={60}
@@ -293,7 +295,7 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
             <div className="flex shrink-0 -space-x-2">
               {safeItems.slice(0, 3).map((item) => {
                 if (!item?.product) return null;
-                const img = item.product.image_urls?.[0] || item.product.imageUrl;
+                const img = getProductImageUrl(item.product);
                 return (
                   <div
                     key={item.product.id}
@@ -301,7 +303,7 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
                   >
                     {img ? (
                       <Image
-                        src={img as string}
+                        src={img}
                         alt=""
                         width={32}
                         height={32}

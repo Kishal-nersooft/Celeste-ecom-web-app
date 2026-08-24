@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Order, DriverInfo, RiderInfo } from "@/store";
-import { getAuthHeaders, getUserOrders, getBaseUrl } from "@/lib/api";
+import { getAuthHeaders, getUserOrders, apiUrl } from "@/lib/api";
 import {
   canCancelOrderAsCustomer,
   getOrderStatusFromPayload,
@@ -333,7 +333,7 @@ const OrdersPageContent = () => {
     setCancelSubmitting(true);
     try {
       const authHeaders = await getAuthHeaders();
-      const response = await fetch(`${getBaseUrl()}/orders/${cancelTargetOrder.id}/cancel`, {
+      const response = await fetch(apiUrl(`/orders/${cancelTargetOrder.id}/cancel`), {
         method: "POST",
         headers: authHeaders,
         body: JSON.stringify({

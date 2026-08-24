@@ -118,8 +118,10 @@ const PopularProductCard = ({ product }: PopularProductCardProps) => {
                 <Image
                   src={imageUrl}
                   alt={product.name || 'Product image'}
-                  width={140}
-                  height={140}
+                  width={144}
+                  height={144}
+                  loading="lazy"
+                  sizes="144px"
                   className="object-contain h-36 w-36"
                   onError={(e) => {
                     console.error('Image failed to load:', e);

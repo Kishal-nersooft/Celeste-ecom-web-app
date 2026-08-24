@@ -3,23 +3,23 @@
 import React, { useEffect, useState } from "react";
 import Container from "@/components/Container";
 import ProductList from "@/components/ProductList";
-import { getProductsWithPricing, getCategories } from "@/lib/api";
+import { getProductsWithPricing } from "@/lib/api";
 import { useAuth } from "@/components/FirebaseAuthProvider";
+import { useCategory } from "@/contexts/CategoryContext";
 import { Product } from "@/store";
 import Link from "next/link";
 import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 
 export default function DealsPage() {
   const { user, loading: authLoading, isGuest } = useAuth();
+  const { categories } = useCategory();
   const [products, setProducts] = useState<any[]>([]);
-  const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        
         // Fetch all products with pricing data first
         const allProductsResponse = await getProductsWithPricing(null, 1, 100, false, true, true, [1, 2, 3, 4]); // Get all products first
         
@@ -30,19 +30,8 @@ export default function DealsPage() {
           product.pricing.discount_applied !== undefined && 
           product.pricing.discount_applied > 0
         );
-        
-        const categoriesResponse = await getCategories();
 
-        // Ensure products and categories are always arrays
-        const productsArray = Array.isArray(productsResponse) ? productsResponse : [];
-        const categoriesArray = Array.isArray(categoriesResponse) ? categoriesResponse : [];
-        
-        setProducts(productsArray);
-        setCategories(categoriesArray);
-        
-        
-        if (productsArray.length > 0) {
-        }
+        setProducts(Array.isArray(productsResponse) ? productsResponse : []);
       } catch (error) {
         console.error("❌ Deals page: Error fetching deals data:", error);
         setError(error instanceof Error ? error.message : 'An error occurred');

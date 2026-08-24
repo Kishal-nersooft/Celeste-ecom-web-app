@@ -2,6 +2,9 @@
 const nextConfig = {
   /* config options here */
   output: 'standalone', // Required for Docker production builds
+  // FastAPI list routes are `/products/`, `/orders/`, etc. Without this, Next.js
+  // 308s `/api/backend/products/` → `/api/backend/products` before the proxy runs.
+  skipTrailingSlashRedirect: true,
   images: {
     remotePatterns: [
       {

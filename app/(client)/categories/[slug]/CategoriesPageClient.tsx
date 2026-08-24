@@ -14,13 +14,13 @@ import {
   getProductsBySubcategoryWithPricing,
   getParentCategoryFromSubcategory,
   getProductsByParentCategoryWithPagination,
-  getParentCategories,
 } from "@/lib/api";
 import { getCategorySlug, resolveCategorySlugToId, toCategorySlug } from "@/lib/category-slug";
 import { getSubcategoryImageUrl } from "@/lib/subcategory-image";
 import { ArrowLeft } from "lucide-react";
 import Loader from "@/components/Loader";
 import Image from "next/image";
+import { useCategory } from "@/contexts/CategoryContext";
 
 interface Props {
   categoryId: string;
@@ -32,6 +32,7 @@ const SIMILAR_PRODUCTS_TITLE = "Similar Products";
 
 const CategoriesPageClient = ({ categoryId }: Props) => {
   const router = useRouter();
+  const { categories: parentCategoriesFromContext } = useCategory();
   const [numericCategoryId, setNumericCategoryId] = useState<number | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [displayCategoryName, setDisplayCategoryName] = useState<string>("");
@@ -163,13 +164,14 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
 
   useEffect(() => {
     if (isStoredProductList || numericCategoryId === null) return;
+    if (parentCategoriesFromContext.length === 0) return;
 
     const categoryKey = numericCategoryId.toString();
+    const parentCategories = parentCategoriesFromContext;
 
     const fetchCategoryData = async () => {
       try {
         setIsLoadingProducts(true);
-        const parentCategories = await getParentCategories();
         const isParent = parentCategories.some(
           (cat: any) => cat.id === numericCategoryId
         );
@@ -263,7 +265,13 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
     };
 
     fetchCategoryData();
-  }, [numericCategoryId, categoryId, router, isStoredProductList]);
+  }, [
+    numericCategoryId,
+    categoryId,
+    router,
+    isStoredProductList,
+    parentCategoriesFromContext,
+  ]);
 
   const handleSubcategorySelect = async (subcategoryId: number | null) => {
     if (!subcategoryId) return;

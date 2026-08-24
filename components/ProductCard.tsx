@@ -109,9 +109,10 @@ const ProductCard = memo(({ product }: { product: Product }) => {
               <Image
                 src={imageUrl}
                 alt={product.name || "Product image"}
-                width={500}
-                height={500}
+                width={200}
+                height={200}
                 loading="lazy"
+                sizes="(max-width: 640px) 140px, (max-width: 768px) 160px, (max-width: 1024px) 180px, 200px"
                 className={`w-full h-full object-cover overflow-hidden transition-transform duration-500 group-hover:scale-105`}
                 onError={(e) => {
                   console.error("Image failed to load:", e);
