@@ -1,20 +1,21 @@
-import React, { useState, useEffect } from "react";
+"use client";
+
+import React, { createContext, useCallback, useContext, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import DeliveryWarningDialog from "@/components/DeliveryWarningDialog";
-import { GlobeIcon } from "lucide-react"; // Assuming lucide-react is installed for icons
-import { useLoadScript, GoogleMap, Marker } from "@react-google-maps/api"; // Import Google Maps components
-import toast from "react-hot-toast"; // Assuming react-toastify is installed for toasts
+import { GlobeIcon } from "lucide-react";
+import { GoogleMap, Marker } from "@react-google-maps/api";
+import toast from "react-hot-toast";
 import { ArrowLeft, LocateIcon, ChevronRight, MapPinIcon, ClockIcon, HeartIcon, HomeIcon, BriefcaseBusiness, PlusIcon } from "lucide-react";
 import { useLocation } from "@/contexts/LocationContext";
 import { getStores, getNearbyStores, getUserAddresses, addUserAddress, setDefaultAddress } from "@/lib/api";
 import AddressSelector from "@/components/AddressSelector";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import Loader from "@/components/Loader";
-
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
-const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"]; // Define libraries array outside the component
+import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
+import { formatLocationLabel } from "@/lib/format-location-label";
 
 // Store interface based on the backend schema
 interface Store {
@@ -40,16 +41,20 @@ interface Store {
   distance?: number; // Distance in km when using nearby stores
 }
 
-interface LocationSelectorProps {
+interface LocationSelectorDialogProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
   onLocationSelect: (location: string) => void;
 }
 
-const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect }) => {
+const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
+  isOpen,
+  onOpenChange,
+  onLocationSelect,
+}) => {
   const router = useRouter();
-  const { user, loading: authLoading } = useAuth();
-  const { selectedLocation, setSelectedLocation, setSelectedStore, deliveryType, setDeliveryType, setHasSelectedDeliveryType, defaultAddress, setDefaultAddress: setDefaultAddressContext, addressId, setAddressId, hasLocationSelected, isLocationReady } = useLocation();
-  const [isOpen, setIsOpen] = useState(false);
-  const [hasCheckedFirstVisit, setHasCheckedFirstVisit] = useState(false);
+  const { user } = useAuth();
+  const { setSelectedLocation, setSelectedStore, deliveryType, setDeliveryType, setHasSelectedDeliveryType, setDefaultAddress: setDefaultAddressContext, setAddressId } = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [mapCenter, setMapCenter] = useState({ lat: -34.397, lng: 150.644 }); // Default map center
   const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
@@ -66,11 +71,7 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
   const [showDeliveryWarning, setShowDeliveryWarning] = useState(false);
 
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY ?? '',
-    libraries, // Use the externally defined libraries array
-    id: 'google-maps-script',
-  });
+  const { isLoaded, loadError } = useGoogleMaps();
 
   // Debug Google Maps loading
   React.useEffect(() => {
@@ -223,49 +224,12 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
     loadAddresses();
   }, [isOpen, user]);
 
-  // Auto-open location selector on first visit (when no location selected)
-  // Use localStorage to ensure only one instance opens the dialog
-  React.useEffect(() => {
-    // Wait for auth to finish loading
-    if (authLoading) return;
-    
-    // Only check once
-    if (hasCheckedFirstVisit) return;
-    
-    // Check if any LocationSelector instance has already tried to open
-    const globalCheckKey = 'locationSelectorAutoOpenAttempted';
-    if (typeof window !== 'undefined' && localStorage.getItem(globalCheckKey)) {
-      setHasCheckedFirstVisit(true);
-      return;
-    }
-    
-    // Check if user has selected a location
-    // If no location selected and not ready, open the modal
-    if (!hasLocationSelected && !isLocationReady) {
-      // Mark that we've attempted to open (prevent other instances from opening)
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(globalCheckKey, 'true');
-      }
-      
-      // Small delay to ensure page is loaded
-      const timer = setTimeout(() => {
-        setIsOpen(true);
-        setHasCheckedFirstVisit(true);
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    } else {
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(globalCheckKey, 'true');
-      }
-      setHasCheckedFirstVisit(true);
-    }
-  }, [authLoading, hasLocationSelected, isLocationReady, hasCheckedFirstVisit]);
-
-  // Fetch stores when component mounts or when switching to pickup
+  // Fetch stores when pickup is selected and the dialog is open
   React.useEffect(() => {
     const fetchStores = async () => {
-      if (deliveryType === 'pickup' && stores.length === 0) {
+      if (!isOpen || deliveryType !== 'pickup' || stores.length > 0) {
+        return;
+      }
         setLoadingStores(true);
         try {
           // Try to get user's current location for nearby stores
@@ -308,19 +272,17 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
         } finally {
           setLoadingStores(false);
         }
-      }
     };
 
     fetchStores();
-  }, [deliveryType, stores.length]);
+  }, [deliveryType, isOpen, stores.length]);
 
   const handleSelectLocation = async (location: string, description?: string) => {
     setSelectedLocation(location);
     onLocationSelect(location);
-    setIsOpen(false);
-    setPredictions([]); // Clear predictions after selection
-    setCurrentView('main'); // Reset view to main after selection
-    setHasCheckedFirstVisit(true); // Mark that we've checked first visit
+    onOpenChange(false);
+    setPredictions([]);
+    setCurrentView('main');
 
     // Update recent locations
     setRecentLocations((prevLocations) => {
@@ -624,10 +586,9 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
     setSelectedLocation(store.name);
     setSelectedStore(store); // Store the selected store in context
     onLocationSelect(store.name);
-    setIsOpen(false);
-    setCurrentView('main'); // Reset view to main after selection
-    setHasCheckedFirstVisit(true); // Mark that we've checked first visit
-    
+    onOpenChange(false);
+    setCurrentView('main');
+
     // Navigate to store page
     router.push(`/store/${store.id}`);
   };
@@ -781,36 +742,20 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
     }
   };
 
-  // Safety check: if there's a load error or maps aren't loaded, show a simple button
   if (loadError) {
     console.error('Google Maps failed to load:', loadError);
-    return (
-      <Button variant="outline" className="rounded-full min-w-[120px] sm:min-w-[160px] max-w-[200px] sm:max-w-[240px] flex items-center gap-1.5 sm:gap-2 overflow-hidden">
-        <GlobeIcon className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-        <span className="truncate text-left flex-1 min-w-0 text-xs sm:text-sm">{selectedLocation || "Location"}</span>
-      </Button>
-    );
-  }
-  
-  if (!isLoaded) {
-    return (
-      <Button variant="outline" className="rounded-full min-w-[120px] sm:min-w-[160px] max-w-[200px] sm:max-w-[240px] flex items-center gap-1.5 sm:gap-2 overflow-hidden" disabled>
-        <GlobeIcon className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-        <span className="truncate text-left flex-1 min-w-0 text-xs sm:text-sm">Loading...</span>
-      </Button>
-    );
   }
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" className="rounded-full min-w-[120px] sm:min-w-[160px] max-w-[200px] sm:max-w-[240px] flex items-center gap-1.5 sm:gap-2 overflow-hidden">
-          <GlobeIcon className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
-          <span className="truncate text-left flex-1 min-w-0 text-xs sm:text-sm">{selectedLocation}</span>
-        </Button>
-      </DialogTrigger>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
+        {!isLoaded ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader />
+          </div>
+        ) : (
+          <>
         {currentView === 'main' && (
           <div className="p-3 sm:p-4">
             <div className="flex justify-between items-center mb-3">
@@ -1190,16 +1135,20 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
             </div>
           </div>
         )}
+          </>
+        )}
       </DialogContent>
     </Dialog>
 
-    <AddressSelector
-      isOpen={isAddressSelectorOpen}
-      onClose={() => setIsAddressSelectorOpen(false)}
-      onAddressSelect={handleAddressSelect}
-      title="Add New Address"
-      description="Choose your address by searching or clicking on the map"
-    />
+    {isAddressSelectorOpen && (
+      <AddressSelector
+        isOpen={isAddressSelectorOpen}
+        onClose={() => setIsAddressSelectorOpen(false)}
+        onAddressSelect={handleAddressSelect}
+        title="Add New Address"
+        description="Choose your address by searching or clicking on the map"
+      />
+    )}
 
     {/* Delivery Warning Dialog */}
     <DeliveryWarningDialog 
@@ -1207,6 +1156,120 @@ const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect })
       onClose={() => setShowDeliveryWarning(false)} 
     />
     </>
+  );
+};
+
+type LocationPickerContextValue = {
+  openPicker: () => void;
+};
+
+const LocationPickerContext = createContext<LocationPickerContextValue | null>(null);
+
+interface LocationSelectorProviderProps {
+  onLocationSelect: (location: string) => void;
+  children: React.ReactNode;
+}
+
+export function LocationSelectorProvider({
+  onLocationSelect,
+  children,
+}: LocationSelectorProviderProps) {
+  const { loading: authLoading } = useAuth();
+  const { hasLocationSelected, isLocationReady } = useLocation();
+  const [isOpen, setIsOpen] = useState(false);
+  const [hasCheckedFirstVisit, setHasCheckedFirstVisit] = useState(false);
+
+  const openPicker = useCallback(() => {
+    setIsOpen(true);
+  }, []);
+
+  useEffect(() => {
+    if (authLoading || hasCheckedFirstVisit) {
+      return;
+    }
+
+    const globalCheckKey = "locationSelectorAutoOpenAttempted";
+    if (typeof window !== "undefined" && localStorage.getItem(globalCheckKey)) {
+      setHasCheckedFirstVisit(true);
+      return;
+    }
+
+    if (!hasLocationSelected && !isLocationReady) {
+      if (typeof window !== "undefined") {
+        localStorage.setItem(globalCheckKey, "true");
+      }
+
+      const timer = setTimeout(() => {
+        setIsOpen(true);
+        setHasCheckedFirstVisit(true);
+      }, 500);
+
+      return () => clearTimeout(timer);
+    }
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem(globalCheckKey, "true");
+    }
+    setHasCheckedFirstVisit(true);
+  }, [authLoading, hasLocationSelected, isLocationReady, hasCheckedFirstVisit]);
+
+  return (
+    <LocationPickerContext.Provider value={{ openPicker }}>
+      {children}
+      {isOpen && (
+        <GoogleMapsProvider>
+          <LocationSelectorDialog
+            isOpen={isOpen}
+            onOpenChange={setIsOpen}
+            onLocationSelect={onLocationSelect}
+          />
+        </GoogleMapsProvider>
+      )}
+    </LocationPickerContext.Provider>
+  );
+}
+
+export function LocationSelectorTrigger({
+  className,
+}: {
+  className?: string;
+}) {
+  const picker = useContext(LocationPickerContext);
+  const { selectedLocation, defaultAddress, selectedStore, deliveryType } = useLocation();
+  const displayLabel = formatLocationLabel(selectedLocation, {
+    defaultAddress,
+    selectedStore,
+    deliveryType,
+  });
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      title={selectedLocation !== "Location" ? selectedLocation : undefined}
+      className={
+        className ??
+        "rounded-full min-w-[100px] sm:min-w-[120px] max-w-[140px] sm:max-w-[160px] flex items-center gap-1.5 sm:gap-2 overflow-hidden"
+      }
+      onClick={() => picker?.openPicker()}
+    >
+      <GlobeIcon className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+      <span className="truncate text-left flex-1 min-w-0 text-xs sm:text-sm">
+        {displayLabel}
+      </span>
+    </Button>
+  );
+}
+
+interface LocationSelectorProps {
+  onLocationSelect: (location: string) => void;
+}
+
+const LocationSelector: React.FC<LocationSelectorProps> = ({ onLocationSelect }) => {
+  return (
+    <LocationSelectorProvider onLocationSelect={onLocationSelect}>
+      <LocationSelectorTrigger />
+    </LocationSelectorProvider>
   );
 };
 

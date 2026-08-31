@@ -8,6 +8,8 @@ interface LazyMountProps {
   rootMargin?: string;
   /** Number of skeleton cards to show as placeholder */
   skeletonCount?: number;
+  /** Called once when the section is about to mount */
+  onMount?: () => void;
 }
 
 /**
@@ -16,8 +18,9 @@ interface LazyMountProps {
  */
 const LazyMount: React.FC<LazyMountProps> = ({
   children,
-  rootMargin = "200px",
+  rootMargin = "0px",
   skeletonCount = 6,
+  onMount,
 }) => {
   const ref = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -29,6 +32,7 @@ const LazyMount: React.FC<LazyMountProps> = ({
     const observer = new IntersectionObserver(
       ([entry]) => {
         if (entry.isIntersecting) {
+          onMount?.();
           setMounted(true);
           observer.disconnect();
         }
@@ -38,7 +42,7 @@ const LazyMount: React.FC<LazyMountProps> = ({
 
     observer.observe(el);
     return () => observer.disconnect();
-  }, [rootMargin]);
+  }, [rootMargin, onMount]);
 
   if (mounted) return <>{children}</>;
 

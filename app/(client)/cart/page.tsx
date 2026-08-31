@@ -330,6 +330,7 @@ const CartPage = () => {
                               <img 
                                 src={productImage} 
                                 alt={productName}
+                                loading="lazy"
                                 className="w-full h-full object-cover"
                                 onError={(e) => {
                                   e.currentTarget.style.display = 'none';

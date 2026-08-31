@@ -2,14 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { useLoadScript, GoogleMap, Marker, Autocomplete } from "@react-google-maps/api";
-import { useLocation } from "@/contexts/LocationContext";
-import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon, X } from "lucide-react";
+import { GoogleMap, Marker } from "@react-google-maps/api";
+import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import Loader from "@/components/Loader";
-
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
-const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
+import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
 
 interface AddressSelectorProps {
   isOpen: boolean;
@@ -31,7 +28,7 @@ interface AddressSelectorProps {
   } | null;
 }
 
-const AddressSelector: React.FC<AddressSelectorProps> = ({
+const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
   isOpen,
   onClose,
   onAddressSelect,
@@ -75,11 +72,7 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
 
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY ?? '',
-    libraries,
-    id: 'google-maps-script-address',
-  });
+  const { isLoaded, loadError } = useGoogleMaps();
 
   // Debug Google Maps loading
   useEffect(() => {
@@ -456,6 +449,18 @@ const AddressSelector: React.FC<AddressSelectorProps> = ({
         </div>
       </DialogContent>
     </Dialog>
+  );
+};
+
+const AddressSelector: React.FC<AddressSelectorProps> = (props) => {
+  if (!props.isOpen) {
+    return null;
+  }
+
+  return (
+    <GoogleMapsProvider>
+      <AddressSelectorContent {...props} />
+    </GoogleMapsProvider>
   );
 };
 

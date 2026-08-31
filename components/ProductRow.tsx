@@ -1,6 +1,6 @@
 "use client";
 import { Product } from "../store";
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useCallback } from "react";
 import ProductCard from "./ProductCard";
 import ProductCardSkeleton from "./ProductCardSkeleton";
 import { motion, AnimatePresence } from "framer-motion";
@@ -33,11 +33,17 @@ const ProductRow = ({
   isLoaded = false,
   onScrollIntoView,
 }: Props) => {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const rowRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
+  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const router = useRouter();
+
+  const assignScrollContainer = useCallback((node: HTMLDivElement | null) => {
+    scrollContainerRef.current = node;
+    setScrollRoot(node);
+  }, []);
 
   const checkScrollButtons = () => {
     if (scrollContainerRef.current) {
@@ -228,7 +234,7 @@ const ProductRow = ({
       {/* Scrollable product container */}
       <div className="relative">
         <div
-          ref={scrollContainerRef}
+          ref={assignScrollContainer}
           onScroll={checkScrollButtons}
           className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
           style={{
@@ -265,7 +271,7 @@ const ProductRow = ({
                   exit={{ opacity: 0 }}
                   className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
                 >
-                  <ProductCard product={product} />
+                  <ProductCard product={product} scrollRoot={scrollRoot} />
                 </motion.div>
               ))}
 

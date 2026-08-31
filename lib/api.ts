@@ -457,6 +457,8 @@ function getServerBaseUrl() {
 /** Deduplicate concurrent identical /categories/ calls; short client TTL. */
 const categoriesInflight = new Map<string, Promise<any[]>>();
 const categoriesCache = new Map<string, { data: any[]; at: number }>();
+const subcategoriesInflight = new Map<number, Promise<any[]>>();
+const subcategoriesCache = new Map<number, { data: any[]; at: number }>();
 const CATEGORIES_CLIENT_TTL_MS = 60_000;
 
 export async function getCategories(includeSubcategories: boolean = true, parentOnly: boolean = false) {
@@ -622,27 +624,83 @@ export async function getProducts(
 
 // Get subcategories of a specific parent category
 export async function getSubcategories(parentCategoryId: number) {
-  const params = new URLSearchParams();
-  params.append('parent_id', parentCategoryId.toString());
-  params.append('subcategories_only', 'true');
-  
-  const authHeaders = await getAuthHeaders();
-  const response = await fetch(apiUrl('/categories/', params), {
-    method: 'GET',
-    cache: 'no-store',
-    headers: {
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0',
-      ...authHeaders
+  if (typeof window !== "undefined") {
+    const cached = subcategoriesCache.get(parentCategoryId);
+    if (cached && Date.now() - cached.at < CATEGORIES_CLIENT_TTL_MS) {
+      return cached.data;
     }
-  });
-  
-  if (!response.ok) {
-    throw new Error("Failed to fetch subcategories");
   }
-  const data = await response.json();
-  return data.data || [];
+
+  const existing = subcategoriesInflight.get(parentCategoryId);
+  if (existing) {
+    return existing;
+  }
+
+  const request = (async () => {
+    const params = new URLSearchParams();
+    params.append("parent_id", parentCategoryId.toString());
+    params.append("subcategories_only", "true");
+
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(apiUrl("/categories/", params), {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+        Expires: "0",
+        ...authHeaders,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to fetch subcategories");
+    }
+    const data = await response.json();
+    const subcategories = data.data || [];
+    apiLog(
+      "GET /categories/ (subcategories)",
+      `${response.status} · ${subcategories.length} subcategories for parent ${parentCategoryId}`,
+      {
+        url: apiUrl("/categories/", params),
+        subcategories,
+      }
+    );
+
+    if (typeof window !== "undefined") {
+      subcategoriesCache.set(parentCategoryId, {
+        data: subcategories,
+        at: Date.now(),
+      });
+    }
+
+    return subcategories;
+  })().finally(() => {
+    subcategoriesInflight.delete(parentCategoryId);
+  });
+
+  subcategoriesInflight.set(parentCategoryId, request);
+  return request;
+}
+
+type CategoryWithNestedSubs = {
+  id: number;
+  subcategories?: unknown[];
+};
+
+/** Use nested subcategories from an already-loaded parent list when available. */
+export async function resolveSubcategories(
+  parentCategoryId: number,
+  parentCategories?: CategoryWithNestedSubs[]
+): Promise<any[]> {
+  if (parentCategories) {
+    const parent = parentCategories.find((cat) => cat.id === parentCategoryId);
+    if (Array.isArray(parent?.subcategories) && parent.subcategories.length > 0) {
+      return parent.subcategories;
+    }
+  }
+
+  return getSubcategories(parentCategoryId);
 }
 
 // Get products by subcategory
@@ -1958,6 +2016,23 @@ function getCheckoutItemCount(details: any): number {
   return 0;
 }
 
+const inflightRequests = new Map<string, Promise<unknown>>();
+
+function coalesceInflight<T>(key: string, start: () => Promise<T>): Promise<T> {
+  const existing = inflightRequests.get(key);
+  if (existing) {
+    return existing as Promise<T>;
+  }
+
+  const request = start().finally(() => {
+    if (inflightRequests.get(key) === request) {
+      inflightRequests.delete(key);
+    }
+  });
+  inflightRequests.set(key, request);
+  return request;
+}
+
 // Preview multi-cart order
 export async function previewOrder(orderData: {
   cart_ids: number[];
@@ -1981,7 +2056,22 @@ export async function previewOrder(orderData: {
     split_order: orderData.split_order !== undefined ? orderData.split_order : true
   };
 
+  return coalesceInflight(`checkout-preview:${JSON.stringify(requestData)}`, () =>
+    fetchCheckoutPreview(requestData)
+  );
+}
 
+async function fetchCheckoutPreview(requestData: {
+  cart_ids: number[];
+  location: {
+    mode: 'delivery' | 'pickup';
+    address_id?: number | null;
+    store_id?: number | null;
+    delivery_service_level?: string;
+    delivery_option?: CheckoutDeliveryOption;
+  };
+  split_order?: boolean;
+}) {
   const authHeaders = await getAuthHeaders();
   const response = await fetch(apiUrl('/users/me/checkout/preview'), {
     method: 'POST',
@@ -2121,22 +2211,23 @@ export async function createOrder(orderData: {
 
 // Get saved payment cards for the current user
 export async function getSavedCards() {
-  const authHeaders = await getAuthHeaders();
-  // NOTE: `getBaseUrl()` already points at `${API_BASE_URL}` which includes `/api/v1`.
-  // Do NOT prefix `/v1` again, otherwise it becomes `/api/v1/v1/...` (404).
-  const response = await fetch(apiUrl('/payments/saved-cards'), {
-    method: 'GET',
-    headers: authHeaders,
+  return coalesceInflight("payments-saved-cards", async () => {
+    const authHeaders = await getAuthHeaders();
+    // NOTE: `getBaseUrl()` already points at `${API_BASE_URL}` which includes `/api/v1`.
+    // Do NOT prefix `/v1` again, otherwise it becomes `/api/v1/v1/...` (404).
+    const response = await fetch(apiUrl('/payments/saved-cards'), {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('❌ Failed to fetch saved cards:', errorText);
+      throw new Error(`Failed to fetch saved cards: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('❌ Failed to fetch saved cards:', errorText);
-    throw new Error(`Failed to fetch saved cards: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json();
-  return data;
 }
 
 export async function deleteSavedCard(cardId: number) {
@@ -2616,6 +2707,7 @@ export async function searchProducts(
     storeIds?: number[];
     latitude?: number;
     longitude?: number;
+    signal?: AbortSignal;
   } = {}
 ) {
   // Validate query
@@ -2679,6 +2771,7 @@ export async function searchProducts(
   const response = await fetch(url, {
     method: 'GET',
     cache: 'no-store',
+    signal: options.signal,
     headers: {
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
@@ -2694,11 +2787,26 @@ export async function searchProducts(
   }
 
   const data = await response.json();
+  const products = data.data?.products || [];
+  const pagination = data.data?.pagination;
+  const totalResults =
+    data.data?.total_results ??
+    pagination?.total_count ??
+    products.length;
+
+  const hasMore =
+    pagination?.has_more ??
+    (totalResults > products.length && products.length > 0);
+
   const result = {
-    products: data.data?.products || [],
+    products,
     suggestions: data.data?.suggestions || [],
-    total_results: data.data?.total_results || 0,
+    total_results: totalResults,
     search_metadata: data.data?.search_metadata || {},
+    pagination: {
+      hasMore: Boolean(hasMore),
+      nextCursor: pagination?.next_cursor ?? null,
+    },
   };
 
   apiLog('GET /products/search', `${response.status} · ${result.products.length} products · "${query}"`, {
@@ -2707,6 +2815,7 @@ export async function searchProducts(
     mode,
     products: result.products,
     total_results: result.total_results,
+    pagination: result.pagination,
   });
 
   return result;
@@ -2746,7 +2855,33 @@ export async function trackSearchClick(query: string, productId: number) {
 }
 
 // Get user's search history
-export async function getSearchHistory(limit: number = 10) {
+const searchHistoryInflight = new Map<string, Promise<string[]>>();
+const searchHistoryCache = new Map<string, { data: string[]; at: number }>();
+const SEARCH_HISTORY_TTL_MS = 30_000;
+
+export function invalidateSearchHistoryCache() {
+  searchHistoryCache.clear();
+}
+
+export async function getSearchHistory(
+  limit: number = 10,
+  options?: { force?: boolean }
+) {
+  const cacheKey = `limit:${limit}`;
+
+  if (!options?.force && typeof window !== "undefined") {
+    const cached = searchHistoryCache.get(cacheKey);
+    if (cached && Date.now() - cached.at < SEARCH_HISTORY_TTL_MS) {
+      return cached.data;
+    }
+  }
+
+  const existing = searchHistoryInflight.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  const request = (async () => {
   try {
     const authHeaders = await getAuthHeaders();
     
@@ -2759,9 +2894,7 @@ export async function getSearchHistory(limit: number = 10) {
     // Validate limit
     const validLimit = Math.min(Math.max(1, limit), 50);
     
-    // Add cache-busting timestamp to ensure fresh data
-    const cacheBuster = `_t=${Date.now()}`;
-    const response = await fetch(apiUrl('/users/me/search-history', `limit=${validLimit}&${cacheBuster}`), {
+    const response = await fetch(apiUrl('/users/me/search-history', `limit=${validLimit}`), {
       method: 'GET',
       cache: 'no-store', // Disable Next.js caching
       headers: {
@@ -2794,7 +2927,7 @@ export async function getSearchHistory(limit: number = 10) {
     }
     
     // Filter out invalid entries (like API documentation text, empty strings, etc.)
-    return historyArray.filter((item: string) => {
+    const filtered = historyArray.filter((item: string) => {
       if (!item || typeof item !== 'string') return false;
       const trimmed = item.trim();
       
@@ -2820,11 +2953,23 @@ export async function getSearchHistory(limit: number = 10) {
       
       return true;
     });
+
+    if (typeof window !== "undefined") {
+      searchHistoryCache.set(cacheKey, { data: filtered, at: Date.now() });
+    }
+
+    return filtered;
   } catch (error) {
     console.error('Error getting search history:', error);
     // Return empty array on error to not break the user experience
     return [];
   }
+  })().finally(() => {
+    searchHistoryInflight.delete(cacheKey);
+  });
+
+  searchHistoryInflight.set(cacheKey, request);
+  return request;
 }
 
 // Promotion interface

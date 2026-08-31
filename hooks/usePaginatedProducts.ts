@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { getProductsWithPricing, getProductsBySubcategoryWithPricing, getSubcategories, getDiscountedProductsOptimized } from '@/lib/api';
+import { getProductsWithPricing, getProductsBySubcategoryWithPricing, resolveSubcategories, getDiscountedProductsOptimized } from '@/lib/api';
 import { Product } from '@/store';
 import { Category } from '@/components/Categories';
-import { HOME_PARENT_CATEGORY_LIMIT } from '@/lib/home-catalogue-constants';
+import { HOME_PARENT_CATEGORY_LIMIT, getHomeProductsPerCategory } from '@/lib/home-catalogue-constants';
 
 interface UsePaginatedProductsOptions {
   selectedCategory: number | null;
@@ -19,6 +19,13 @@ interface UsePaginatedProductsOptions {
   initialParentProducts?: { [key: number]: Product[] };
 }
 
+interface CategoryViewCache {
+  subcategories: Category[];
+  subcategoryProducts: { [key: number]: Product[] };
+  loadedSubcategories: { [key: number]: boolean };
+  loadingSubcategories: { [key: number]: boolean };
+}
+
 interface PaginatedData {
   products: Product[];
   subcategories: Category[];
@@ -27,6 +34,7 @@ interface PaginatedData {
   subcategoryProducts: { [key: number]: Product[] };
   loadedSubcategories: { [key: number]: boolean };
   loadingSubcategories: { [key: number]: boolean };
+  loadingParentCategories: { [key: number]: boolean };
   loading: boolean;
   loadingMore: boolean;
   hasMore: boolean;
@@ -97,6 +105,7 @@ export const usePaginatedProducts = ({
     subcategoryProducts: {},
     loadedSubcategories: {},
     loadingSubcategories: {},
+    loadingParentCategories: {},
     loading: false,
     loadingMore: false,
     hasMore: true,
@@ -127,6 +136,10 @@ export const usePaginatedProducts = ({
         }
       : null
   );
+  const categoryViewCacheRef = useRef<Map<number, CategoryViewCache>>(new Map());
+  const prevSelectedCategoryRef = useRef<number | null>(selectedCategory);
+  const dataRef = useRef(data);
+  dataRef.current = data;
   const parentCategoryKey = categories
     .filter((cat) => !cat.parent_category_id)
     .map((cat) => cat.id)
@@ -142,6 +155,60 @@ export const usePaginatedProducts = ({
       fetchFn();
     }, delay);
   }, []);
+
+  const loadingParentCategoriesRef = useRef<{ [key: number]: boolean }>({});
+
+  // Load products for a single parent category row (homepage lazy rows)
+  const loadParentCategoryProducts = useCallback(async (parentId: number) => {
+    if (data.parentProducts[parentId]?.length > 0) return;
+    if (loadingParentCategoriesRef.current[parentId]) return;
+
+    loadingParentCategoriesRef.current[parentId] = true;
+    setData(prev => ({
+      ...prev,
+      loadingParentCategories: { ...prev.loadingParentCategories, [parentId]: true },
+    }));
+
+    const parentCat = categories.find((cat) => cat.id === parentId);
+    const perCategorySize = getHomeProductsPerCategory(HOME_PARENT_CATEGORY_LIMIT);
+
+    try {
+      const products = await executeWithLimit(() =>
+        getProductsWithPricing(
+          [parentId],
+          1,
+          perCategorySize,
+          false,
+          true,
+          true,
+          storeId ? [storeId] : undefined,
+          latitude,
+          longitude
+        )
+      );
+
+      setData(prev => ({
+        ...prev,
+        parentProducts: {
+          ...prev.parentProducts,
+          [parentId]: Array.isArray(products) ? products : [],
+        },
+        parentCategoryNames: {
+          ...prev.parentCategoryNames,
+          [parentId]: parentCat?.name ?? prev.parentCategoryNames[parentId] ?? "Unknown Category",
+        },
+        loadingParentCategories: { ...prev.loadingParentCategories, [parentId]: false },
+      }));
+    } catch (error) {
+      console.error(`Error loading products for parent category ${parentId}:`, error);
+      setData(prev => ({
+        ...prev,
+        loadingParentCategories: { ...prev.loadingParentCategories, [parentId]: false },
+      }));
+    } finally {
+      loadingParentCategoriesRef.current[parentId] = false;
+    }
+  }, [categories, storeId, latitude, longitude, data.parentProducts]);
 
   // Load products for a specific subcategory
   const loadSubcategoryProducts = useCallback(async (subcategoryId: number) => {
@@ -265,8 +332,9 @@ export const usePaginatedProducts = ({
       const isParentCategory = categories.some(cat => cat.id === selectedCategory);
 
       if (isParentCategory) {
-        // Parent category selected - fetch its subcategories first
-        const subcats = await executeWithLimit(() => getSubcategories(selectedCategory));
+        const subcats = await executeWithLimit(() =>
+          resolveSubcategories(selectedCategory, categories)
+        );
         if (selectedCategoryRef.current !== selectedCategory || isDealsRef.current) {
           return;
         }
@@ -280,6 +348,13 @@ export const usePaginatedProducts = ({
         subcats.forEach((subcat: any) => {
           loadedSubcategories[subcat.id] = false;
           loadingSubcategories[subcat.id] = false;
+        });
+
+        categoryViewCacheRef.current.set(selectedCategory, {
+          subcategories: subcats,
+          subcategoryProducts: {},
+          loadedSubcategories,
+          loadingSubcategories,
         });
 
         setData(prev => ({
@@ -339,7 +414,7 @@ export const usePaginatedProducts = ({
         hasMore: false
       }));
     }
-  }, [selectedCategory, isDeals, categories, storeId, pageSize]);
+  }, [selectedCategory, isDeals, categories, storeId, pageSize, latitude, longitude]);
 
   // Fetch all products with pagination
   const fetchAllProducts = useCallback(async (
@@ -373,7 +448,7 @@ export const usePaginatedProducts = ({
       
       const productPromises = limitedParentCategories.map(parentCat =>
         executeWithLimit(() =>
-          getProductsWithPricing([parentCat.id], page, Math.ceil(pageSize / limitedParentCategories.length), false, true, true, storeId ? [storeId] : undefined, latitude, longitude)
+          getProductsWithPricing([parentCat.id], page, getHomeProductsPerCategory(limitedParentCategories.length), false, true, true, storeId ? [storeId] : undefined, latitude, longitude)
         ).then((prods) => {
           return {
             parentId: parentCat.id,
@@ -455,7 +530,33 @@ export const usePaginatedProducts = ({
       return;
     }
 
+    const prevCategory = prevSelectedCategoryRef.current;
+    if (
+      prevCategory !== null &&
+      prevCategory !== selectedCategory &&
+      !isDeals
+    ) {
+      const prevIsParent = categories.some((cat) => cat.id === prevCategory);
+      const snapshot = dataRef.current;
+      if (prevIsParent && snapshot.subcategories.length > 0) {
+        categoryViewCacheRef.current.set(prevCategory, {
+          subcategories: snapshot.subcategories,
+          subcategoryProducts: snapshot.subcategoryProducts,
+          loadedSubcategories: snapshot.loadedSubcategories,
+          loadingSubcategories: snapshot.loadingSubcategories,
+        });
+      }
+    }
+    prevSelectedCategoryRef.current = selectedCategory;
+
     const isAllView = selectedCategory === null && !isDeals;
+    const isParentCategoryView =
+      selectedCategory !== null &&
+      !isDeals &&
+      categories.some((cat) => cat.id === selectedCategory);
+    const cachedCategoryView = isParentCategoryView
+      ? categoryViewCacheRef.current.get(selectedCategory)
+      : undefined;
 
     // Skip only the first All fetch when the server already provided rows.
     // Do not restore this skip when leaving All — that left the homepage blank.
@@ -483,11 +584,28 @@ export const usePaginatedProducts = ({
       }));
     }
 
+    if (cachedCategoryView) {
+      setData((prev) => ({
+        ...prev,
+        products: [],
+        subcategories: cachedCategoryView.subcategories,
+        subcategoryProducts: cachedCategoryView.subcategoryProducts,
+        loadedSubcategories: cachedCategoryView.loadedSubcategories,
+        loadingSubcategories: cachedCategoryView.loadingSubcategories,
+        loading: false,
+        loadingMore: false,
+        hasMore: false,
+        currentPage: 1,
+        totalProducts: 0,
+      }));
+    }
+
     const preserveExisting =
       isAllView &&
       (hasAllRowsRef.current || !!allViewCacheRef.current);
+    const preserveCategoryView = !!cachedCategoryView;
 
-    if (!preserveExisting) {
+    if (!preserveExisting && !preserveCategoryView) {
       hasAllRowsRef.current = false;
       // Show product skeletons immediately on category switch — never a full-page loader
       setData(prev => ({
@@ -503,6 +621,18 @@ export const usePaginatedProducts = ({
         currentPage: 1,
         totalProducts: 0
       }));
+    }
+
+    if (preserveCategoryView) {
+      return () => {
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = null;
+        }
+        if (abortControllerRef.current) {
+          abortControllerRef.current.abort();
+        }
+      };
     }
 
     const fetchData = async () => {
@@ -526,12 +656,13 @@ export const usePaginatedProducts = ({
         abortControllerRef.current.abort();
       }
     };
-  }, [selectedCategory, isDeals, parentCategoryKey, latitude, longitude, storeId]);
+  }, [selectedCategory, isDeals, parentCategoryKey, latitude, longitude, storeId, categories]);
 
   return {
     ...data,
     loadMore,
     loadSubcategoryProducts,
+    loadParentCategoryProducts,
     preloadNextSubcategories
   };
 };

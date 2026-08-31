@@ -2,9 +2,9 @@
 
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { GlobeIcon, MapPin } from "lucide-react";
-import { useLoadScript, GoogleMap, Marker } from "@react-google-maps/api";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { MapPin } from "lucide-react";
+import { GoogleMap, Marker } from "@react-google-maps/api";
 import toast from "react-hot-toast";
 import { ArrowLeft, LocateIcon, ChevronRight, ClockIcon, HeartIcon, HomeIcon, BriefcaseBusiness, PlusIcon } from "lucide-react";
 import { useLocation } from "@/contexts/LocationContext";
@@ -12,17 +12,25 @@ import AddressSelector from "@/components/AddressSelector";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { createUserAddress } from "@/lib/api";
 import Loader from "@/components/Loader";
-
-const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY;
-const libraries: ("places" | "drawing" | "geometry" | "visualization")[] = ["places"];
+import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
+import { formatLocationLabel } from "@/lib/format-location-label";
 
 interface CartLocationSelectorProps {
   onLocationSelect: (location: string) => void;
 }
 
-const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationSelect }) => {
+interface CartLocationSelectorDialogProps {
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+  onLocationSelect: (location: string) => void;
+}
+
+const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
+  isOpen,
+  onOpenChange,
+  onLocationSelect,
+}) => {
   const { user } = useAuth();
-  const [isOpen, setIsOpen] = useState(false);
   const { selectedLocation, setSelectedLocation, defaultAddress, setDefaultAddress, addressId, setAddressId, deliveryType, setDeliveryType, setHasSelectedDeliveryType } = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [mapCenter, setMapCenter] = useState({ lat: -34.397, lng: 150.644 });
@@ -36,10 +44,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
   // Remove local deliveryType state - use LocationContext instead
 
-  const { isLoaded, loadError } = useLoadScript({
-    googleMapsApiKey: GOOGLE_API_KEY ?? '',
-    libraries,
-  });
+  const { isLoaded, loadError } = useGoogleMaps();
 
   React.useEffect(() => {
     if (isLoaded && window.google) {
@@ -106,7 +111,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
   const handleSelectLocation = async (location: string, description?: string) => {
     setSelectedLocation(location);
     onLocationSelect(location);
-    setIsOpen(false);
+    onOpenChange(false);
     setPredictions([]);
     setCurrentView('main');
 
@@ -359,25 +364,23 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
     }
   };
 
-  if (loadError) return <Loader />;
-  if (!isLoaded) return <Loader />;
+  if (loadError) {
+    console.error("Google Maps failed to load:", loadError);
+  }
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button 
-          variant="outline" 
-          className="w-full h-12 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2 text-gray-600 hover:text-blue-600"
-        >
-          <MapPin className="h-5 w-5" />
-          <span className="font-medium">{selectedLocation === "Location" ? "Choose your location" : selectedLocation}</span>
-        </Button>
-      </DialogTrigger>
+    <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
         <DialogDescription className="sr-only">
           Select your delivery location by searching, using the map, or choosing from saved addresses
         </DialogDescription>
+        {!isLoaded ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader />
+          </div>
+        ) : (
+          <>
         {currentView === 'main' && (
           <div className="p-4">
             <div className="flex justify-between items-center mb-4">
@@ -562,16 +565,57 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
             </div>
           </div>
         )}
+          </>
+        )}
       </DialogContent>
     </Dialog>
 
-    <AddressSelector
-      isOpen={isAddressSelectorOpen}
-      onClose={() => setIsAddressSelectorOpen(false)}
-      onAddressSelect={handleAddressSelect}
-      title="Add New Address"
-      description="Choose your address by searching or clicking on the map"
-    />
+    {isAddressSelectorOpen && (
+      <AddressSelector
+        isOpen={isAddressSelectorOpen}
+        onClose={() => setIsAddressSelectorOpen(false)}
+        onAddressSelect={handleAddressSelect}
+        title="Add New Address"
+        description="Choose your address by searching or clicking on the map"
+      />
+    )}
+    </>
+  );
+};
+
+const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationSelect }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const { selectedLocation, defaultAddress, selectedStore, deliveryType } = useLocation();
+  const displayLabel = formatLocationLabel(selectedLocation, {
+    defaultAddress,
+    selectedStore,
+    deliveryType,
+  });
+
+  return (
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        title={selectedLocation !== "Location" ? selectedLocation : undefined}
+        className="w-full h-12 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2 text-gray-600 hover:text-blue-600"
+        onClick={() => setIsOpen(true)}
+      >
+        <MapPin className="h-5 w-5 flex-shrink-0" />
+        <span className="font-medium truncate">
+          {selectedLocation === "Location" ? "Choose your location" : displayLabel}
+        </span>
+      </Button>
+
+      {isOpen && (
+        <GoogleMapsProvider>
+          <CartLocationSelectorDialog
+            isOpen={isOpen}
+            onOpenChange={setIsOpen}
+            onLocationSelect={onLocationSelect}
+          />
+        </GoogleMapsProvider>
+      )}
     </>
   );
 };

@@ -139,6 +139,13 @@ const CheckoutPage = () => {
     ensureCartItemsData();
   }, [user, cartStore.cartId, cartStore.items.length]);
 
+  // Read latest preview for skeleton vs refresh without putting it in callback deps
+  // (that previously recreated this function after every response and re-fetched in a loop).
+  const previewDataRef = React.useRef(previewData);
+  previewDataRef.current = previewData;
+  const previewRequestIdRef = React.useRef(0);
+  const pickupStoreId = selectedOrderType === "pickup" ? selectedStore?.id ?? null : null;
+
   // Fetch preview data function - extracted to be reusable
   const fetchPreviewData = React.useCallback(async () => {
     // Don't fetch if user is not authenticated
@@ -150,7 +157,8 @@ const CheckoutPage = () => {
       return;
     }
 
-    const shouldShowSkeleton = !previewData;
+    const shouldShowSkeleton = !previewDataRef.current;
+    const requestId = ++previewRequestIdRef.current;
     try {
       if (shouldShowSkeleton) setLoadingPreview(true);
       else setRefreshingPreview(true);
@@ -160,7 +168,7 @@ const CheckoutPage = () => {
         ? {
             address_id: null, // No address needed for pickup
             mode: selectedOrderType,
-            store_id: selectedStore?.id ? parseInt(selectedStore.id) : null, // Use selected store for pickup
+            store_id: pickupStoreId ? parseInt(String(pickupStoreId)) : null, // Use selected store for pickup
             delivery_service_level: undefined // No delivery service for pickup
           }
         : {
@@ -177,8 +185,16 @@ const CheckoutPage = () => {
         split_order: true // Enable split orders by default
       });
 
+      if (requestId !== previewRequestIdRef.current) {
+        return;
+      }
+
       setPreviewData(response);
     } catch (error: any) {
+      if (requestId !== previewRequestIdRef.current) {
+        return;
+      }
+
       console.error('❌ Failed to fetch preview data:', error);
       
       // Handle authentication errors specifically
@@ -196,10 +212,12 @@ const CheckoutPage = () => {
       
       toast.error('Failed to load order details');
     } finally {
-      if (shouldShowSkeleton) setLoadingPreview(false);
-      setRefreshingPreview(false);
+      if (requestId === previewRequestIdRef.current) {
+        if (shouldShowSkeleton) setLoadingPreview(false);
+        setRefreshingPreview(false);
+      }
     }
-  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, selectedDeliveryOption, selectedStore, router, previewData]);
+  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, selectedDeliveryOption, pickupStoreId, router]);
 
   const previewRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1071,7 +1089,7 @@ const CheckoutPage = () => {
                             <div key={`${store.store_id}-${it.product_id ?? it.id ?? idx}`} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
                               <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-100 rounded flex items-center justify-center overflow-hidden">
                                 {hasValidImage ? (
-                                  <img src={imageUrl as string} alt={productName} className="object-cover w-full h-full" />
+                                  <img src={imageUrl as string} alt={productName} loading="lazy" className="object-cover w-full h-full" />
                                 ) : (
                                   <span className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-300 rounded" />
                                 )}

@@ -3,6 +3,7 @@ import type { Category } from "@/components/Categories";
 import type { Product } from "@/store";
 import {
   HOME_PARENT_CATEGORY_LIMIT,
+  HOME_SERVER_CATEGORY_LIMIT,
   getHomeProductsPerCategory,
 } from "@/lib/home-catalogue-constants";
 
@@ -35,14 +36,21 @@ export async function getHomeCatalogue(): Promise<HomeCatalogue> {
       .filter((cat) => !cat.parent_category_id)
       .slice(0, HOME_PARENT_CATEGORY_LIMIT);
 
-    if (parentCategories.length === 0) {
-      return { ...EMPTY_CATALOGUE, categories };
+    const parentCategoryNames: { [key: number]: string } = {};
+    for (const cat of parentCategories) {
+      parentCategoryNames[cat.id] = cat.name;
+    }
+
+    const serverCategories = parentCategories.slice(0, HOME_SERVER_CATEGORY_LIMIT);
+
+    if (serverCategories.length === 0) {
+      return { ...EMPTY_CATALOGUE, categories, parentCategoryNames };
     }
 
     const perCategorySize = getHomeProductsPerCategory(parentCategories.length);
 
     const rows = await Promise.all(
-      parentCategories.map(async (parentCat) => {
+      serverCategories.map(async (parentCat) => {
         try {
           const products = await getProductsWithPricing(
             [parentCat.id],
@@ -71,12 +79,10 @@ export async function getHomeCatalogue(): Promise<HomeCatalogue> {
       })
     );
 
-    const parentCategoryNames: { [key: number]: string } = {};
     const parentProducts: { [key: number]: Product[] } = {};
     const products: Product[] = [];
 
     for (const row of rows) {
-      parentCategoryNames[row.parentId] = row.parentName;
       parentProducts[row.parentId] = row.products;
       products.push(...row.products);
     }

@@ -1,4 +1,3 @@
-import Image from "next/image";
 import React, { memo, useMemo } from "react";
 import { LuStar } from "react-icons/lu";
 // import ProductCartBar from "./ProductCartBar";
@@ -11,9 +10,16 @@ import { Product } from "../store";
 import { useCategory } from "../contexts/CategoryContext";
 import { getProductPath } from "@/lib/product-slug";
 import { normalizeImageUrl } from "@/lib/normalize-image-url";
+import LazyProductImage from "./LazyProductImage";
 // Removed discount-utils import - using direct pricing data instead
 
-const ProductCard = memo(({ product }: { product: Product }) => {
+const ProductCard = memo(({
+  product,
+  scrollRoot,
+}: {
+  product: Product;
+  scrollRoot?: HTMLDivElement | null;
+}) => {
   const { selectedCategoryId, isDealsSelected, setLastVisitedCategory } =
     useCategory();
 
@@ -106,18 +112,11 @@ const ProductCard = memo(({ product }: { product: Product }) => {
             }}
           >
             {imageUrl && (
-              <Image
+              <LazyProductImage
                 src={imageUrl}
                 alt={product.name || "Product image"}
-                width={200}
-                height={200}
-                loading="lazy"
-                sizes="(max-width: 640px) 140px, (max-width: 768px) 160px, (max-width: 1024px) 180px, 200px"
-                className={`w-full h-full object-cover overflow-hidden transition-transform duration-500 group-hover:scale-105`}
-                onError={(e) => {
-                  console.error("Image failed to load:", e);
-                  e.currentTarget.style.display = "none";
-                }}
+                scrollRoot={scrollRoot}
+                className="w-full h-full object-cover overflow-hidden transition-transform duration-500 group-hover:scale-105"
               />
             )}
           </Link>

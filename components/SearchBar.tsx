@@ -1,24 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { searchProducts, trackSearchClick, getProductById, getSearchHistory } from '@/lib/api';
+import { searchProducts, trackSearchClick, getSearchHistory, invalidateSearchHistoryCache } from '@/lib/api';
 import { getProductPath } from '@/lib/product-slug';
+import { getProductImageUrl } from '@/lib/product-image';
 import { useLocation } from '@/contexts/LocationContext';
 import { Product } from '@/store';
 import AddToCartButton from './AddToCartButton';
 import useCartStore from '@/store';
-
-interface SearchResult {
-  id: number;
-  name: string;
-  ref: string;
-  brand?: string;
-  image_url: string;
-  base_price: number;
-  final_price: number;
-}
 
 interface SearchResponse {
   suggestions: Array<{
@@ -26,7 +17,7 @@ interface SearchResponse {
     type: string;
     search_count: number;
   }>;
-  products: SearchResult[];
+  products: Product[];
   total_results: number;
   search_metadata: {
     query: string;
@@ -38,12 +29,96 @@ interface SearchResponse {
   };
 }
 
+/** Map search API product payload to the Product shape AddToCartButton expects. */
+function mapSearchProductToProduct(raw: Record<string, unknown>): Product {
+  const imageUrl = getProductImageUrl(raw);
+  const pricing = raw.pricing as Product['pricing'] | undefined;
+  const basePrice =
+    pricing?.base_price ??
+    (typeof raw.base_price === 'number' ? raw.base_price : undefined) ??
+    (typeof raw.price === 'number' ? raw.price : 0);
+  const finalPrice =
+    pricing?.final_price ??
+    (typeof raw.final_price === 'number' ? raw.final_price : undefined) ??
+    basePrice;
+
+  const imageUrls = Array.isArray(raw.image_urls)
+    ? (raw.image_urls as string[]).filter((url) => typeof url === 'string' && url.trim())
+    : imageUrl
+      ? [imageUrl]
+      : [];
+
+  return {
+    id: raw.id as number,
+    ref: typeof raw.ref === 'string' ? raw.ref : undefined,
+    name: String(raw.name ?? ''),
+    description: typeof raw.description === 'string' ? raw.description : undefined,
+    brand: typeof raw.brand === 'string' ? raw.brand : undefined,
+    base_price: basePrice,
+    unit_measure:
+      typeof raw.unit_measure === 'string'
+        ? raw.unit_measure
+        : typeof raw.unit === 'string'
+          ? raw.unit
+          : '',
+    image_urls: imageUrls,
+    ecommerce_category_id:
+      typeof raw.ecommerce_category_id === 'number'
+        ? raw.ecommerce_category_id
+        : undefined,
+    ecommerce_subcategory_id:
+      typeof raw.ecommerce_subcategory_id === 'number'
+        ? raw.ecommerce_subcategory_id
+        : undefined,
+    pricing:
+      pricing ??
+      ({
+        base_price: basePrice,
+        final_price: finalPrice,
+        discount_applied: Math.max(0, basePrice - finalPrice),
+        discount_percentage:
+          basePrice > 0
+            ? Math.round(((basePrice - finalPrice) / basePrice) * 100)
+            : 0,
+        applied_price_lists: [],
+      } satisfies NonNullable<Product['pricing']>),
+    inventory: raw.inventory as Product['inventory'] | undefined,
+    price: finalPrice,
+    imageUrl: imageUrl ?? undefined,
+  };
+}
+
 interface SearchBarProps {
   className?: string;
   placeholder?: string;
   showSuggestions?: boolean;
   maxResults?: number;
 }
+
+/** Wait for typing pause before hitting the search API. */
+const SEARCH_DEBOUNCE_MS = 400;
+
+const DROPDOWN_SKELETON_COUNT = 5;
+
+const SearchDropdownSkeleton: React.FC = () => (
+  <div className="py-2">
+    {Array.from({ length: DROPDOWN_SKELETON_COUNT }).map((_, index) => (
+      <div
+        key={index}
+        className="flex items-center gap-3 p-3 animate-pulse"
+        aria-hidden
+      >
+        <div className="flex-shrink-0 w-12 h-12 bg-gray-200 rounded-md" />
+        <div className="flex-1 space-y-2">
+          <div className="h-3 bg-gray-200 rounded w-3/4" />
+          <div className="h-2 bg-gray-200 rounded w-1/2" />
+          <div className="h-3 bg-gray-200 rounded w-1/4" />
+        </div>
+        <div className="flex-shrink-0 w-7 h-7 bg-gray-200 rounded-full" />
+      </div>
+    ))}
+  </div>
+);
 
 const SearchBar: React.FC<SearchBarProps> = ({
   className = "",
@@ -53,6 +128,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
 }) => {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isSearchPage = pathname === '/search';
   const { selectedStore, deliveryType, defaultAddress } = useLocation();
   // Subscribe to cart items to force re-render when cart changes
   const cartItems = useCartStore((state) => state.items);
@@ -66,21 +143,23 @@ const SearchBar: React.FC<SearchBarProps> = ({
   // Search history state
   const [searchHistory, setSearchHistory] = useState<string[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-  // Store full product data for products that have been fetched
-  const [productDataCache, setProductDataCache] = useState<Map<number, Product>>(new Map());
   // Track if user is interacting with dropdown to prevent closing
   const isInteractingRef = useRef(false);
   
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const prevPathnameRef = useRef(pathname);
+  const historyRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const activeSearchQueryRef = useRef('');
+  const searchRequestIdRef = useRef(0);
+  const lastCompletedSearchQueryRef = useRef('');
 
-  // Fetch search history with force refresh
   const fetchSearchHistory = useCallback(async (force = false) => {
     setIsLoadingHistory(true);
     try {
-      const history = await getSearchHistory(10);
-      // Always update state to ensure fresh data is displayed
+      const history = await getSearchHistory(10, { force });
       setSearchHistory(history);
       return history;
     } catch (err) {
@@ -92,135 +171,248 @@ const SearchBar: React.FC<SearchBarProps> = ({
     }
   }, []);
 
-  // Debounced search function
-  const performSearch = useCallback(async (searchQuery: string) => {
-    if (!searchQuery || searchQuery.length < 2) {
-      setResults(null);
-      // If query is empty, we'll handle showing history in handleFocus
+  const scheduleHistoryRefresh = useCallback(() => {
+    invalidateSearchHistoryCache();
+    if (historyRefreshTimeoutRef.current) {
+      clearTimeout(historyRefreshTimeoutRef.current);
+    }
+    historyRefreshTimeoutRef.current = setTimeout(() => {
+      historyRefreshTimeoutRef.current = null;
+      fetchSearchHistory(true);
+    }, 800);
+  }, [fetchSearchHistory]);
+
+  const navigateToSearchPage = useCallback(
+    (searchQuery: string) => {
+      const trimmed = searchQuery.trim();
+      if (trimmed.length < 2) return;
+
+      const url = `/search?q=${encodeURIComponent(trimmed)}`;
+      const currentQuery = isSearchPage ? searchParams.get('q') || '' : '';
+
+      if (isSearchPage && currentQuery === trimmed) {
+        setIsOpen(false);
+        return;
+      }
+
+      if (isSearchPage) {
+        router.replace(url, { scroll: false });
+      } else {
+        router.push(url);
+        setQuery('');
+      }
+
       setIsOpen(false);
+      scheduleHistoryRefresh();
+    },
+    [isSearchPage, searchParams, router, scheduleHistoryRefresh]
+  );
+
+  // Keep header input in sync with the URL on the search results page.
+  useEffect(() => {
+    if (!isSearchPage) return;
+    setQuery((searchParams.get('q') || '').trim());
+  }, [isSearchPage, searchParams]);
+
+  // Run dropdown search — aborts stale requests, ignores out-of-date responses.
+  const performSearch = useCallback(async (searchQuery: string, signal: AbortSignal) => {
+    if (!searchQuery || searchQuery.length < 2) {
       return;
     }
 
+    const requestId = ++searchRequestIdRef.current;
+    activeSearchQueryRef.current = searchQuery;
     setIsLoading(true);
     setError(null);
 
     try {
-      const searchOptions: any = {
+      const searchOptions: {
+        limit: number;
+        includePricing: boolean;
+        includeInventory: boolean;
+        includeCategories: boolean;
+        includeTags: boolean;
+        storeIds?: number[];
+        latitude?: number;
+        longitude?: number;
+        signal: AbortSignal;
+      } = {
+        limit: maxResults,
         includePricing: true,
-        includeInventory: true
+        includeInventory: true,
+        includeCategories: false,
+        includeTags: false,
+        signal,
       };
 
-      // Add location context based on delivery type
       if (deliveryType === 'pickup' && selectedStore?.id) {
-        // For pickup mode, use store ID
-        searchOptions.storeIds = [selectedStore.id];
-      } else if (deliveryType === 'delivery' && defaultAddress?.latitude && defaultAddress?.longitude) {
-        // For delivery mode, use user's coordinates
+        const storeId = parseInt(String(selectedStore.id), 10);
+        if (!Number.isNaN(storeId)) {
+          searchOptions.storeIds = [storeId];
+        }
+      } else if (
+        deliveryType === 'delivery' &&
+        defaultAddress?.latitude &&
+        defaultAddress?.longitude
+      ) {
         searchOptions.latitude = defaultAddress.latitude;
         searchOptions.longitude = defaultAddress.longitude;
       }
 
-      const searchResults = await searchProducts(searchQuery, 'dropdown', searchOptions);
-      
-      // Show all results
-      setResults(searchResults);
+      const searchResults = await searchProducts(
+        searchQuery,
+        'dropdown',
+        searchOptions
+      );
+
+      if (
+        signal.aborted ||
+        requestId !== searchRequestIdRef.current ||
+        activeSearchQueryRef.current !== searchQuery
+      ) {
+        return;
+      }
+
+      setResults({
+        ...searchResults,
+        products: (searchResults.products || []).map(
+          (product: Record<string, unknown>) => mapSearchProductToProduct(product)
+        ),
+      });
+      lastCompletedSearchQueryRef.current = searchQuery;
       setIsOpen(true);
       setSelectedIndex(-1);
     } catch (err) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        return;
+      }
+      if (
+        requestId !== searchRequestIdRef.current ||
+        activeSearchQueryRef.current !== searchQuery
+      ) {
+        return;
+      }
       console.error('Search error:', err);
       setError(err instanceof Error ? err.message : 'Search failed');
       setResults(null);
-      setIsOpen(false);
+      lastCompletedSearchQueryRef.current = searchQuery;
+      setIsOpen(true);
     } finally {
-      setIsLoading(false);
+      if (requestId === searchRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
-  }, [selectedStore, deliveryType, defaultAddress]);
+  }, [maxResults, selectedStore, deliveryType, defaultAddress]);
 
-  // Fetch history on mount
+  // Load history once on mount (deduped in api.ts)
   useEffect(() => {
     fetchSearchHistory();
   }, [fetchSearchHistory]);
 
-  // Refresh history when page becomes visible (user comes back to tab)
+  // Refresh when returning from the search page only
+  useEffect(() => {
+    const prev = prevPathnameRef.current;
+    prevPathnameRef.current = pathname;
+    if (prev === '/search' && pathname !== '/search') {
+      fetchSearchHistory(true);
+    }
+  }, [pathname, fetchSearchHistory]);
+
+  // Refresh when tab regains focus — throttled via api cache TTL
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
-        // Refresh history when user comes back to the page
         fetchSearchHistory();
       }
     };
 
-    const handleWindowFocus = () => {
-      // Refresh history when window regains focus (user switches back to browser tab)
-      fetchSearchHistory();
-    };
-
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    window.addEventListener('focus', handleWindowFocus);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      window.removeEventListener('focus', handleWindowFocus);
+      if (historyRefreshTimeoutRef.current) {
+        clearTimeout(historyRefreshTimeoutRef.current);
+      }
     };
   }, [fetchSearchHistory]);
 
-  // Refresh history when navigating back to home page (not on search page)
-  useEffect(() => {
-    // If we're not on the search page, refresh history
-    // This ensures history is fresh when user navigates back from search page
-    if (pathname !== '/search') {
-      // Delays to ensure backend has saved the query - force refresh
-      const timer1 = setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 500);
-      const timer2 = setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 1200);
-      const timer3 = setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 2000);
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-        clearTimeout(timer3);
-      };
-    }
-  }, [pathname, fetchSearchHistory]);
-
-  // Debounced search effect
+  // Debounced dropdown search — skipped on /search (full results page handles fetching).
   useEffect(() => {
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
 
+    if (searchAbortRef.current) {
+      searchAbortRef.current.abort();
+      searchAbortRef.current = null;
+    }
+
+    if (isSearchPage) {
+      setResults(null);
+      setIsOpen(false);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    if (query.trim().length < 2) {
+      activeSearchQueryRef.current = query;
+      lastCompletedSearchQueryRef.current = '';
+      setResults(null);
+      setIsLoading(false);
+      setError(null);
+      return;
+    }
+
+    const trimmedQuery = query.trim();
+
+    // Show dropdown skeleton immediately while debouncing / fetching.
+    activeSearchQueryRef.current = trimmedQuery;
+    setIsLoading(true);
+    setError(null);
+    setIsOpen(true);
+
     debounceTimeoutRef.current = setTimeout(() => {
-      performSearch(query);
-    }, 200);
+      debounceTimeoutRef.current = null;
+      const controller = new AbortController();
+      searchAbortRef.current = controller;
+      void performSearch(trimmedQuery, controller.signal);
+    }, SEARCH_DEBOUNCE_MS);
 
     return () => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
+        debounceTimeoutRef.current = null;
+      }
+      if (searchAbortRef.current) {
+        searchAbortRef.current.abort();
+        searchAbortRef.current = null;
       }
     };
-  }, [query, performSearch]);
+  }, [query, performSearch, isSearchPage]);
 
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
-    setSelectedIndex(-1); // Reset selection when typing
-    if (value.length < 2) {
+    setSelectedIndex(-1);
+    if (value.trim().length < 2) {
+      lastCompletedSearchQueryRef.current = '';
       setResults(null);
+      setIsLoading(false);
       // Show history if available when input is cleared
       if (value.length === 0 && searchHistory.length > 0 && document.activeElement === inputRef.current) {
         setIsOpen(true);
       } else if (value.length === 0) {
         setIsOpen(false);
       }
+    } else if (!isSearchPage) {
+      setIsLoading(true);
+      setIsOpen(true);
     }
   };
 
   // Handle product click
-  const handleProductClick = async (product: SearchResult) => {
+  const handleProductClick = async (product: Product) => {
     try {
       // Track the click (this also saves the search query to history on backend)
       await trackSearchClick(query, product.id);
@@ -230,18 +422,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
       );
       setIsOpen(false);
       setQuery('');
-      
-      // Refresh history after delays to ensure backend has saved it
-      // Multiple attempts to catch the save - force refresh each time
-      setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 800);
-      setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 1500);
-      setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 2500);
+      scheduleHistoryRefresh();
     } catch (err) {
       console.error('Error tracking search click:', err);
       router.push(
@@ -249,117 +430,59 @@ const SearchBar: React.FC<SearchBarProps> = ({
       );
       setIsOpen(false);
       setQuery('');
-      // Refresh history after search - force refresh
-      setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 800);
-      setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 1500);
-      setTimeout(() => {
-        fetchSearchHistory(true);
-      }, 2500);
+      scheduleHistoryRefresh();
     }
   };
 
   // Handle history item click
   const handleHistoryClick = async (historyQuery: string) => {
-    // Navigate directly to search page
-    router.push(`/search?q=${encodeURIComponent(historyQuery)}`);
-    setIsOpen(false);
-    setQuery('');
-    
-    // Refresh history after navigation (backend saves the query when navigating to search page)
-    setTimeout(() => {
-      fetchSearchHistory(true);
-    }, 800);
-    setTimeout(() => {
-      fetchSearchHistory(true);
-    }, 1500);
-    setTimeout(() => {
-      fetchSearchHistory(true);
-    }, 2500);
+    navigateToSearchPage(historyQuery);
+  };
+
+  const handleShowAllResults = () => {
+    navigateToSearchPage(query);
   };
 
   // Handle clear button click
   const handleClear = async () => {
     setQuery('');
     setResults(null);
+    lastCompletedSearchQueryRef.current = '';
     setSelectedIndex(-1);
-    // Always fetch fresh history when clearing
-    const history = await fetchSearchHistory(true);
+    const history = await fetchSearchHistory();
     if (history.length > 0) {
       setIsOpen(true);
     }
     inputRef.current?.focus();
   };
 
-  // Fetch full product data (with caching)
-  const fetchProductData = useCallback(async (product: SearchResult): Promise<Product | null> => {
-    // Check cache first
-    if (productDataCache.has(product.id)) {
-      return productDataCache.get(product.id)!;
-    }
-    
-    try {
-      // Get location context for fetching product
-      let storeIds: number[] | undefined;
-      let latitude: number | undefined;
-      let longitude: number | undefined;
-      
-      if (deliveryType === 'pickup' && selectedStore?.id) {
-        // Convert store ID string to number
-        const storeIdNum = parseInt(selectedStore.id, 10);
-        if (!isNaN(storeIdNum)) {
-          storeIds = [storeIdNum];
-        }
-      } else if (deliveryType === 'delivery' && defaultAddress?.latitude && defaultAddress?.longitude) {
-        latitude = defaultAddress.latitude;
-        longitude = defaultAddress.longitude;
-      }
-      
-      // Fetch full product data
-      const fullProduct = await getProductById(
-        product.id.toString(),
-        storeIds,
-        latitude,
-        longitude
-      );
-      
-      if (!fullProduct) {
-        return null;
-      }
-      
-      // Cache the product data
-      setProductDataCache(prev => new Map(prev).set(product.id, fullProduct));
-      return fullProduct;
-    } catch (error) {
-      console.error('Failed to fetch product data:', error);
-      return null;
-    }
-  }, [productDataCache, deliveryType, selectedStore, defaultAddress]);
-
-  // Pre-fetch product data for all search results (so AddToCartButton can work)
-  useEffect(() => {
-    if (!results?.products || !isOpen) return;
-
-    const fetchAllProductData = async () => {
-      for (const product of results.products) {
-        // Fetch product data if not cached
-        if (!productDataCache.has(product.id)) {
-          // Fetch in background without blocking UI
-          fetchProductData(product).catch(err => {
-            console.error(`Failed to pre-fetch product ${product.id}:`, err);
-          });
-        }
-      }
-    };
-
-    fetchAllProductData();
-  }, [results?.products, isOpen, productDataCache, fetchProductData]);
-
   // Handle keyboard navigation
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' && query.trim().length >= 2) {
+      const showingHistory = query.length < 2 && searchHistory.length > 0;
+      const showingProducts =
+        !isSearchPage &&
+        query.length >= 2 &&
+        results?.products &&
+        results.products.length > 0;
+
+      if (showingHistory && selectedIndex >= 0 && selectedIndex < searchHistory.length) {
+        e.preventDefault();
+        handleHistoryClick(searchHistory[selectedIndex]);
+        return;
+      }
+
+      if (showingProducts && selectedIndex >= 0 && selectedIndex < results.products.length) {
+        e.preventDefault();
+        handleProductClick(results.products[selectedIndex]);
+        return;
+      }
+
+      e.preventDefault();
+      navigateToSearchPage(query);
+      return;
+    }
+
     if (!isOpen) return;
 
     // Determine if we're showing history or products
@@ -411,24 +534,8 @@ const SearchBar: React.FC<SearchBarProps> = ({
           e.preventDefault();
           if (selectedIndex >= 0 && selectedIndex < totalItems) {
             handleProductClick(products[selectedIndex]);
-          } else if (query.length >= 2) {
-            // If no product selected, navigate to search page with query
-            // Backend will save the query when navigating to search page (via searchProducts call)
-            const searchQuery = query;
-            router.push(`/search?q=${encodeURIComponent(searchQuery)}`);
-            setIsOpen(false);
-            setQuery('');
-            // Refresh history after delays to ensure backend has saved it
-            // Multiple attempts to catch the save - force refresh
-            setTimeout(() => {
-              fetchSearchHistory(true);
-            }, 800);
-            setTimeout(() => {
-              fetchSearchHistory(true);
-            }, 1500);
-            setTimeout(() => {
-              fetchSearchHistory(true);
-            }, 2500);
+          } else {
+            navigateToSearchPage(query);
           }
           break;
         case 'Escape':
@@ -445,30 +552,14 @@ const SearchBar: React.FC<SearchBarProps> = ({
     if (query.length >= 2 && results) {
       setIsOpen(true);
     } else if (query.length === 0) {
-      // Always refresh history when focusing on empty search bar
-      // This ensures we get the latest history from backend
-      // Refresh immediately and also after delays to catch any recent saves
-      const history = await fetchSearchHistory(true);
+      if (searchHistory.length > 0) {
+        setIsOpen(true);
+      }
+      const history = await fetchSearchHistory();
       if (history.length > 0 && document.activeElement === inputRef.current) {
         setIsOpen(true);
       }
-      // Also refresh after delays to catch any recent backend saves - force refresh
-      setTimeout(() => {
-        fetchSearchHistory(true).then((refreshedHistory) => {
-          if (refreshedHistory.length > 0 && document.activeElement === inputRef.current && query.length === 0) {
-            setIsOpen(true);
-          }
-        });
-      }, 600);
-      setTimeout(() => {
-        fetchSearchHistory(true).then((refreshedHistory) => {
-          if (refreshedHistory.length > 0 && document.activeElement === inputRef.current && query.length === 0) {
-            setIsOpen(true);
-          }
-        });
-      }, 1500);
     } else if (query.length < 2) {
-      // Query is 1 character, don't show anything
       setIsOpen(false);
     }
   };
@@ -536,6 +627,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
       maximumFractionDigits: 2,
     }).format(price);
   };
+
+  const trimmedQuery = query.trim();
+  const isDropdownSearchPending =
+    !isSearchPage &&
+    trimmedQuery.length >= 2 &&
+    (isLoading || lastCompletedSearchQueryRef.current !== trimmedQuery);
+  const hasDropdownSearchCompleted =
+    !isSearchPage &&
+    trimmedQuery.length >= 2 &&
+    !isLoading &&
+    lastCompletedSearchQueryRef.current === trimmedQuery &&
+    results !== null;
 
   return (
     <div className={`relative ${className}`}>
@@ -644,11 +747,17 @@ const SearchBar: React.FC<SearchBarProps> = ({
                 ))
               )}
             </div>
-          ) : results?.products && results.products.length > 0 ? (
+          ) : isDropdownSearchPending ? (
+            <SearchDropdownSkeleton />
+          ) : hasDropdownSearchCompleted && results.products.length > 0 ? (
             <div className="py-2">
               {results.products.map((product, index) => {
-                const cachedProduct = productDataCache.get(product.id);
-                
+                const imageUrl = getProductImageUrl(product);
+                const finalPrice =
+                  product.pricing?.final_price ?? product.base_price ?? product.price ?? 0;
+                const basePrice =
+                  product.pricing?.base_price ?? product.base_price ?? finalPrice;
+
                 return (
                   <div
                     key={product.id}
@@ -659,9 +768,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   >
                     {/* Product Image */}
                     <div className="flex-shrink-0 w-12 h-12 bg-gray-100 rounded-md overflow-hidden">
-                      {product.image_url ? (
+                      {imageUrl ? (
                         <Image
-                          src={product.image_url}
+                          src={imageUrl}
                           alt={product.name}
                           width={48}
                           height={48}
@@ -685,18 +794,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
                       <h3 className="text-sm font-medium text-gray-900 truncate">
                         {product.name}
                       </h3>
-                      {(cachedProduct?.brand || product.brand) && (
+                      {product.brand && (
                         <p className="text-xs text-gray-500 truncate">
-                          {cachedProduct?.brand || product.brand}
+                          {product.brand}
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-sm font-semibold text-gray-900">
-                          {formatPrice(product.final_price)}
+                          {formatPrice(finalPrice)}
                         </span>
-                        {product.final_price < product.base_price && (
+                        {finalPrice < basePrice && (
                           <span className="text-xs text-gray-500 line-through">
-                            {formatPrice(product.base_price)}
+                            {formatPrice(basePrice)}
                           </span>
                         )}
                       </div>
@@ -715,14 +824,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
                         isInteractingRef.current = true;
                       }}
                     >
-                      {cachedProduct ? (
-                        <AddToCartButton product={cachedProduct} />
-                      ) : (
-                        // Show loading state while fetching product data
-                        <div className="w-7 h-7 flex items-center justify-center">
-                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-600"></div>
-                        </div>
-                      )}
+                      <AddToCartButton product={product} />
                     </div>
                     
                     {/* Arrow indicator */}
@@ -734,10 +836,23 @@ const SearchBar: React.FC<SearchBarProps> = ({
                   </div>
                 );
               })}
+              <button
+                type="button"
+                onClick={handleShowAllResults}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  isInteractingRef.current = true;
+                }}
+                className="w-full px-3 py-2.5 text-sm font-medium text-blue-600 hover:text-blue-800 hover:bg-blue-50 border-t border-gray-100 transition-colors text-center"
+              >
+                {results.total_results > results.products.length
+                  ? `Show all ${results.total_results} results`
+                  : 'Show more'}
+              </button>
             </div>
-          ) : query.length >= 2 ? (
+          ) : hasDropdownSearchCompleted && results.products.length === 0 ? (
             <div className="p-3 text-gray-500 text-sm text-center">
-              No products found for "{query}"
+              No products found for &quot;{trimmedQuery}&quot;
             </div>
           ) : null}
         </div>

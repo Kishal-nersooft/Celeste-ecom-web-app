@@ -10,11 +10,12 @@ import { motion } from "framer-motion";
 import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 
 const PopularItemsSection = () => {
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [popularProducts, setPopularProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
+  const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const { deliveryType, defaultAddress, selectedStore } = useLocation();
 
   const checkScrollButtons = () => {
@@ -178,7 +179,10 @@ const PopularItemsSection = () => {
       {/* Scrollable product container - same layout as ProductRow */}
       <div className="relative">
         <div
-          ref={scrollContainerRef}
+          ref={(node) => {
+            scrollContainerRef.current = node;
+            setScrollRoot(node);
+          }}
           onScroll={checkScrollButtons}
           className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
           style={{
@@ -195,7 +199,7 @@ const PopularItemsSection = () => {
               exit={{ opacity: 0 }}
               className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
             >
-              <ProductCard product={product} />
+              <ProductCard product={product} scrollRoot={scrollRoot} />
             </motion.div>
           ))}
         </div>
