@@ -10,7 +10,7 @@ import React, {
   useMemo,
   useCallback,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { Category } from "@/components/Categories";
 import { getParentCategories } from "@/lib/api";
 import {
@@ -63,7 +63,6 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
   children,
 }) => {
   const pathname = usePathname();
-  const router = useRouter();
 
   const [categoryState, setCategoryState] = useState<CategoryState>({
     selectedCategoryId: null,
@@ -116,23 +115,36 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
     };
   }, []);
 
-  // Load category state from localStorage after hydration
+  // Load last-visited category from localStorage after hydration.
+  // A clean `/` URL is always All — do not revive selectedCategoryId from storage.
   useEffect(() => {
-    const loadCategoryState = () => {
-      if (typeof window !== 'undefined') {
-        try {
-          const stored = localStorage.getItem("category-state");
-          if (stored) {
-            const parsed = JSON.parse(stored);
-            setCategoryState((prev) => ({ ...prev, ...parsed }));
-          }
-        } catch (error) {
-          console.warn("Failed to load category state from localStorage:", error);
-        }
-      }
-    };
+    if (typeof window === "undefined") return;
+    try {
+      const stored = localStorage.getItem("category-state");
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      const params = new URLSearchParams(window.location.search);
+      const onCleanHome =
+        window.location.pathname === "/" &&
+        !params.get("category") &&
+        params.get("deals") !== "true";
 
-    loadCategoryState();
+      setCategoryState((prev) => ({
+        ...prev,
+        lastVisitedCategory:
+          parsed.lastVisitedCategory ?? prev.lastVisitedCategory,
+        lastVisitedIsDeals:
+          parsed.lastVisitedIsDeals ?? prev.lastVisitedIsDeals,
+        selectedCategoryId: onCleanHome
+          ? null
+          : (parsed.selectedCategoryId ?? prev.selectedCategoryId),
+        isDealsSelected: onCleanHome
+          ? false
+          : (parsed.isDealsSelected ?? prev.isDealsSelected),
+      }));
+    } catch (error) {
+      console.warn("Failed to load category state from localStorage:", error);
+    }
   }, []);
 
   // Save category state to localStorage whenever it changes
@@ -186,21 +198,24 @@ export const CategoryProvider: React.FC<CategoryProviderProps> = ({
         }
         return;
       }
+      // Categories may not be loaded yet; keep current selection until they are.
+      if (parentCategories.length === 0) return;
     }
 
-    if (pathname === "/" && categoryState.lastVisitedCategory !== null) {
-      setCategoryState((prev) => ({
-        ...prev,
-        selectedCategoryId: prev.lastVisitedCategory,
-        isDealsSelected: prev.lastVisitedIsDeals,
-      }));
+    // Clean homepage URL means All. lastVisited is only for explicit back links.
+    if (pathname === "/") {
+      setCategoryState((prev) => {
+        if (prev.selectedCategoryId === null && !prev.isDealsSelected) {
+          return prev;
+        }
+        return {
+          ...prev,
+          selectedCategoryId: null,
+          isDealsSelected: false,
+        };
+      });
     }
-  }, [
-    pathname,
-    parentCategories,
-    categoryState.lastVisitedCategory,
-    categoryState.lastVisitedIsDeals,
-  ]);
+  }, [pathname, parentCategories]);
 
   const setSelectedCategory = useCallback(
     (

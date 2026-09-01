@@ -1,14 +1,17 @@
 "use client";
 
-import React, { createContext, useCallback, useContext, useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import DeliveryWarningDialog from "@/components/DeliveryWarningDialog";
 import { GlobeIcon } from "lucide-react";
+import deliveryIcon from "@/images/delivery-icon.png";
+import pickupIcon from "@/images/pickup-icon.png";
 import { GoogleMap, Marker } from "@react-google-maps/api";
 import toast from "react-hot-toast";
-import { ArrowLeft, LocateIcon, ChevronRight, MapPinIcon, ClockIcon, HeartIcon, HomeIcon, BriefcaseBusiness, PlusIcon } from "lucide-react";
+import { ArrowLeft, LocateIcon, ChevronRight, MapPinIcon, ClockIcon, HeartIcon, HomeIcon, BriefcaseBusiness, PlusIcon, Check } from "lucide-react";
 import { useLocation } from "@/contexts/LocationContext";
 import { getStores, getNearbyStores, getUserAddresses, addUserAddress, setDefaultAddress } from "@/lib/api";
 import AddressSelector from "@/components/AddressSelector";
@@ -16,6 +19,8 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import Loader from "@/components/Loader";
 import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
 import { formatLocationLabel } from "@/lib/format-location-label";
+import { addRecentLocation, loadRecentLocations, VISIBLE_RECENT_LOCATIONS } from "@/lib/recent-locations";
+import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/lib/google-maps-config";
 
 // Store interface based on the backend schema
 interface Store {
@@ -41,28 +46,51 @@ interface Store {
   distance?: number; // Distance in km when using nearby stores
 }
 
+export type LocationPickerStart = "mode" | "location";
+
 interface LocationSelectorDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
   onLocationSelect: (location: string) => void;
+  required?: boolean;
+  startView?: LocationPickerStart;
 }
 
 const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   isOpen,
   onOpenChange,
   onLocationSelect,
+  required = false,
+  startView = "location",
 }) => {
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
-  const { setSelectedLocation, setSelectedStore, deliveryType, setDeliveryType, setHasSelectedDeliveryType, setDefaultAddress: setDefaultAddressContext, setAddressId } = useLocation();
+  const {
+    setSelectedLocation,
+    selectedStore,
+    setSelectedStore,
+    deliveryType,
+    setDeliveryType,
+    setHasSelectedDeliveryType,
+    hasSelectedDeliveryType,
+    defaultAddress,
+    setDefaultAddress: setDefaultAddressContext,
+    setAddressId,
+  } = useLocation();
+  // Dialog toggle is local until the user confirms a store or delivery location.
+  const [pickerMode, setPickerMode] = useState<"pickup" | "delivery">(deliveryType);
+  const [pendingMode, setPendingMode] = useState<"pickup" | "delivery">("delivery");
   const [searchQuery, setSearchQuery] = useState("");
-  const [mapCenter, setMapCenter] = useState({ lat: -34.397, lng: 150.644 }); // Default map center
+  const [mapCenter, setMapCenter] = useState(SRI_LANKA_MAP_CENTER);
   const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const [autocompleteService, setAutocompleteService] = useState<any>(null);
   const [geocoderService, setGeocoderService] = useState<google.maps.Geocoder | null>(null);
-  const [recentLocations, setRecentLocations] = useState<string[]>([]);
-  const [currentView, setCurrentView] = useState<'main' | 'map' | 'savedAddresses' | 'outletMap'>('main'); // State to manage views
+  const [recentLocations, setRecentLocations] = useState<string[]>(loadRecentLocations);
+  const [currentView, setCurrentView] = useState<'mode' | 'main' | 'map' | 'savedAddresses' | 'outletMap'>(
+    startView === "mode" ? "mode" : "main"
+  );
   const [outletSearchQuery, setOutletSearchQuery] = useState("");
   const [selectedOutlet, setSelectedOutlet] = useState<Store | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
@@ -121,27 +149,26 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   }, [isLoaded]);
 
   React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedLocations = localStorage.getItem("recentLocations");
-      if (storedLocations) {
-        try {
-          setRecentLocations(JSON.parse(storedLocations));
-        } catch (error) {
-          console.warn("Failed to parse recent locations from localStorage:", error);
-        }
-      }
-    }
-  }, []);
+    setRecentLocations(loadRecentLocations());
+  }, [isOpen]);
+
+  const wasOpenRef = useRef(false);
+  const startViewOnOpenRef = useRef(startView);
 
   React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      try {
-        localStorage.setItem("recentLocations", JSON.stringify(recentLocations));
-      } catch (error) {
-        console.warn("Failed to save recent locations to localStorage:", error);
-      }
+    const justOpened = isOpen && !wasOpenRef.current;
+    const entryChangedWhileOpen =
+      isOpen && wasOpenRef.current && startViewOnOpenRef.current !== startView;
+
+    if (justOpened || entryChangedWhileOpen) {
+      setPickerMode(deliveryType);
+      setPendingMode(hasSelectedDeliveryType ? deliveryType : "delivery");
+      setCurrentView(startView === "mode" ? "mode" : "main");
+      startViewOnOpenRef.current = startView;
     }
-  }, [recentLocations]);
+
+    wasOpenRef.current = isOpen;
+  }, [isOpen, startView, deliveryType, hasSelectedDeliveryType]);
 
   // Load saved addresses from backend
   React.useEffect(() => {
@@ -227,7 +254,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   // Fetch stores when pickup is selected and the dialog is open
   React.useEffect(() => {
     const fetchStores = async () => {
-      if (!isOpen || deliveryType !== 'pickup' || stores.length > 0) {
+      if (!isOpen || pickerMode !== 'pickup' || stores.length > 0) {
         return;
       }
         setLoadingStores(true);
@@ -275,21 +302,21 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     };
 
     fetchStores();
-  }, [deliveryType, isOpen, stores.length]);
+  }, [pickerMode, isOpen, stores.length]);
 
   const handleSelectLocation = async (location: string, description?: string) => {
+    setDeliveryType('delivery');
+    setHasSelectedDeliveryType(true);
+    setRecentLocations(addRecentLocation(location, description));
     setSelectedLocation(location);
     onLocationSelect(location);
     onOpenChange(false);
     setPredictions([]);
     setCurrentView('main');
 
-    // Update recent locations
-    setRecentLocations((prevLocations) => {
-      const newLocationItem = description ? `${location}|${description}` : location;
-      const newLocations = [newLocationItem, ...prevLocations.filter((loc) => loc.split('|')[0] !== location)];
-      return newLocations.slice(0, 3); // Keep only the last 3 unique locations
-    });
+    if (pathname !== "/" && pathname !== "/checkout" && !pathname.startsWith("/checkout/")) {
+      router.push("/");
+    }
 
     // Auto-save the selected location as default address
     // Handle both address strings and coordinate strings
@@ -582,10 +609,11 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   };
 
   const handleSelectOutlet = (store: Store) => {
+    setPickerMode('pickup');
+    setDeliveryType('pickup');
+    setHasSelectedDeliveryType(true);
     setSelectedOutlet(store);
-    setSelectedLocation(store.name);
-    setSelectedStore(store); // Store the selected store in context
-    onLocationSelect(store.name);
+    setSelectedStore(store);
     onOpenChange(false);
     setCurrentView('main');
 
@@ -593,9 +621,54 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     router.push(`/store/${store.id}`);
   };
 
+  const hasDeliverySelection = !!(defaultAddress?.latitude && defaultAddress?.longitude);
+  const hasPickupSelection = !!selectedStore;
+
+  const goToHomeIfNeeded = () => {
+    if (pathname !== "/" && pathname !== "/checkout" && !pathname.startsWith("/checkout/")) {
+      router.push("/");
+    }
+  };
+
+  const handleConfirmMode = () => {
+    if (pendingMode === "delivery") {
+      setDeliveryType("delivery");
+      setHasSelectedDeliveryType(true);
+      setPickerMode("delivery");
+      if (hasDeliverySelection) {
+        if (defaultAddress?.address) {
+          setSelectedLocation(defaultAddress.address);
+        }
+        onOpenChange(false);
+        goToHomeIfNeeded();
+        return;
+      }
+      setCurrentView("main");
+      return;
+    }
+
+    setPickerMode("pickup");
+    if (hasPickupSelection) {
+      setDeliveryType("pickup");
+      setHasSelectedDeliveryType(true);
+      onOpenChange(false);
+      if (selectedStore?.id) {
+        router.push(`/store/${selectedStore.id}`);
+      }
+      return;
+    }
+    setCurrentView("main");
+  };
+
   const filteredStores = (stores || []).filter(store =>
     store.name.toLowerCase().includes(outletSearchQuery.toLowerCase()) ||
     store.address.toLowerCase().includes(outletSearchQuery.toLowerCase())
+  );
+
+  const storesWithCoordinates = (stores || []).filter(
+    (store) =>
+      Number.isFinite(store.location?.latitude) &&
+      Number.isFinite(store.location?.longitude)
   );
 
   const fetchPredictions = React.useCallback(
@@ -726,6 +799,12 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     }
   };
 
+  const openSriLankaMap = (view: 'map' | 'outletMap') => {
+    setMapCenter(SRI_LANKA_MAP_CENTER);
+    setMarkerPosition(null);
+    setCurrentView(view);
+  };
+
   const handleMapClick = (e: any) => {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
@@ -748,9 +827,85 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
 
   return (
     <>
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
-        {!isLoaded ? (
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open && required) return;
+        onOpenChange(open);
+      }}
+    >
+      <DialogContent
+        mobileAsSheet
+        sheetDismissible={!required}
+        sheetCompact={currentView === "mode"}
+        hideCloseButton={required}
+        onDismiss={() => {
+          if (!required) onOpenChange(false);
+        }}
+        className="max-w-[95vw] sm:max-w-[600px] lg:max-h-[90vh] lg:overflow-y-auto"
+        onPointerDownOutside={(e) => {
+          if (required) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (required) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (required) e.preventDefault();
+        }}
+      >
+        {currentView === 'mode' ? (
+          <div className="px-1 pt-1 pb-2 sm:px-2">
+            <DialogTitle className="text-center text-lg sm:text-xl font-bold mb-4">
+              Shopping option
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Choose delivery or pickup
+            </DialogDescription>
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingMode("delivery")}
+                className={`flex items-center gap-3 w-full rounded-md border bg-white px-3 py-2.5 text-left text-sm sm:text-base font-medium text-black ${
+                  pendingMode === "delivery"
+                    ? "border-black"
+                    : "border-gray-200"
+                }`}
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0">
+                  <Image src={deliveryIcon} alt="" width={20} height={20} className="h-5 w-5 object-contain" />
+                </span>
+                <span className="flex-1">Delivery</span>
+                {pendingMode === "delivery" && (
+                  <Check className="h-4 w-4 text-black shrink-0" strokeWidth={2.5} aria-hidden />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingMode("pickup")}
+                className={`flex items-center gap-3 w-full rounded-md border bg-white px-3 py-2.5 text-left text-sm sm:text-base font-medium text-black ${
+                  pendingMode === "pickup"
+                    ? "border-black"
+                    : "border-gray-200"
+                }`}
+              >
+                <span className="flex h-8 w-8 items-center justify-center rounded-md shrink-0">
+                  <Image src={pickupIcon} alt="" width={20} height={20} className="h-5 w-5 object-contain" />
+                </span>
+                <span className="flex-1">Pickup</span>
+                {pendingMode === "pickup" && (
+                  <Check className="h-4 w-4 text-black shrink-0" strokeWidth={2.5} aria-hidden />
+                )}
+              </button>
+            </div>
+            <Button
+              type="button"
+              className="mt-4 w-full rounded-md"
+              onClick={handleConfirmMode}
+            >
+              Confirm
+            </Button>
+          </div>
+        ) : !isLoaded ? (
           <div className="flex items-center justify-center py-16">
             <Loader />
           </div>
@@ -758,35 +913,16 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
           <>
         {currentView === 'main' && (
           <div className="p-3 sm:p-4">
-            <div className="flex justify-between items-center mb-3">
-              <DialogTitle className="text-sm sm:text-base md:text-lg lg:text-xl font-bold">
-                {deliveryType === 'pickup' ? 'Select Outlet' : 'Select Your Location'}
-              </DialogTitle>
-              <div className="flex bg-gray-100 rounded-full p-0.5 sm:p-1">
-                <Button
-                  variant="ghost"
-                  className={`rounded-full px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 text-[10px] sm:text-xs md:text-sm ${deliveryType === 'pickup' ? 'bg-black text-white' : ''}`}
-                  onClick={() => {
-                    setDeliveryType('pickup');
-                    setHasSelectedDeliveryType(true);
-                  }}
-                >
-                  Pickup
-                </Button>
-                <Button
-                  variant="ghost"
-                  className={`rounded-full px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 text-[10px] sm:text-xs md:text-sm ${deliveryType === 'delivery' ? 'bg-black text-white' : ''}`}
-                  onClick={() => {
-                    setDeliveryType('delivery');
-                    setHasSelectedDeliveryType(true);
-                  }}
-                >
-                  Delivery
-                </Button>
-              </div>
-            </div>
+            <DialogTitle className="text-sm sm:text-base md:text-lg lg:text-xl font-bold mb-3">
+              {pickerMode === 'pickup' ? 'Select Outlet' : 'Select Your Location'}
+            </DialogTitle>
+            {required && (
+              <p className="text-[11px] sm:text-xs text-amber-700 mb-3">
+                Please select a delivery location or pickup store to continue.
+              </p>
+            )}
 
-            {deliveryType === 'pickup' ? (
+            {pickerMode === 'pickup' ? (
               // Store Selection View
               <div>
                   <div className="relative mb-3">
@@ -805,7 +941,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
 
                 {/* Select Outlet on Map Option */}
                 <div className="flex items-center justify-between cursor-pointer py-2 sm:py-3 px-2 sm:px-3 mb-3 border rounded-lg hover:bg-gray-50 transition-colors"
-                     onClick={() => setCurrentView('outletMap')}>
+                     onClick={() => openSriLankaMap('outletMap')}>
                   <div className="flex items-center space-x-2 sm:space-x-3">
                     <MapPinIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                     <span className="text-sm sm:text-base font-medium">Select Outlet on Map</span>
@@ -891,7 +1027,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                     <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                   </div>
                   <div className="flex items-center justify-between cursor-pointer py-2 hover:bg-gray-50 rounded-md px-2"
-                       onClick={() => setCurrentView('map')}>
+                       onClick={() => openSriLankaMap('map')}>
                     <div className="flex items-center space-x-2 sm:space-x-3">
                       <MapPinIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
                       <span className="text-sm sm:text-base">Set on Map</span>
@@ -911,7 +1047,11 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                 {recentLocations.length > 0 && (
                   <div>
                     <h3 className="text-sm sm:text-base text-gray-500 font-semibold mb-2 sm:mb-3">Recently Searched Locations</h3>
-                    <ul className="space-y-2 sm:space-y-3">
+                    <ul
+                      className={`space-y-2 sm:space-y-3 overflow-y-auto overscroll-y-contain pr-1 ${
+                        recentLocations.length > VISIBLE_RECENT_LOCATIONS ? "max-h-[9.5rem] sm:max-h-[10rem]" : ""
+                      }`}
+                    >
                       {recentLocations.map((locString) => {
                         const [name, description] = locString.split('|');
                         return (
@@ -922,9 +1062,9 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                           >
                             <div className="flex items-center space-x-2 sm:space-x-3">
                               <ClockIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
-                              <div>
-                                <p className="font-medium text-xs sm:text-sm">{name}</p>
-                                {description && <p className="text-[10px] sm:text-xs text-gray-500">{description}</p>}
+                              <div className="min-w-0">
+                                <p className="font-medium text-xs sm:text-sm truncate">{name.split(',')[0].trim()}</p>
+                                {description && <p className="text-[10px] sm:text-xs text-gray-500 truncate">{description}</p>}
                               </div>
                             </div>
                             <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
@@ -951,7 +1091,8 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
               <GoogleMap
                 mapContainerStyle={{ width: "100%", height: "100%" }}
                 center={mapCenter}
-                zoom={10}
+                zoom={SRI_LANKA_MAP_ZOOM}
+                onLoad={fitMapToSriLanka}
                 onClick={handleMapClick}
               >
                 {markerPosition && <Marker position={markerPosition} />}
@@ -972,10 +1113,11 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
             <div className="w-full h-64 sm:h-80 bg-gray-200 rounded-md overflow-hidden mb-3 sm:mb-4">
               <GoogleMap
                 mapContainerStyle={{ width: "100%", height: "100%" }}
-                center={stores && stores.length > 0 ? { lat: stores[0].location.latitude, lng: stores[0].location.longitude } : { lat: 6.841532143759643, lng: 79.96499475091696 }}
-                zoom={12}
+                center={SRI_LANKA_MAP_CENTER}
+                zoom={SRI_LANKA_MAP_ZOOM}
+                onLoad={fitMapToSriLanka}
               >
-                {(stores || []).map((store) => (
+                {storesWithCoordinates.map((store) => (
                   <Marker
                     key={store.id}
                     position={{ lat: store.location.latitude, lng: store.location.longitude }}
@@ -1160,7 +1302,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
 };
 
 type LocationPickerContextValue = {
-  openPicker: () => void;
+  openPicker: (start?: LocationPickerStart) => void;
 };
 
 const LocationPickerContext = createContext<LocationPickerContextValue | null>(null);
@@ -1175,58 +1317,77 @@ export function LocationSelectorProvider({
   children,
 }: LocationSelectorProviderProps) {
   const { loading: authLoading } = useAuth();
-  const { hasLocationSelected, isLocationReady } = useLocation();
+  const { hasValidLocation, isLocationLoading } = useLocation();
+  const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
-  const [hasCheckedFirstVisit, setHasCheckedFirstVisit] = useState(false);
+  const [isPickerMounted, setIsPickerMounted] = useState(false);
+  const [pickerStart, setPickerStart] = useState<LocationPickerStart>("mode");
 
-  const openPicker = useCallback(() => {
+  const locationRequired = !hasValidLocation;
+  const isAuthRoute =
+    pathname === "/login" ||
+    pathname === "/sign-in" ||
+    pathname === "/sign-up" ||
+    pathname.startsWith("/login/") ||
+    pathname.startsWith("/sign-in/") ||
+    pathname.startsWith("/sign-up/");
+
+  const openPicker = useCallback((start: LocationPickerStart = "location") => {
+    setPickerStart(start);
     setIsOpen(true);
   }, []);
 
+  const handleOpenChange = useCallback((open: boolean) => {
+    setIsOpen(open);
+  }, []);
+
   useEffect(() => {
-    if (authLoading || hasCheckedFirstVisit) {
+    if (isOpen) {
+      setIsPickerMounted(true);
       return;
     }
 
-    const globalCheckKey = "locationSelectorAutoOpenAttempted";
-    if (typeof window !== "undefined" && localStorage.getItem(globalCheckKey)) {
-      setHasCheckedFirstVisit(true);
+    const unmountTimer = setTimeout(() => {
+      setIsPickerMounted(false);
+    }, 350);
+
+    return () => clearTimeout(unmountTimer);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (authLoading || isLocationLoading || isAuthRoute) {
       return;
     }
 
-    if (!hasLocationSelected && !isLocationReady) {
-      if (typeof window !== "undefined") {
-        localStorage.setItem(globalCheckKey, "true");
-      }
-
+    if (locationRequired && !isOpen) {
       const timer = setTimeout(() => {
+        setPickerStart("mode");
         setIsOpen(true);
-        setHasCheckedFirstVisit(true);
-      }, 500);
-
+      }, 400);
       return () => clearTimeout(timer);
     }
-
-    if (typeof window !== "undefined") {
-      localStorage.setItem(globalCheckKey, "true");
-    }
-    setHasCheckedFirstVisit(true);
-  }, [authLoading, hasLocationSelected, isLocationReady, hasCheckedFirstVisit]);
+  }, [authLoading, isLocationLoading, locationRequired, isOpen, isAuthRoute]);
 
   return (
     <LocationPickerContext.Provider value={{ openPicker }}>
       {children}
-      {isOpen && (
+      {isPickerMounted && (
         <GoogleMapsProvider>
           <LocationSelectorDialog
             isOpen={isOpen}
-            onOpenChange={setIsOpen}
+            onOpenChange={handleOpenChange}
             onLocationSelect={onLocationSelect}
+            required={locationRequired && !isAuthRoute}
+            startView={pickerStart}
           />
         </GoogleMapsProvider>
       )}
     </LocationPickerContext.Provider>
   );
+}
+
+export function useLocationPicker() {
+  return useContext(LocationPickerContext);
 }
 
 export function LocationSelectorTrigger({
@@ -1249,9 +1410,9 @@ export function LocationSelectorTrigger({
       title={selectedLocation !== "Location" ? selectedLocation : undefined}
       className={
         className ??
-        "rounded-full min-w-[100px] sm:min-w-[120px] max-w-[140px] sm:max-w-[160px] flex items-center gap-1.5 sm:gap-2 overflow-hidden"
+        "rounded-md min-w-[100px] sm:min-w-[120px] max-w-[140px] sm:max-w-[160px] flex items-center gap-1.5 sm:gap-2 overflow-hidden"
       }
-      onClick={() => picker?.openPicker()}
+      onClick={() => picker?.openPicker("location")}
     >
       <GlobeIcon className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
       <span className="truncate text-left flex-1 min-w-0 text-xs sm:text-sm">

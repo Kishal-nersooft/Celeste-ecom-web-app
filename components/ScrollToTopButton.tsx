@@ -4,11 +4,13 @@ import { useEffect, useState } from "react";
 import { ChevronUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useMobileGoToCartBarVisible } from "@/hooks/useMobileGoToCartBar";
 
 const SCROLL_THRESHOLD = 300;
 
 export function ScrollToTopButton() {
   const [visible, setVisible] = useState(false);
+  const cartBarVisible = useMobileGoToCartBarVisible();
 
   useEffect(() => {
     const onScroll = () => {
@@ -32,7 +34,8 @@ export function ScrollToTopButton() {
       aria-label="Scroll to top"
       onClick={scrollToTop}
       className={cn(
-        "fixed bottom-6 right-6 z-40 h-11 w-11 rounded-full border-black bg-black text-white shadow-md transition-all duration-300 hover:bg-neutral-800 hover:text-white hover:shadow-lg",
+        "fixed right-6 z-40 h-11 w-11 rounded-full border-black bg-black text-white shadow-md transition-all duration-300 hover:bg-neutral-800 hover:text-white hover:shadow-lg",
+        cartBarVisible ? "bottom-28 lg:bottom-6" : "bottom-6",
         visible
           ? "pointer-events-auto translate-y-0 opacity-100"
           : "pointer-events-none translate-y-2 opacity-0"

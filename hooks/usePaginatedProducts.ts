@@ -114,6 +114,18 @@ export const usePaginatedProducts = ({
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const beginRequest = () => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    return controller;
+  };
+  const isCurrentRequest = (controller: AbortController) =>
+    abortControllerRef.current === controller;
+  const stopLoadingIfCurrent = (controller: AbortController) => {
+    if (!isCurrentRequest(controller)) return;
+    setData((prev) => ({ ...prev, loading: false, loadingMore: false }));
+  };
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const didConsumeInitialAllSkipRef = useRef(false);
   const hasAllRowsRef = useRef(hasServerRows);
@@ -272,11 +284,7 @@ export const usePaginatedProducts = ({
     }
 
     try {
-      // Cancel previous request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
+      const request = beginRequest();
 
       // Use backend pagination with cursor-based approach
       const discountedProducts = await executeWithLimit(() =>
@@ -285,7 +293,9 @@ export const usePaginatedProducts = ({
           storeId ? [storeId] : undefined
         )
       );
-
+      if (!isCurrentRequest(request) || !isDealsRef.current) {
+        return;
+      }
 
       setData(prev => ({
         ...prev,
@@ -298,7 +308,7 @@ export const usePaginatedProducts = ({
       }));
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return; // Request was cancelled
+        return;
       }
       console.error("❌ Error fetching deals products:", error);
       setData(prev => ({ 
@@ -323,11 +333,7 @@ export const usePaginatedProducts = ({
     }
 
     try {
-      // Cancel previous request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
+      const request = beginRequest();
 
       const isParentCategory = categories.some(cat => cat.id === selectedCategory);
 
@@ -335,7 +341,11 @@ export const usePaginatedProducts = ({
         const subcats = await executeWithLimit(() =>
           resolveSubcategories(selectedCategory, categories)
         );
-        if (selectedCategoryRef.current !== selectedCategory || isDealsRef.current) {
+        if (
+          !isCurrentRequest(request) ||
+          selectedCategoryRef.current !== selectedCategory ||
+          isDealsRef.current
+        ) {
           return;
         }
         setData(prev => ({ ...prev, subcategories: subcats }));
@@ -380,7 +390,11 @@ export const usePaginatedProducts = ({
             longitude
           )
         );
-        if (selectedCategoryRef.current !== selectedCategory || isDealsRef.current) {
+        if (
+          !isCurrentRequest(request) ||
+          selectedCategoryRef.current !== selectedCategory ||
+          isDealsRef.current
+        ) {
           return;
         }
 
@@ -404,7 +418,7 @@ export const usePaginatedProducts = ({
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return; // Request was cancelled
+        return;
       }
       console.error("❌ Error fetching subcategory products:", error);
       setData(prev => ({ 
@@ -433,13 +447,8 @@ export const usePaginatedProducts = ({
       setData(prev => ({ ...prev, loadingMore: true }));
     }
 
+    const request = beginRequest();
     try {
-      // Cancel previous request
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-      }
-      abortControllerRef.current = new AbortController();
-
       // Get all parent categories first
       const parentCategories = categories.filter(cat => !cat.parent_category_id);
       
@@ -459,7 +468,11 @@ export const usePaginatedProducts = ({
       );
 
       const parentProductData = await Promise.all(productPromises);
-      if (selectedCategoryRef.current !== null || isDealsRef.current) {
+      if (
+        !isCurrentRequest(request) ||
+        selectedCategoryRef.current !== null ||
+        isDealsRef.current
+      ) {
         return;
       }
       const allProducts: Product[] = [];
@@ -496,7 +509,13 @@ export const usePaginatedProducts = ({
       }));
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        return; // Request was cancelled
+        if (
+          selectedCategoryRef.current === null &&
+          !isDealsRef.current
+        ) {
+          stopLoadingIfCurrent(request);
+        }
+        return;
       }
       console.error("❌ Error fetching all products:", error);
       setData(prev => ({ 
@@ -558,11 +577,17 @@ export const usePaginatedProducts = ({
       ? categoryViewCacheRef.current.get(selectedCategory)
       : undefined;
 
-    // Skip only the first All fetch when the server already provided rows.
-    // Do not restore this skip when leaving All — that left the homepage blank.
+    // Skip the first All fetch only while SSR rows are still on screen.
+    // After a category remount those rows are cleared — falling through
+    // restores allViewCache / refetches instead of leaving the homepage blank.
     if (isAllView && hasServerRows && !didConsumeInitialAllSkipRef.current) {
       didConsumeInitialAllSkipRef.current = true;
-      return;
+      const hasVisibleAllRows =
+        Object.keys(dataRef.current.parentProducts).length > 0 &&
+        Object.keys(dataRef.current.parentCategoryNames).length > 0;
+      if (hasVisibleAllRows) {
+        return;
+      }
     }
 
     if (isAllView && allViewCacheRef.current) {

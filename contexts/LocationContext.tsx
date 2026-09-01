@@ -29,6 +29,8 @@ interface LocationContextType {
   isLocationLoading: boolean;
   isLocationReady: boolean; // True when we have valid location data
   hasLocationSelected: boolean; // True if user has ever selected a location
+  hasValidLocation: boolean; // Delivery address or pickup store is set
+  canPlaceOrder: boolean; // Location is complete enough to create an order
 }
 
 const LocationContext = createContext<LocationContextType | undefined>(
@@ -46,21 +48,49 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const [defaultAddress, setDefaultAddress] = useState<any | null>(null);
   const [addressId, setAddressId] = useState<number | null>(null);
   
-  // Add loading state for better UX
-  const [isLocationLoading, setIsLocationLoading] = useState(false);
+  // Start loading until localStorage/auth address resolution finishes
+  const [isLocationLoading, setIsLocationLoading] = useState(true);
   
   // Check if location is ready (has valid data)
   const isLocationReady = useMemo(() => {
     return !!(defaultAddress && defaultAddress.latitude && defaultAddress.longitude);
   }, [defaultAddress]);
 
-  // Check if user has ever selected a location (for first visit detection)
-  const hasLocationSelected = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    const savedAddress = localStorage.getItem("defaultAddress");
-    const savedLocation = localStorage.getItem("selectedLocation");
-    return !!(savedAddress || (savedLocation && savedLocation !== "Location"));
-  }, [defaultAddress, selectedLocation]);
+  const hasPersistedLocation = useCallback(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const savedLocation = localStorage.getItem("selectedLocation");
+      const savedStore = localStorage.getItem("selectedStore");
+      const savedAddress = localStorage.getItem("defaultAddress");
+      if (savedStore) return true;
+      if (savedLocation && savedLocation !== "Location") return true;
+      if (savedAddress) {
+        const parsed = JSON.parse(savedAddress);
+        return !!(parsed?.latitude && parsed?.longitude);
+      }
+    } catch {
+      return false;
+    }
+    return false;
+  }, []);
+
+  // True once the user has chosen a delivery address or pickup store
+  const hasValidLocation = useMemo(() => {
+    if (selectedStore) return true;
+    if (defaultAddress?.latitude != null && defaultAddress?.longitude != null) return true;
+    if (addressId != null) return true;
+    if (selectedLocation && selectedLocation !== "Location") return true;
+    return hasPersistedLocation();
+  }, [selectedStore, defaultAddress, addressId, selectedLocation, hasPersistedLocation]);
+
+  const hasLocationSelected = hasValidLocation;
+
+  const canPlaceOrder = useMemo(() => {
+    if (deliveryType === "pickup") {
+      return !!selectedStore;
+    }
+    return !!(addressId && defaultAddress?.latitude && defaultAddress?.longitude);
+  }, [deliveryType, selectedStore, addressId, defaultAddress]);
 
   // Persistence functions
   const saveToLocalStorage = useCallback((key: string, value: any) => {
@@ -100,7 +130,11 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const memoizedSetSelectedStore = useCallback((store: Store | null) => {
     setSelectedStore((prev) => {
       if (prev !== store) {
-        saveToLocalStorage("selectedStore", store);
+        if (store) {
+          saveToLocalStorage("selectedStore", store);
+        } else if (typeof window !== "undefined") {
+          localStorage.removeItem("selectedStore");
+        }
         return store;
       }
       return prev;
@@ -362,6 +396,8 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       isLocationLoading,
       isLocationReady,
       hasLocationSelected,
+      hasValidLocation,
+      canPlaceOrder,
     }),
     [
       selectedLocation,
@@ -379,6 +415,8 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
       isLocationLoading,
       isLocationReady,
       hasLocationSelected,
+      hasValidLocation,
+      canPlaceOrder,
     ]
   );
 

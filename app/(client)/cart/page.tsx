@@ -17,11 +17,15 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import Image from "next/image";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { getProductById } from "@/lib/api";
+import { useLocation } from "@/contexts/LocationContext";
+import { useLocationPicker } from "@/components/LocationSelector";
 
 const CartPage = () => {
   const { user, loading, unresolved, isGuest } = useAuth();
   const router = useRouter();
   const cartStore = useCartStore();
+  const { hasValidLocation } = useLocation();
+  const locationPicker = useLocationPicker();
   const [isLoading, setIsLoading] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [cartToDelete, setCartToDelete] = useState<number | null>(null);
@@ -379,7 +383,14 @@ const CartPage = () => {
                     )}
                     {cart.isActive && (
                       <Button
-                        onClick={() => router.push('/checkout')}
+                        onClick={() => {
+                          if (!hasValidLocation) {
+                            toast.error("Please select a delivery location to continue");
+                            locationPicker?.openPicker();
+                            return;
+                          }
+                          router.push("/checkout");
+                        }}
                         className="flex-1 text-xs sm:text-sm"
                         size="sm"
                       >

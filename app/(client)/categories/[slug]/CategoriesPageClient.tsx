@@ -15,7 +15,12 @@ import {
   getParentCategoryFromSubcategory,
   getProductsByParentCategoryWithPagination,
 } from "@/lib/api";
-import { getCategorySlug, resolveCategorySlugToId, toCategorySlug } from "@/lib/category-slug";
+import {
+  getCategorySlug,
+  resolveCategorySlugToId,
+  resolveCategorySlugToIdSync,
+  toCategorySlug,
+} from "@/lib/category-slug";
 import { getSubcategoryImageUrl } from "@/lib/subcategory-image";
 import { ArrowLeft } from "lucide-react";
 import Loader from "@/components/Loader";
@@ -50,6 +55,10 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
   const [hasMore, setHasMore] = useState<boolean>(true);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const parentCategoriesRef = useRef(parentCategoriesFromContext);
+  const subcategoriesRef = useRef(subcategories);
+  parentCategoriesRef.current = parentCategoriesFromContext;
+  subcategoriesRef.current = subcategories;
 
   // Load more products for parent category
   const loadMoreProducts = useCallback(async () => {
@@ -86,14 +95,13 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
   }, [isParentCategory, hasMore, loadingMore, loadMoreProducts]);
 
   useEffect(() => {
-    setNumericCategoryId(null);
-    setIsLoadingProducts(true);
-
     if (categoryId === "recent") {
+      setIsLoadingProducts(true);
       router.replace("/recent-items");
       return;
     }
     if (categoryId === "popular-items") {
+      setIsLoadingProducts(true);
       router.replace("/popular-items");
       return;
     }
@@ -103,6 +111,19 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
     }
 
     setIsStoredProductList(false);
+    setIsLoadingProducts(true);
+
+    const localId = resolveCategorySlugToIdSync(
+      categoryId,
+      parentCategoriesRef.current,
+      subcategoriesRef.current
+    );
+    if (localId !== null) {
+      setNumericCategoryId(localId);
+      return;
+    }
+
+    setNumericCategoryId(null);
 
     let cancelled = false;
     resolveCategorySlugToId(categoryId).then((id) => {
@@ -168,22 +189,60 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
 
     const categoryKey = numericCategoryId.toString();
     const parentCategories = parentCategoriesFromContext;
+    let cancelled = false;
 
     const fetchCategoryData = async () => {
       try {
-        setIsLoadingProducts(true);
         const isParent = parentCategories.some(
           (cat: any) => cat.id === numericCategoryId
         );
+        const currentSubs = subcategoriesRef.current;
+        const alreadyHaveSidebar =
+          !isParent && currentSubs.some((s) => s.id === numericCategoryId);
 
+        if (alreadyHaveSidebar) {
+          setIsParentCategory(false);
+          setSelectedSubcategoryId(numericCategoryId);
+          const currentSub =
+            currentSubs.find((s) => s.id === numericCategoryId) ?? null;
+          if (currentSub) {
+            setDisplayCategoryName(currentSub.name);
+          }
+          setIsLoadingProducts(true);
+          try {
+            const subcategoryProducts =
+              await getProductsBySubcategoryWithPricing(numericCategoryId);
+            if (cancelled) return;
+            setProducts(subcategoryProducts);
+            const currentSubcategoryName = currentSub?.name || "";
+            sessionStorage.setItem(
+              `subcategory_${categoryKey}_products`,
+              JSON.stringify(subcategoryProducts)
+            );
+            sessionStorage.setItem(
+              `subcategory_${categoryKey}_name`,
+              currentSubcategoryName
+            );
+          } catch (error) {
+            console.error("Error fetching current subcategory products:", error);
+          }
+          return;
+        }
+
+        setIsLoadingProducts(true);
+
+        const pathSlug =
+          typeof window !== "undefined"
+            ? window.location.pathname.split("/").filter(Boolean).pop()
+            : categoryId;
         const canonicalSlug = getCategorySlug(
           numericCategoryId,
           parentCategories
         );
-        if (canonicalSlug && canonicalSlug !== categoryId) {
+        if (canonicalSlug && canonicalSlug !== pathSlug) {
           router.replace(`/categories/${canonicalSlug}`, { scroll: false });
         }
-        
+
         if (isParent) {
           // This is a parent category - show all products from all subcategories
           setIsParentCategory(true);
@@ -191,31 +250,35 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
             parentCategories.find((cat: any) => cat.id === numericCategoryId)
               ?.name || "";
           setDisplayCategoryName(parentCategoryName);
-          
+
           const result = await getProductsByParentCategoryWithPagination(
             numericCategoryId,
             18, // Initial load: 18 products
             null // No cursor for first load
           );
-          
+          if (cancelled) return;
+
           setProducts(result.products);
           setNextCursor(result.pagination.nextCursor);
           setHasMore(result.pagination.hasMore);
-          
         } else {
           // This is a subcategory - use existing logic
           setIsParentCategory(false);
-          
+
           // Check if we have subcategory data stored in sessionStorage
-          const storedProducts = sessionStorage.getItem(`subcategory_${categoryKey}_products`);
-          const storedCategoryName = sessionStorage.getItem(`subcategory_${categoryKey}_name`);
+          const storedProducts = sessionStorage.getItem(
+            `subcategory_${categoryKey}_products`
+          );
+          const storedCategoryName = sessionStorage.getItem(
+            `subcategory_${categoryKey}_name`
+          );
 
           if (storedProducts) {
             try {
               const parsedProducts = JSON.parse(storedProducts);
               setProducts(parsedProducts);
               setDisplayCategoryName(storedCategoryName || "");
-              
+
               // Clear the stored data after using it
               sessionStorage.removeItem(`subcategory_${categoryKey}_products`);
               sessionStorage.removeItem(`subcategory_${categoryKey}_name`);
@@ -224,47 +287,71 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
               console.error("Error parsing stored products:", error);
             }
           }
-          
+
           // Get parent category info and subcategories
-          const parentCat = await getParentCategoryFromSubcategory(numericCategoryId);
+          const parentCat =
+            await getParentCategoryFromSubcategory(numericCategoryId);
+          if (cancelled) return;
           setParentCategory(parentCat);
           setParentCategoryName(parentCat.name);
-          
+
           // Get all subcategories of the parent category
           const subcats = await getSubcategories(parentCat.id);
+          if (cancelled) return;
           setSubcategories(subcats);
-          
+
           setSelectedSubcategoryId(numericCategoryId);
-          
-          const existingParentId = sessionStorage.getItem(`subcategory_${categoryKey}_parent_id`);
+
+          const existingParentId = sessionStorage.getItem(
+            `subcategory_${categoryKey}_parent_id`
+          );
           if (!existingParentId) {
-            sessionStorage.setItem(`subcategory_${categoryKey}_parent_id`, parentCat.id.toString());
+            sessionStorage.setItem(
+              `subcategory_${categoryKey}_parent_id`,
+              parentCat.id.toString()
+            );
           }
-          
+
           if (!storedProducts) {
             try {
-              const subcategoryProducts = await getProductsBySubcategoryWithPricing(numericCategoryId);
+              const subcategoryProducts =
+                await getProductsBySubcategoryWithPricing(numericCategoryId);
+              if (cancelled) return;
               setProducts(subcategoryProducts);
               const currentSubcategoryName =
-                subcats.find((s: any) => s.id === numericCategoryId)?.name || "";
+                subcats.find((s: any) => s.id === numericCategoryId)?.name ||
+                "";
               setDisplayCategoryName(currentSubcategoryName);
-              
-              sessionStorage.setItem(`subcategory_${categoryKey}_products`, JSON.stringify(subcategoryProducts));
-              sessionStorage.setItem(`subcategory_${categoryKey}_name`, currentSubcategoryName);
+
+              sessionStorage.setItem(
+                `subcategory_${categoryKey}_products`,
+                JSON.stringify(subcategoryProducts)
+              );
+              sessionStorage.setItem(
+                `subcategory_${categoryKey}_name`,
+                currentSubcategoryName
+              );
             } catch (error) {
-              console.error("Error fetching current subcategory products:", error);
+              console.error(
+                "Error fetching current subcategory products:",
+                error
+              );
             }
           }
-          
         }
       } catch (error) {
         console.error("Error fetching category data:", error);
       } finally {
-        setIsLoadingProducts(false);
+        if (!cancelled) {
+          setIsLoadingProducts(false);
+        }
       }
     };
 
     fetchCategoryData();
+    return () => {
+      cancelled = true;
+    };
   }, [
     numericCategoryId,
     categoryId,
@@ -273,22 +360,34 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
     parentCategoriesFromContext,
   ]);
 
-  const handleSubcategorySelect = async (subcategoryId: number | null) => {
-    if (!subcategoryId) return;
-    
-    // Set loading state for products
-    setIsLoadingProducts(true);
-    
-    // Preserve parent category ID for the new subcategory
-    const categoryKey = numericCategoryId?.toString() ?? categoryId;
-    const parentCategoryId = sessionStorage.getItem(`subcategory_${categoryKey}_parent_id`);
-    if (parentCategoryId) {
-      sessionStorage.setItem(`subcategory_${subcategoryId}_parent_id`, parentCategoryId);
-    }
+  const handleSubcategorySelect = (subcategoryId: number | null) => {
+    if (!subcategoryId || subcategoryId === selectedSubcategoryId) return;
 
     const sub = subcategories.find((s) => s.id === subcategoryId);
-    const slug = sub ? toCategorySlug(sub.name) : subcategoryId.toString();
-    router.push(`/categories/${slug}`);
+    if (!sub) return;
+
+    const categoryKey = numericCategoryId?.toString() ?? categoryId;
+    const parentCategoryId =
+      sessionStorage.getItem(`subcategory_${categoryKey}_parent_id`) ??
+      (parentCategory ? parentCategory.id.toString() : null);
+    if (parentCategoryId) {
+      sessionStorage.setItem(
+        `subcategory_${subcategoryId}_parent_id`,
+        parentCategoryId
+      );
+    }
+
+    setSelectedSubcategoryId(subcategoryId);
+    setNumericCategoryId(subcategoryId);
+    setDisplayCategoryName(sub.name);
+    setIsLoadingProducts(true);
+
+    const slug = toCategorySlug(sub.name);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `/categories/${slug}`
+    );
   };
 
   const handleGoBack = () => {
@@ -325,9 +424,10 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
 
   if (
     isLoading ||
-    (!isStoredProductList && numericCategoryId === null) ||
     categoryId === "recent" ||
-    categoryId === "popular-items"
+    categoryId === "popular-items" ||
+    (!isStoredProductList && numericCategoryId === null) ||
+    (!isStoredProductList && !isParentCategory && subcategories.length === 0)
   ) {
     return <Loader />;
   }

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/components/FirebaseAuthProvider";
+import { useCategory } from "@/contexts/CategoryContext";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import toast from "react-hot-toast";
@@ -25,6 +26,12 @@ import logo from "@/images/logo.png";
 export const SidePanel = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { user } = useAuth();
+  const { setSelectedCategory } = useCategory();
+
+  const goHome = () => {
+    setSelectedCategory(null);
+    setIsOpen(false);
+  };
 
   const handleSignOut = async () => {
     try {
@@ -50,7 +57,7 @@ export const SidePanel = () => {
       <SheetContent side="left" className="w-[280px] sm:w-[320px]">
         <SheetHeader className="mb-6 sm:mb-8">
           <SheetTitle>
-            <Link href="/">
+            <Link href="/" onClick={goHome}>
               <Image src={logo} alt="Shop Logo" width={90} height={36} className="h-auto w-auto max-w-[100px]" />
             </Link>
           </SheetTitle>
@@ -91,7 +98,7 @@ export const SidePanel = () => {
         
         <nav className="flex flex-col space-y-3 sm:space-y-4">
           <Link href="/" className="flex items-center gap-2 text-sm sm:text-lg font-medium hover:text-blue-600"
-            onClick={() => setIsOpen(false)}>
+            onClick={goHome}>
             <HomeIcon className="h-4 w-4 sm:h-5 sm:w-5" />
             Home
           </Link>

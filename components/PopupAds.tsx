@@ -5,6 +5,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getActivePromotions, Promotion } from "@/lib/api";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface PopupAdsProps {
   imageUrl?: string; // Optional fallback image URL
@@ -19,6 +20,7 @@ const PopupAds: React.FC<PopupAdsProps> = ({
   productId,
   categoryId
 }) => {
+  const { hasValidLocation } = useLocation();
   const [isOpen, setIsOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
   const [currentImageUrl, setCurrentImageUrl] = useState<string>("");
@@ -217,7 +219,7 @@ const PopupAds: React.FC<PopupAdsProps> = ({
     setRetryCount(0);
     
     // Only set timer if we have an image URL (from API or fallback)
-    if (currentImageUrl && !isLoading) {
+    if (currentImageUrl && !isLoading && hasValidLocation) {
       const timer = setTimeout(() => {
         setIsOpen(true);
       }, delay);
@@ -225,7 +227,7 @@ const PopupAds: React.FC<PopupAdsProps> = ({
       // Cleanup timer on unmount
       return () => clearTimeout(timer);
     }
-  }, [delay, currentImageUrl, isLoading]);
+  }, [delay, currentImageUrl, isLoading, hasValidLocation]);
 
   return (
     <DialogPrimitive.Root open={isOpen} onOpenChange={setIsOpen}>

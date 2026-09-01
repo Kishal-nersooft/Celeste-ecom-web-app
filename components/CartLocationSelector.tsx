@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { MapPin } from "lucide-react";
@@ -14,9 +14,12 @@ import { createUserAddress } from "@/lib/api";
 import Loader from "@/components/Loader";
 import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
 import { formatLocationLabel } from "@/lib/format-location-label";
+import { addRecentLocation, loadRecentLocations, VISIBLE_RECENT_LOCATIONS } from "@/lib/recent-locations";
+import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/lib/google-maps-config";
 
 interface CartLocationSelectorProps {
   onLocationSelect: (location: string) => void;
+  autoOpen?: boolean;
 }
 
 interface CartLocationSelectorDialogProps {
@@ -33,12 +36,12 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
   const { user } = useAuth();
   const { selectedLocation, setSelectedLocation, defaultAddress, setDefaultAddress, addressId, setAddressId, deliveryType, setDeliveryType, setHasSelectedDeliveryType } = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
-  const [mapCenter, setMapCenter] = useState({ lat: -34.397, lng: 150.644 });
+  const [mapCenter, setMapCenter] = useState(SRI_LANKA_MAP_CENTER);
   const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
   const [autocompleteService, setAutocompleteService] = useState<any>(null);
   const [geocoderService, setGeocoderService] = useState<google.maps.Geocoder | null>(null);
-  const [recentLocations, setRecentLocations] = useState<string[]>([]);
+  const [recentLocations, setRecentLocations] = useState<string[]>(loadRecentLocations);
   const [currentView, setCurrentView] = useState<'main' | 'map' | 'savedAddresses'>('main');
   const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
@@ -74,19 +77,8 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
   }, [isLoaded]);
 
   React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      const storedLocations = localStorage.getItem("recentLocations");
-      if (storedLocations) {
-        setRecentLocations(JSON.parse(storedLocations));
-      }
-    }
-  }, []);
-
-  React.useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("recentLocations", JSON.stringify(recentLocations));
-    }
-  }, [recentLocations]);
+    setRecentLocations(loadRecentLocations());
+  }, [isOpen]);
 
   // Load saved addresses from localStorage
   React.useEffect(() => {
@@ -109,6 +101,9 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
   }, [isOpen, user]);
 
   const handleSelectLocation = async (location: string, description?: string) => {
+    setRecentLocations(addRecentLocation(location, description));
+    setDeliveryType('delivery');
+    setHasSelectedDeliveryType(true);
     setSelectedLocation(location);
     onLocationSelect(location);
     onOpenChange(false);
@@ -181,12 +176,6 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
         toast.error('Failed to process address');
       }
     }
-
-    setRecentLocations((prevLocations) => {
-      const newLocationItem = description ? `${location}|${description}` : location;
-      const newLocations = [newLocationItem, ...prevLocations.filter((loc) => loc.split('|')[0] !== location)];
-      return newLocations.slice(0, 3);
-    });
   };
 
   const handleAddressSelect = async (addressData: {
@@ -348,6 +337,12 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
     }
   };
 
+  const openSriLankaMap = () => {
+    setMapCenter(SRI_LANKA_MAP_CENTER);
+    setMarkerPosition(null);
+    setCurrentView('map');
+  };
+
   const handleMapClick = (e: any) => {
     const lat = e.latLng.lat();
     const lng = e.latLng.lng();
@@ -371,7 +366,11 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
   return (
     <>
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent
+        mobileAsSheet
+        onDismiss={() => onOpenChange(false)}
+        className="sm:max-w-[500px] lg:overflow-y-auto"
+      >
         <DialogDescription className="sr-only">
           Select your delivery location by searching, using the map, or choosing from saved addresses
         </DialogDescription>
@@ -383,30 +382,10 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
           <>
         {currentView === 'main' && (
           <div className="p-4">
-            <div className="flex justify-between items-center mb-4">
-              <DialogTitle className="text-2xl font-bold">Select Your Location</DialogTitle>
-              <div className="flex bg-gray-100 rounded-full p-1">
-                <Button
-                  variant="ghost"
-                  className={`rounded-full px-4 py-2 ${deliveryType === 'pickup' ? 'bg-black text-white' : ''}`}
-                  onClick={() => {
-                    setDeliveryType('pickup');
-                    setHasSelectedDeliveryType(true);
-                  }}
-                >
-                  Pickup
-                </Button>
-                <Button
-                  variant="ghost"
-                  className={`rounded-full px-4 py-2 ${deliveryType === 'delivery' ? 'bg-black text-white' : ''}`}
-                  onClick={() => {
-                    setDeliveryType('delivery');
-                    setHasSelectedDeliveryType(true);
-                  }}
-                >
-                  Delivery
-                </Button>
-              </div>
+            <div className="flex items-center mb-4">
+              <DialogTitle className="text-2xl font-bold">
+                {deliveryType === "pickup" ? "Select Outlet" : "Select Your Location"}
+              </DialogTitle>
             </div>
             <div className="relative mb-4">
               <div className="flex items-center border rounded-lg px-3 py-2">
@@ -446,7 +425,7 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
                 <ChevronRight className="h-5 w-5 text-gray-400" />
               </div>
               <div className="flex items-center justify-between cursor-pointer py-2 hover:bg-gray-50 rounded-md px-2"
-                   onClick={() => setCurrentView('map')}>
+                   onClick={openSriLankaMap}>
                 <div className="flex items-center space-x-3">
                   <MapPin className="h-5 w-5 text-gray-600" />
                   <span className="text-base">Set on Map</span>
@@ -466,7 +445,11 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
             {recentLocations.length > 0 && (
               <div>
                 <h3 className="text-base text-gray-500 font-semibold mb-3">Recently Searched Locations</h3>
-                <ul className="space-y-3">
+                <ul
+                  className={`space-y-3 overflow-y-auto overscroll-y-contain pr-1 ${
+                    recentLocations.length > VISIBLE_RECENT_LOCATIONS ? "max-h-[10.5rem]" : ""
+                  }`}
+                >
                   {recentLocations.map((locString) => {
                     const [name, description] = locString.split('|');
                     return (
@@ -477,9 +460,9 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
                       >
                         <div className="flex items-center space-x-3">
                           <ClockIcon className="h-5 w-5 text-gray-400" />
-                          <div>
-                            <p className="font-medium">{name}</p>
-                            {description && <p className="text-xs text-gray-500">{description}</p>}
+                          <div className="min-w-0">
+                            <p className="font-medium truncate">{name.split(',')[0].trim()}</p>
+                            {description && <p className="text-xs text-gray-500 truncate">{description}</p>}
                           </div>
                         </div>
                         <ChevronRight className="h-5 w-5 text-gray-400" />
@@ -504,7 +487,8 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
               <GoogleMap
                 mapContainerStyle={{ width: "100%", height: "100%" }}
                 center={mapCenter}
-                zoom={10}
+                zoom={SRI_LANKA_MAP_ZOOM}
+                onLoad={fitMapToSriLanka}
                 onClick={handleMapClick}
               >
                 {markerPosition && <Marker position={markerPosition} />}
@@ -583,14 +567,28 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
   );
 };
 
-const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationSelect }) => {
-  const [isOpen, setIsOpen] = useState(false);
+const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationSelect, autoOpen = false }) => {
+  const [isOpen, setIsOpen] = useState(autoOpen);
+  const [isPickerMounted, setIsPickerMounted] = useState(autoOpen);
   const { selectedLocation, defaultAddress, selectedStore, deliveryType } = useLocation();
   const displayLabel = formatLocationLabel(selectedLocation, {
     defaultAddress,
     selectedStore,
     deliveryType,
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsPickerMounted(true);
+      return;
+    }
+
+    const unmountTimer = setTimeout(() => {
+      setIsPickerMounted(false);
+    }, 350);
+
+    return () => clearTimeout(unmountTimer);
+  }, [isOpen]);
 
   return (
     <>
@@ -607,7 +605,7 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
         </span>
       </Button>
 
-      {isOpen && (
+      {isPickerMounted && (
         <GoogleMapsProvider>
           <CartLocationSelectorDialog
             isOpen={isOpen}

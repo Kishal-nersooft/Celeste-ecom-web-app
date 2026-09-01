@@ -90,7 +90,7 @@ const CheckoutPage = () => {
   const pollingControlRef = React.useRef<{
     stop: (opts?: { switchToCancelled?: boolean }) => void;
   } | null>(null);
-  const { selectedLocation, setSelectedLocation, addressId: contextAddressId, defaultAddress, deliveryType, setDeliveryType, selectedStore } = useLocation();
+  const { selectedLocation, setSelectedLocation, addressId: contextAddressId, defaultAddress, deliveryType, setDeliveryType, selectedStore, canPlaceOrder } = useLocation();
   
   const cartStore = useCartStore();
   
@@ -153,7 +153,15 @@ const CheckoutPage = () => {
       return;
     }
 
-    if (!contextAddressId || !cartStore.cartId || cartStore.items.length === 0) {
+    if (!cartStore.cartId || cartStore.items.length === 0) {
+      return;
+    }
+
+    if (selectedOrderType === "delivery" && !contextAddressId) {
+      return;
+    }
+
+    if (selectedOrderType === "pickup" && !pickupStoreId) {
       return;
     }
 
@@ -572,13 +580,12 @@ const CheckoutPage = () => {
     }
 
     // Validate location based on order type
-    if (selectedOrderType === 'delivery' && !contextAddressId) {
-      toast.error('Please select a delivery location');
-      return;
-    }
-    
-    if (selectedOrderType === 'pickup' && !selectedStore) {
-      toast.error('Please select a store for pickup');
+    if (!canPlaceOrder) {
+      toast.error(
+        selectedOrderType === "pickup"
+          ? "Please select a store for pickup"
+          : "Please select a delivery location"
+      );
       return;
     }
 
@@ -886,28 +893,6 @@ const CheckoutPage = () => {
     return <EmptyCart />;
   }
 
-  // Show loading state while waiting for location (address for delivery, store for pickup)
-  const needsLocation = (selectedOrderType === 'delivery' && !contextAddressId) || 
-                       (selectedOrderType === 'pickup' && !selectedStore);
-  
-  if (needsLocation && !loadingPreview) {
-    return (
-      <Container className="py-10">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-4">
-            {selectedOrderType === 'delivery' ? 'Please select a delivery address' : 'Please select a store for pickup'}
-          </h2>
-          <p className="text-gray-600">
-            {selectedOrderType === 'delivery' 
-              ? 'Choose your delivery location to see order details and pricing.'
-              : 'Choose a store location to see order details and pricing.'
-            }
-          </p>
-        </div>
-      </Container>
-    );
-  }
-
   return (
     <Container className="py-4 sm:py-6 md:py-8 lg:py-10">
       <SuggestedAddonsDialog
@@ -1128,6 +1113,12 @@ const CheckoutPage = () => {
             onQuantityChange={schedulePreviewRefresh}
             onEditMultiStore={handleEnterEditMode}
             editMultiStoreDisabled={editorMode}
+            canPlaceOrder={canPlaceOrder}
+            locationRequiredMessage={
+              selectedOrderType === "pickup"
+                ? "Please select a store for pickup to place your order."
+                : "Please select a delivery location to place your order."
+            }
           />
         </div>
       </div>

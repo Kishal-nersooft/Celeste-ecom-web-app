@@ -18,6 +18,8 @@ import useCartStore from "@/store";
 import { getProductById, addItemToCart, createCart, removeFromCart } from "@/lib/api";
 import toast from "react-hot-toast";
 import Loader from "@/components/Loader";
+import { useLocation } from "@/contexts/LocationContext";
+import { useLocationPicker } from "@/components/LocationSelector";
 
 interface ReorderDialogProps {
   order: Order | null;
@@ -32,6 +34,8 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
 }) => {
   const router = useRouter();
   const cartStore = useCartStore();
+  const { hasValidLocation } = useLocation();
+  const locationPicker = useLocationPicker();
   const [isProcessing, setIsProcessing] = useState(false);
   const [showClearCartDialog, setShowClearCartDialog] = useState(false);
   const [cartToClear, setCartToClear] = useState<any>(null);
@@ -39,6 +43,12 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
   if (!order) return null;
 
   const handleReorder = async () => {
+    if (!hasValidLocation) {
+      toast.error("Please select a delivery location to continue");
+      locationPicker?.openPicker();
+      return;
+    }
+
     // Check if user has items in current cart
     const hasCartItems = cartStore.items && cartStore.items.length > 0;
     
@@ -171,7 +181,7 @@ const ReorderDialog: React.FC<ReorderDialogProps> = ({
         toast.success(`${addedItems.length} items added to cart`, { id: 'reorder' });
       }
       
-      router.push('/checkout');
+      router.push("/checkout");
       
     } catch (error: any) {
       console.error('❌ Reorder failed:', error);

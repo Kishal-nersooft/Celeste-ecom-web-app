@@ -116,18 +116,12 @@ const Categories = ({
         <div className="relative">
           <button
             disabled
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full bg-gray-100 text-gray-400 cursor-not-allowed"
-          >
-            <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
-          </button>
-          <button
-            disabled
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full bg-gray-100 text-gray-400 cursor-not-allowed"
+            className="absolute right-0 top-6 sm:top-7 md:top-8 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full bg-gray-100 text-gray-400 cursor-not-allowed"
           >
             <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
           </button>
 
-          <div className="flex overflow-x-auto space-x-2 sm:space-x-3 md:space-x-4 pb-2 px-6 sm:px-7 md:px-8 scrollbar-hide">
+          <div className="flex overflow-x-auto space-x-2 sm:space-x-3 md:space-x-4 pb-2 pr-6 sm:pr-7 md:pr-8 scrollbar-hide">
             {Array.from({ length: count }).map((_, idx) => (
               <div key={idx} className="flex flex-col animate-pulse">
                 <div className="flex flex-shrink-0 flex-col items-center w-[4.75rem] sm:w-[5.5rem] md:w-24">
@@ -222,24 +216,25 @@ const Categories = ({
   return (
     <div className="py-2 sm:py-3 md:py-4 px-4">
       <div className="relative">
-        {/* Left scroll button */}
-        <button
-          onClick={scrollLeft}
-          disabled={!canScrollLeft}
-          className={`absolute left-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
-            canScrollLeft
-              ? "bg-black hover:bg-gray-800 text-white shadow-lg"
-              : "bg-gray-100 text-gray-400 cursor-not-allowed"
-          }`}
-        >
-          <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
-        </button>
+        {/* Left scroll button — only after the row has scrolled right; overlays the category icon */}
+        {canScrollLeft && (
+          <button
+            type="button"
+            onClick={scrollLeft}
+            aria-label="Scroll categories left"
+            className="absolute left-0 top-6 sm:top-7 md:top-8 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full bg-black hover:bg-gray-800 text-white shadow-lg transition-colors"
+          >
+            <ChevronLeft className="w-3 h-3 sm:w-4 sm:h-4 md:w-4 md:h-4" />
+          </button>
+        )}
 
         {/* Right scroll button */}
         <button
+          type="button"
           onClick={scrollRight}
           disabled={!canScrollRight}
-          className={`absolute right-0 top-1/2 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
+          aria-label="Scroll categories right"
+          className={`absolute right-0 top-6 sm:top-7 md:top-8 -translate-y-1/2 z-10 p-1 sm:p-1.5 md:p-2 rounded-full transition-colors ${
             canScrollRight
               ? "bg-black hover:bg-gray-800 text-white shadow-lg"
               : "bg-gray-100 text-gray-400 cursor-not-allowed"
@@ -251,7 +246,7 @@ const Categories = ({
         {/* Categories container */}
         <div 
           ref={scrollContainerRef}
-          className="flex overflow-x-auto space-x-2 sm:space-x-3 md:space-x-4 pb-2 px-6 sm:px-7 md:px-8 scrollbar-hide"
+          className="flex overflow-x-auto space-x-2 sm:space-x-3 md:space-x-4 pb-2 pr-6 sm:pr-7 md:pr-8 scrollbar-hide"
           onScroll={checkScrollButtons}
         >
           {displayCategories.map((category) => {

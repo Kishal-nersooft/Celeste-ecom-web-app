@@ -14,6 +14,7 @@ import toast from "react-hot-toast";
 import EmptyCart from "./EmptyCart";
 import { getProductImageUrl } from "@/lib/product-image";
 import { useLocation } from "@/contexts/LocationContext";
+import { useLocationPicker } from "@/components/LocationSelector";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 
@@ -28,7 +29,8 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
   const [isClearingCart, setIsClearingCart] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const cartStore = useCartStore();
-  const { addressId, selectedLocation } = useLocation();
+  const { hasValidLocation } = useLocation();
+  const locationPicker = useLocationPicker();
 
   const handleDeleteProduct = async (productId: number) => {
     await cartStore.deleteCartProduct(productId);
@@ -267,7 +269,18 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
               </div>
 
               {/* Go to Checkout Button */}
-              <Link href="/checkout?suggest=1" onClick={() => setIsOpen(false)}>
+              <Link
+                href="/checkout?suggest=1"
+                onClick={(e) => {
+                  if (!hasValidLocation) {
+                    e.preventDefault();
+                    toast.error("Please select a delivery location to continue");
+                    locationPicker?.openPicker();
+                    return;
+                  }
+                  setIsOpen(false);
+                }}
+              >
                 <Button className="w-full mt-2 sm:mt-3 md:mt-4 flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm px-3 py-2">
                   <span className="hidden sm:inline">Go to Checkout</span>
                   <span className="sm:hidden">Checkout</span>

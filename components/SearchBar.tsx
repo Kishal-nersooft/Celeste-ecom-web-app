@@ -1,13 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
-import { searchProducts, trackSearchClick, getSearchHistory, invalidateSearchHistoryCache } from '@/lib/api';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Search } from 'lucide-react';
+import { searchProducts, trackSearchClick, getSearchHistory, invalidateSearchHistoryCache, getParentCategories, getCategories } from '@/lib/api';
 import { getProductPath } from '@/lib/product-slug';
 import { getProductImageUrl } from '@/lib/product-image';
+import { stripCategoryEmojis } from '@/lib/category-display-name';
 import { useLocation } from '@/contexts/LocationContext';
 import { Product } from '@/store';
+import { Category } from './Categories';
 import AddToCartButton from './AddToCartButton';
 import useCartStore from '@/store';
 
@@ -98,7 +102,116 @@ interface SearchBarProps {
 /** Wait for typing pause before hitting the search API. */
 const SEARCH_DEBOUNCE_MS = 400;
 
+const PLACEHOLDER_ROTATE_MS = 2500;
+const PLACEHOLDER_ANIMATION = { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const };
+
 const DROPDOWN_SKELETON_COUNT = 5;
+
+function collectSubcategoryNames(categories: Category[]): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+
+  const addName = (cat?: { name?: string; display_name?: string }) => {
+    if (!cat) return;
+    const cleaned = stripCategoryEmojis((cat.display_name || cat.name || '').trim());
+    if (!cleaned) return;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    names.push(cleaned);
+  };
+
+  for (const cat of categories) {
+    if (Array.isArray(cat.subcategories) && cat.subcategories.length > 0) {
+      for (const sub of cat.subcategories) addName(sub);
+    } else if (cat.parent_category_id) {
+      addName(cat);
+    }
+  }
+
+  return names;
+}
+
+function pickRandomName(names: string[], current: string): string {
+  if (names.length === 0) return current;
+  if (names.length === 1) return names[0];
+  let next = current;
+  let attempts = 0;
+  while (next === current && attempts < 8) {
+    next = names[Math.floor(Math.random() * names.length)];
+    attempts += 1;
+  }
+  return next;
+}
+
+const AnimatedSearchPlaceholder: React.FC<{ names: string[] }> = ({ names }) => {
+  const [name, setName] = useState(names[0] ?? '');
+  const [width, setWidth] = useState(0);
+  const sizerRef = useRef<HTMLSpanElement>(null);
+  const namesRef = useRef(names);
+  namesRef.current = names;
+  const shownName = names.includes(name) ? name : (names[0] ?? '');
+
+  useEffect(() => {
+    if (names.length === 0) {
+      setName('');
+      return;
+    }
+    setName((prev) => (names.includes(prev) ? prev : names[0]));
+  }, [names]);
+
+  useEffect(() => {
+    if (names.length < 2) return;
+
+    const id = window.setInterval(() => {
+      setName((prev) => pickRandomName(namesRef.current, prev));
+    }, PLACEHOLDER_ROTATE_MS);
+
+    return () => window.clearInterval(id);
+  }, [names.length]);
+
+  useLayoutEffect(() => {
+    setWidth(sizerRef.current?.offsetWidth ?? 0);
+  }, [shownName]);
+
+  return (
+    <span className="flex items-center gap-1.5 min-w-0 text-sm leading-none text-gray-400 select-none">
+      <Search className="w-4 h-4 shrink-0" strokeWidth={2} aria-hidden />
+      <span className="flex items-center min-w-0">
+        <span className="shrink-0">{shownName ? 'Search "' : 'Search'}</span>
+        {shownName ? (
+          <motion.span
+            className="relative inline-block h-[1em] max-w-[14rem] sm:max-w-[22rem] lg:max-w-[28rem] overflow-hidden align-middle"
+            initial={false}
+            animate={{ width: width || 0 }}
+            transition={PLACEHOLDER_ANIMATION}
+          >
+            <span
+              ref={sizerRef}
+              className="absolute invisible whitespace-nowrap pointer-events-none leading-none"
+              aria-hidden
+            >
+              {shownName}
+            </span>
+            <AnimatePresence initial={false}>
+              <motion.span
+                key={shownName}
+                initial={{ y: '100%', opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '-100%', opacity: 0 }}
+                transition={PLACEHOLDER_ANIMATION}
+                className="absolute inset-0 leading-none truncate whitespace-nowrap"
+              >
+                {shownName}
+              </motion.span>
+            </AnimatePresence>
+          </motion.span>
+        ) : null}
+        {shownName ? <span className="shrink-0">&quot;</span> : null}
+      </span>
+    </span>
+  );
+};
 
 const SearchDropdownSkeleton: React.FC = () => (
   <div className="py-2">
@@ -135,6 +248,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
   const cartItems = useCartStore((state) => state.items);
   
   const [query, setQuery] = useState('');
+  const [placeholderNames, setPlaceholderNames] = useState<string[]>([]);
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -303,6 +417,30 @@ const SearchBar: React.FC<SearchBarProps> = ({
       }
     }
   }, [maxResults, selectedStore, deliveryType, defaultAddress]);
+
+  // Load subcategory names for the rotating placeholder (hits the shared categories cache).
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadNames = async () => {
+      try {
+        const parents = await getParentCategories();
+        let names = collectSubcategoryNames(Array.isArray(parents) ? parents : []);
+        if (names.length === 0) {
+          const all = await getCategories(true, false);
+          names = collectSubcategoryNames(Array.isArray(all) ? all : []);
+        }
+        if (!cancelled) setPlaceholderNames(names);
+      } catch (err) {
+        console.error('Error fetching search placeholder names:', err);
+      }
+    };
+
+    void loadNames();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Load history once on mount (deduped in api.ts)
   useEffect(() => {
@@ -652,9 +790,18 @@ const SearchBar: React.FC<SearchBarProps> = ({
           onKeyDown={handleKeyDown}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          placeholder={placeholder}
-          className="w-full border border-gray-300 rounded-full px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-8"
+          placeholder=""
+          aria-label={placeholder || 'Search'}
+          className="w-full border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-8"
         />
+        <div
+          className={`absolute inset-0 flex items-center px-3 pr-8 pointer-events-none text-sm overflow-hidden ${
+            query.length === 0 ? '' : 'invisible'
+          }`}
+          aria-hidden
+        >
+          <AnimatedSearchPlaceholder names={placeholderNames} />
+        </div>
         
         {/* Clear button - hide when loading */}
         {query.length > 0 && !isLoading && (

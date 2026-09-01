@@ -7,6 +7,7 @@ import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon } from "lucide-react";
 import toast from "react-hot-toast";
 import Loader from "@/components/Loader";
 import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
+import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/lib/google-maps-config";
 
 interface AddressSelectorProps {
   isOpen: boolean;
@@ -37,7 +38,7 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
   editingAddress = null
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [mapCenter, setMapCenter] = useState({ lat: 6.9271, lng: 79.8612 }); // Default to Colombo
+  const [mapCenter, setMapCenter] = useState(SRI_LANKA_MAP_CENTER);
   const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
   const [selectedAddress, setSelectedAddress] = useState<string>("");
   const [addressName, setAddressName] = useState("");
@@ -65,6 +66,7 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
       setAddressName("");
       setSelectedAddress("");
       setMarkerPosition(null);
+      setMapCenter(SRI_LANKA_MAP_CENTER);
       setCurrentView('search');
     }
   }, [editingAddress, isOpen]);
@@ -304,7 +306,11 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
   if (!isLoaded) {
     return (
       <Dialog open={isOpen} onOpenChange={handleClose}>
-        <DialogContent className="max-w-4xl h-[600px]">
+        <DialogContent
+          mobileAsSheet
+          onDismiss={handleClose}
+          className="lg:max-w-4xl lg:h-[600px]"
+        >
           <div className="flex items-center justify-center h-full">
             <Loader />
           </div>
@@ -315,7 +321,11 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-4xl h-[600px] p-0 overflow-visible">
+      <DialogContent
+        mobileAsSheet
+        onDismiss={handleClose}
+        className="lg:max-w-4xl lg:h-[600px] p-0 max-lg:overflow-hidden lg:overflow-visible"
+      >
         <DialogHeader className="p-6 pb-4">
           <DialogTitle className="text-xl font-bold">{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
@@ -380,7 +390,12 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
               </Button>
               <Button
                 variant={currentView === 'map' ? 'default' : 'outline'}
-                onClick={() => setCurrentView('map')}
+                onClick={() => {
+                  if (!markerPosition) {
+                    setMapCenter(SRI_LANKA_MAP_CENTER);
+                  }
+                  setCurrentView('map');
+                }}
                 className="flex-1"
               >
                 Map
@@ -394,9 +409,14 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
               <GoogleMap
                 mapContainerStyle={{ width: '100%', height: '100%' }}
                 center={mapCenter}
-                zoom={15}
+                zoom={markerPosition ? 15 : SRI_LANKA_MAP_ZOOM}
                 onClick={handleMapClick}
-                onLoad={() => setIsMapLoaded(true)}
+                onLoad={(map) => {
+                  setIsMapLoaded(true);
+                  if (!markerPosition) {
+                    fitMapToSriLanka(map);
+                  }
+                }}
               >
                 {markerPosition && (
                   <Marker

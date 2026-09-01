@@ -37,6 +37,8 @@ interface OrderSummaryProps {
   onQuantityChange?: () => void;
   onEditMultiStore?: () => void;
   editMultiStoreDisabled?: boolean;
+  canPlaceOrder?: boolean;
+  locationRequiredMessage?: string;
 }
 
 const OrderSummary: React.FC<OrderSummaryProps> = ({
@@ -49,6 +51,8 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   onQuantityChange,
   onEditMultiStore,
   editMultiStoreDisabled = false,
+  canPlaceOrder = true,
+  locationRequiredMessage = "Please select a delivery location to place your order.",
 }) => {
   const [isCartExpanded, setIsCartExpanded] = useState(true);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -238,7 +242,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             </div>
             <button
               onClick={onCheckout}
-              disabled={loadingCheckout || liveCartItems.length === 0 || !acceptedTerms}
+              disabled={loadingCheckout || liveCartItems.length === 0 || !acceptedTerms || !canPlaceOrder}
               className="w-full bg-blue-600 text-white py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg font-medium hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm"
             >
               {loadingCheckout ? (
@@ -246,10 +250,18 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                   <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
                   Processing...
                 </div>
+              ) : !canPlaceOrder ? (
+                "Select Location to Place Order"
               ) : (
                 `Place Order - LKR ${localSubtotal.toFixed(2)}`
               )}
             </button>
+            
+            {!canPlaceOrder && (
+              <p className="text-center text-amber-700 text-xs sm:text-sm">
+                {locationRequiredMessage}
+              </p>
+            )}
             
             {liveCartItems.length === 0 && (
               <p className="text-center text-gray-500 text-xs sm:text-sm">
@@ -724,7 +736,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         </div>
         <button
           onClick={onCheckout}
-          disabled={loadingCheckout || liveCartItems.length === 0 || !acceptedTerms}
+          disabled={loadingCheckout || liveCartItems.length === 0 || !acceptedTerms || !canPlaceOrder}
           className="w-full bg-black text-white py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg font-bold hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors text-xs sm:text-sm"
         >
           {loadingCheckout ? (
@@ -732,10 +744,18 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
               <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white"></div>
               Processing...
             </div>
+          ) : !canPlaceOrder ? (
+            "Select Location to Place Order"
           ) : (
             `Place Order - LKR ${displayTotal.toFixed(2)}`
           )}
         </button>
+
+        {!canPlaceOrder && (
+          <p className="text-center text-amber-700 text-xs sm:text-sm">
+            {locationRequiredMessage}
+          </p>
+        )}
 
         {/* Trust / security block */}
         <div className="pt-2">

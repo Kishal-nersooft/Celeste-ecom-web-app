@@ -62,6 +62,23 @@ export function getCategorySlug(
   return cat ? toCategorySlug(cat.name) : null;
 }
 
+/** Resolve a URL segment from already-loaded category lists (no network). */
+export function resolveCategorySlugToIdSync(
+  slug: string,
+  parentCategories: Category[],
+  subcategories: Category[] = []
+): number | null {
+  if (/^\d+$/.test(slug)) {
+    return parseInt(slug, 10);
+  }
+
+  const normalized = slug.toLowerCase();
+  const match = flattenCategories([...parentCategories, ...subcategories]).find(
+    (c) => toCategorySlug(c.name) === normalized
+  );
+  return match?.id ?? null;
+}
+
 /** Resolve a URL segment (numeric id or name slug) to a category id. */
 export async function resolveCategorySlugToId(slug: string): Promise<number | null> {
   if (/^\d+$/.test(slug)) {
@@ -70,8 +87,8 @@ export async function resolveCategorySlugToId(slug: string): Promise<number | nu
 
   const { getParentCategories, getSubcategories } = await import("./api");
   const parents = await getParentCategories();
-  const parentMatch = findCategoryBySlug(slug, parents);
-  if (parentMatch) return parentMatch.id;
+  const nestedMatch = resolveCategorySlugToIdSync(slug, parents);
+  if (nestedMatch !== null) return nestedMatch;
 
   for (const parent of parents) {
     const subs = await getSubcategories(parent.id);

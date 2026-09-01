@@ -232,7 +232,7 @@ const ProductList = ({
       ) : (
         // Show all products grouped by parent categories when "All" is selected
         <div>
-          {loading && Object.keys(parentCategoryNames).length === 0 ? (
+          {Object.keys(parentCategoryNames).length === 0 ? (
             // Show skeleton cards for parent categories during initial loading
             categories
               .filter(cat => !cat.parent_category_id)
@@ -284,21 +284,31 @@ const ProductList = ({
                           products={firstProducts}
                           categoryName={firstName}
                           categoryId={firstId}
-                          loading={loading}
+                          loading={loading || !!loadingParentCategories[parseInt(firstId)]}
                           loadingMore={loadingMore}
                           onLoadMore={loadMore}
                           hasMore={hasMore}
-                          isLoaded={!loading && firstProducts.length > 0}
+                          isLoaded={firstProducts.length > 0}
+                          onScrollIntoView={() => {
+                            if (firstProducts.length === 0) {
+                              loadParentCategoryProducts(parseInt(firstId));
+                            }
+                          }}
                         />
                         <ProductRow
                           products={secondProducts}
                           categoryName={secondName}
                           categoryId={secondId}
-                          loading={loading}
+                          loading={loading || !!loadingParentCategories[parseInt(secondId)]}
                           loadingMore={loadingMore}
                           onLoadMore={loadMore}
                           hasMore={hasMore}
-                          isLoaded={!loading && secondProducts.length > 0}
+                          isLoaded={secondProducts.length > 0}
+                          onScrollIntoView={() => {
+                            if (secondProducts.length === 0) {
+                              loadParentCategoryProducts(parseInt(secondId));
+                            }
+                          }}
                         />
                       </div>
                       <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
