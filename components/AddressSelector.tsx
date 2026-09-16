@@ -5,7 +5,6 @@ import { Input } from "@/components/ui/input";
 import { GoogleMap, Marker } from "@react-google-maps/api";
 import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon } from "lucide-react";
 import toast from "react-hot-toast";
-import Loader from "@/components/Loader";
 import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
 import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/lib/google-maps-config";
 
@@ -311,8 +310,12 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
           onDismiss={handleClose}
           className="lg:max-w-4xl lg:h-[600px]"
         >
-          <div className="flex items-center justify-center h-full">
-            <Loader />
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+          <div className="space-y-3 py-4">
+            <div className="h-10 w-full rounded-md bg-gray-200 animate-pulse" />
+            <div className="h-64 w-full rounded-md bg-gray-200 animate-pulse" />
+            <div className="h-10 w-full rounded-md bg-gray-200 animate-pulse" />
           </div>
         </DialogContent>
       </Dialog>

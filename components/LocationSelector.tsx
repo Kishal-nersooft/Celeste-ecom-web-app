@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -11,16 +11,23 @@ import deliveryIcon from "@/images/delivery-icon.png";
 import pickupIcon from "@/images/pickup-icon.png";
 import { GoogleMap, Marker } from "@react-google-maps/api";
 import toast from "react-hot-toast";
-import { ArrowLeft, LocateIcon, ChevronRight, MapPinIcon, ClockIcon, HeartIcon, HomeIcon, BriefcaseBusiness, PlusIcon, Check } from "lucide-react";
+import { ArrowLeft, LocateIcon, ChevronRight, MapPinIcon, ClockIcon, HeartIcon, Check } from "lucide-react";
 import { useLocation } from "@/contexts/LocationContext";
-import { getStores, getNearbyStores, getUserAddresses, addUserAddress, setDefaultAddress } from "@/lib/api";
-import AddressSelector from "@/components/AddressSelector";
+import {
+  getStores,
+  getNearbyStores,
+  getUserAddresses,
+  addUserAddress,
+  setDefaultAddress,
+  peekUserAddressesCache,
+} from "@/lib/api";
+import SavedAddressPicker from "@/components/SavedAddressPicker";
 import { useAuth } from "@/components/FirebaseAuthProvider";
-import Loader from "@/components/Loader";
 import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
 import { formatLocationLabel } from "@/lib/format-location-label";
 import { addRecentLocation, loadRecentLocations, VISIBLE_RECENT_LOCATIONS } from "@/lib/recent-locations";
 import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/lib/google-maps-config";
+import { getNamedSavedAddresses } from "@/lib/named-addresses";
 
 // Store interface based on the backend schema
 interface Store {
@@ -48,6 +55,18 @@ interface Store {
 
 export type LocationPickerStart = "mode" | "location";
 
+function LocationRowSkeleton() {
+  return (
+    <div className="flex items-center gap-2 sm:gap-3 p-3 border rounded-lg overflow-hidden animate-pulse">
+      <div className="h-8 w-8 sm:h-10 sm:w-10 shrink-0 rounded-md bg-gray-200" />
+      <div className="flex-1 space-y-2 min-w-0">
+        <div className="h-3 w-1/3 rounded bg-gray-200" />
+        <div className="h-2.5 w-2/3 rounded bg-gray-200" />
+      </div>
+    </div>
+  );
+}
+
 interface LocationSelectorDialogProps {
   isOpen: boolean;
   onOpenChange: (open: boolean) => void;
@@ -63,10 +82,9 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   required = false,
   startView = "location",
 }) => {
-  const router = useRouter();
-  const pathname = usePathname();
   const { user } = useAuth();
   const {
+    selectedLocation,
     setSelectedLocation,
     selectedStore,
     setSelectedStore,
@@ -76,6 +94,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     hasSelectedDeliveryType,
     defaultAddress,
     setDefaultAddress: setDefaultAddressContext,
+    addressId,
     setAddressId,
   } = useLocation();
   // Dialog toggle is local until the user confirms a store or delivery location.
@@ -95,11 +114,18 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   const [selectedOutlet, setSelectedOutlet] = useState<Store | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [loadingStores, setLoadingStores] = useState(false);
-  const [isAddressSelectorOpen, setIsAddressSelectorOpen] = useState(false);
   const [savedAddresses, setSavedAddresses] = useState<any[]>([]);
+  const [savedStep, setSavedStep] = useState<"list" | "search" | "map" | "confirm">("list");
   const [showDeliveryWarning, setShowDeliveryWarning] = useState(false);
 
   const { isLoaded, loadError } = useGoogleMaps();
+
+  const handleSearchFocus = (event: React.FocusEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    requestAnimationFrame(() => {
+      input.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  };
 
   // Debug Google Maps loading
   React.useEffect(() => {
@@ -170,138 +196,87 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     wasOpenRef.current = isOpen;
   }, [isOpen, startView, deliveryType, hasSelectedDeliveryType]);
 
-  // Load saved addresses from backend
   React.useEffect(() => {
-    const loadAddresses = async () => {
-      if (user) {
-        try {
-          const addresses = await getUserAddresses();
-          if (addresses && Array.isArray(addresses)) {
-            // Load locally stored name mappings (in case backend doesn't return names)
-            const storedNames = typeof window !== 'undefined' 
-              ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-              : {};
-            
-            // Merge locally stored names with backend addresses
-            const addressesWithNames = addresses.map((addr: any) => {
-              if (!addr.name && storedNames[addr.id]) {
-                return { ...addr, name: storedNames[addr.id] };
-              }
-              return addr;
-            });
-            
-            // Filter to only show manually saved addresses (with names) and the default address
-            const filteredAddresses = addressesWithNames.filter((addr: any) => {
-              return addr.name || addr.is_default;
-            });
-            setSavedAddresses(filteredAddresses);
-          } else {
-            setSavedAddresses([]);
-          }
-        } catch (error) {
-          console.error('Error loading addresses:', error);
-          // Set empty array on error to prevent crashes
-          setSavedAddresses([]);
-        }
-      } else {
-        // Clear addresses if user is not logged in
-        setSavedAddresses([]);
-      }
-    };
+    if (!isOpen || currentView !== "savedAddresses") {
+      setSavedStep("list");
+    }
+  }, [isOpen, currentView]);
 
-    loadAddresses();
-  }, [user]);
-
-  // Refresh saved addresses when dialog opens
+  // Prefetch saved addresses as soon as the picker opens so the list is ready
   React.useEffect(() => {
-    const loadAddresses = async () => {
-      if (isOpen && user) {
-        try {
-          const addresses = await getUserAddresses();
-          if (addresses && Array.isArray(addresses)) {
-            // Load locally stored name mappings (in case backend doesn't return names)
-            const storedNames = typeof window !== 'undefined' 
-              ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-              : {};
-            
-            // Merge locally stored names with backend addresses
-            const addressesWithNames = addresses.map((addr: any) => {
-              if (!addr.name && storedNames[addr.id]) {
-                return { ...addr, name: storedNames[addr.id] };
-              }
-              return addr;
-            });
-            
-            // Filter to only show manually saved addresses (with names) and the default address
-            const filteredAddresses = addressesWithNames.filter((addr: any) => {
-              return addr.name || addr.is_default;
-            });
-            setSavedAddresses(filteredAddresses);
-          } else {
-            setSavedAddresses([]);
-          }
-        } catch (error) {
-          console.error('Error loading addresses:', error);
-          // Set empty array on error to prevent crashes
-          setSavedAddresses([]);
-        }
-      }
-    };
+    if (!isOpen || !user) {
+      if (!user) setSavedAddresses([]);
+      return;
+    }
 
-    loadAddresses();
+    const cached = peekUserAddressesCache({ allowStale: true });
+    if (cached) {
+      setSavedAddresses(getNamedSavedAddresses(cached));
+    }
+
+    let cancelled = false;
+    getUserAddresses()
+      .then((addresses) => {
+        if (cancelled) return;
+        setSavedAddresses(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
+      })
+      .catch((error) => {
+        console.error("Error loading addresses:", error);
+        if (!cancelled) setSavedAddresses([]);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [isOpen, user]);
 
   // Fetch stores when pickup is selected and the dialog is open
   React.useEffect(() => {
+    if (!isOpen || pickerMode !== "pickup" || stores.length > 0) {
+      return;
+    }
+
+    let cancelled = false;
     const fetchStores = async () => {
-      if (!isOpen || pickerMode !== 'pickup' || stores.length > 0) {
-        return;
-      }
-        setLoadingStores(true);
-        try {
-          // Try to get user's current location for nearby stores
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              async (position) => {
-                const { latitude, longitude } = position.coords;
-                try {
-                  // First try to get nearby stores
-                  const nearbyStores = await getNearbyStores(latitude, longitude, 50); // 50km radius
-                  if (nearbyStores && nearbyStores.length > 0) {
-                    setStores(nearbyStores);
-                  } else {
-                    // Fallback to all stores if no nearby stores found
-                    const allStores = await getStores();
-                    setStores(allStores);
-                  }
-                } catch (error) {
-                  console.error("Error fetching nearby stores:", error);
-                  // Fallback to all stores
-                  const allStores = await getStores();
-                  setStores(allStores);
-                }
-              },
-              async (error) => {
-                // Fallback to all stores if geolocation fails
-                const allStores = await getStores();
-                setStores(allStores);
-              },
-              { timeout: 5000, enableHighAccuracy: false }
-            );
-          } else {
-            // Fallback to all stores if geolocation is not available
-            const allStores = await getStores();
-            setStores(allStores);
-          }
-        } catch (error) {
-          console.error("Error fetching stores:", error);
-          toast.error("Failed to load stores. Please try again.");
-        } finally {
-          setLoadingStores(false);
+      setLoadingStores(true);
+      try {
+        const allStores = await getStores();
+        if (!cancelled && Array.isArray(allStores)) {
+          setStores(allStores);
         }
+      } catch (error) {
+        console.error("Error fetching stores:", error);
+        if (!cancelled) toast.error("Failed to load stores. Please try again.");
+      } finally {
+        if (!cancelled) setLoadingStores(false);
+      }
+
+      if (cancelled || typeof navigator === "undefined" || !navigator.geolocation) return;
+
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const nearbyStores = await getNearbyStores(
+              position.coords.latitude,
+              position.coords.longitude,
+              50
+            );
+            if (!cancelled && nearbyStores?.length) {
+              setStores(nearbyStores);
+            }
+          } catch (error) {
+            console.error("Error fetching nearby stores:", error);
+          }
+        },
+        () => {},
+        { timeout: 5000, enableHighAccuracy: false }
+      );
     };
 
     fetchStores();
+    return () => {
+      cancelled = true;
+    };
   }, [pickerMode, isOpen, stores.length]);
 
   const handleSelectLocation = async (location: string, description?: string) => {
@@ -313,10 +288,6 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     onOpenChange(false);
     setPredictions([]);
     setCurrentView('main');
-
-    if (pathname !== "/" && pathname !== "/checkout" && !pathname.startsWith("/checkout/")) {
-      router.push("/");
-    }
 
     // Auto-save the selected location as default address
     // Handle both address strings and coordinate strings
@@ -522,90 +493,47 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     }
   };
 
-  const handleAddressSelect = async (addressData: {
-    name: string;
-    fullAddress: string;
-    coordinates: { lat: number; lng: number };
-    city?: string;
-  }) => {
-    // Count only manually saved addresses (with names) - limit is 3
-    const manuallySavedCount = savedAddresses.filter((addr: any) => addr.name).length;
-    const MAX_MANUAL_ADDRESSES = 3;
-    
-    if (manuallySavedCount >= MAX_MANUAL_ADDRESSES) {
-      toast.error(`You can only save up to ${MAX_MANUAL_ADDRESSES} addresses. Please delete an existing address first.`);
+  const isCurrentSavedAddress = (address: any) => {
+    if (addressId != null && address.id === addressId) return true;
+    if (defaultAddress?.id != null && defaultAddress.id === address.id) return true;
+    if (
+      addressId == null &&
+      selectedLocation &&
+      selectedLocation !== "Location" &&
+      address.address === selectedLocation
+    ) {
+      return true;
+    }
+    return false;
+  };
+
+  const closeLocationPicker = () => {
+    onOpenChange(false);
+    setCurrentView("main");
+  };
+
+  const applySavedAddress = (address: any, options?: { close?: boolean }) => {
+    const shouldClose = options?.close !== false;
+    if (isCurrentSavedAddress(address)) {
+      if (shouldClose) closeLocationPicker();
       return;
     }
-    
-    try {
-      // Always send is_default: true when adding a new address (backend will return ondemand_delivery_available)
-      const newAddress = await addUserAddress({
-        address: addressData.fullAddress,
-        latitude: addressData.coordinates.lat,
-        longitude: addressData.coordinates.lng,
-        is_default: true,
-        name: addressData.name
-      });
-      
-      
-      // Check if ondemand delivery is not available
-      if (newAddress?.ondemand_delivery_available === false) {
-        setShowDeliveryWarning(true);
-      }
-      
-      // Store the name locally in case backend doesn't return it
-      if (newAddress?.id && addressData.name && typeof window !== 'undefined') {
-        const storedNames = JSON.parse(localStorage.getItem('addressNames') || '{}');
-        storedNames[newAddress.id] = addressData.name;
-        localStorage.setItem('addressNames', JSON.stringify(storedNames));
-      }
-      
-      // Update LocationContext
-      if (newAddress) {
-        setDefaultAddressContext(newAddress);
-        setAddressId(newAddress.id);
-        setSelectedLocation(newAddress.address);
-        
-        // Save to localStorage
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('selectedAddressId', newAddress.id.toString());
-          localStorage.setItem('defaultAddress', JSON.stringify(newAddress));
-          localStorage.setItem('selectedLocation', newAddress.address);
-        }
-      }
-      
-      // Reload addresses from backend
-      const addresses = await getUserAddresses();
-      if (Array.isArray(addresses)) {
-        // Load locally stored name mappings
-        const storedNames = typeof window !== 'undefined' 
-          ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-          : {};
-        
-        // Merge locally stored names with backend addresses
-        const addressesWithNames = addresses.map((addr: any) => {
-          if (!addr.name && storedNames[addr.id]) {
-            return { ...addr, name: storedNames[addr.id] };
-          }
-          return addr;
-        });
-        
-        // Filter to only show manually saved addresses (with names) and the default address
-        const filteredAddresses = addressesWithNames.filter((addr: any) => {
-          return addr.name || addr.is_default;
-        });
-        setSavedAddresses(filteredAddresses);
-      } else {
-        setSavedAddresses([]);
-      }
 
-      // Select the new address
-      handleSelectLocation(addressData.fullAddress, addressData.city);
-      toast.success("Address saved successfully!");
-    } catch (error) {
-      console.error('Error saving address:', error);
-      toast.error('Failed to save address');
+    setDeliveryType("delivery");
+    setHasSelectedDeliveryType(true);
+    setSelectedLocation(address.address);
+    setAddressId(address.id);
+    setDefaultAddressContext(address);
+    onLocationSelect(address.address);
+    if (shouldClose) closeLocationPicker();
+
+    if (address.ondemand_delivery_available === false) {
+      setShowDeliveryWarning(true);
     }
+
+    void setDefaultAddress(address.id).catch((error) => {
+      console.error("Error setting default address:", error);
+    });
   };
 
   const handleSelectOutlet = (store: Store) => {
@@ -616,19 +544,10 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     setSelectedStore(store);
     onOpenChange(false);
     setCurrentView('main');
-
-    // Navigate to store page
-    router.push(`/store/${store.id}`);
   };
 
   const hasDeliverySelection = !!(defaultAddress?.latitude && defaultAddress?.longitude);
   const hasPickupSelection = !!selectedStore;
-
-  const goToHomeIfNeeded = () => {
-    if (pathname !== "/" && pathname !== "/checkout" && !pathname.startsWith("/checkout/")) {
-      router.push("/");
-    }
-  };
 
   const handleConfirmMode = () => {
     if (pendingMode === "delivery") {
@@ -640,7 +559,6 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
           setSelectedLocation(defaultAddress.address);
         }
         onOpenChange(false);
-        goToHomeIfNeeded();
         return;
       }
       setCurrentView("main");
@@ -652,9 +570,6 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
       setDeliveryType("pickup");
       setHasSelectedDeliveryType(true);
       onOpenChange(false);
-      if (selectedStore?.id) {
-        router.push(`/store/${selectedStore.id}`);
-      }
       return;
     }
     setCurrentView("main");
@@ -838,21 +753,34 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
         mobileAsSheet
         sheetDismissible={!required}
         sheetCompact={currentView === "mode"}
+        sheetAutoHeight={currentView !== "mode"}
+        sheetResizable={currentView !== "mode"}
+        sheetSizeKey={`${currentView}-${savedStep}-${isOpen ? "open" : "closed"}`}
         hideCloseButton={required}
         onDismiss={() => {
           if (!required) onOpenChange(false);
         }}
         className="max-w-[95vw] sm:max-w-[600px] lg:max-h-[90vh] lg:overflow-y-auto"
+        onOpenAutoFocus={(e) => e.preventDefault()}
         onPointerDownOutside={(e) => {
-          if (required) e.preventDefault();
+          const target = e.target as HTMLElement | null;
+          if (required || target?.closest("[data-radix-popper-content-wrapper]")) {
+            e.preventDefault();
+          }
         }}
         onEscapeKeyDown={(e) => {
           if (required) e.preventDefault();
         }}
         onInteractOutside={(e) => {
-          if (required) e.preventDefault();
+          const target = e.target as HTMLElement | null;
+          if (required || target?.closest("[data-radix-popper-content-wrapper]")) {
+            e.preventDefault();
+          }
         }}
       >
+        <DialogDescription className="sr-only">
+          Search or choose a delivery location or pickup store.
+        </DialogDescription>
         {currentView === 'mode' ? (
           <div className="px-1 pt-1 pb-2 sm:px-2">
             <DialogTitle className="text-center text-lg sm:text-xl font-bold mb-4">
@@ -905,10 +833,6 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
               Confirm
             </Button>
           </div>
-        ) : !isLoaded ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader />
-          </div>
         ) : (
           <>
         {currentView === 'main' && (
@@ -935,6 +859,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                       className="flex-grow border-none focus:ring-0 outline-none text-xs sm:text-sm"
                       value={outletSearchQuery}
                       onChange={(e) => setOutletSearchQuery(e.target.value)}
+                      onFocus={handleSearchFocus}
                     />
                   </div>
                 </div>
@@ -949,11 +874,14 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                   <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                 </div>
 
-                <div className="space-y-2 max-h-80 sm:max-h-96 overflow-y-auto">
+                <div className="space-y-2 lg:max-h-80 lg:overflow-y-auto">
                   {loadingStores ? (
-                    <div className="flex items-center justify-center py-6 sm:py-8">
-                      <Loader />
-                    </div>
+                    <>
+                      <LocationRowSkeleton />
+                      <LocationRowSkeleton />
+                      <LocationRowSkeleton />
+                      <LocationRowSkeleton />
+                    </>
                   ) : !filteredStores || filteredStores.length === 0 ? null : (
                     filteredStores.map((store) => (
                       <div
@@ -999,10 +927,11 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                       className="flex-grow border-none focus:ring-0 outline-none text-xs sm:text-sm"
                       value={searchQuery}
                       onChange={handleSearchInputChange}
+                      onFocus={handleSearchFocus}
                     />
                   </div>
                   {predictions.length > 0 && (
-                    <ul className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-50 mt-1 max-h-48 sm:max-h-60 overflow-y-auto">
+                    <ul className="max-lg:relative max-lg:mt-2 max-lg:max-h-none max-lg:shadow-sm lg:absolute lg:top-full lg:left-0 lg:right-0 lg:mt-1 bg-white border border-gray-200 rounded-md shadow-lg z-50 lg:max-h-60 overflow-y-auto">
                       {predictions.map((prediction) => (
                         <li
                           key={prediction.place_id}
@@ -1048,8 +977,10 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                   <div>
                     <h3 className="text-sm sm:text-base text-gray-500 font-semibold mb-2 sm:mb-3">Recently Searched Locations</h3>
                     <ul
-                      className={`space-y-2 sm:space-y-3 overflow-y-auto overscroll-y-contain pr-1 ${
-                        recentLocations.length > VISIBLE_RECENT_LOCATIONS ? "max-h-[9.5rem] sm:max-h-[10rem]" : ""
+                      className={`space-y-2 sm:space-y-3 pr-1 ${
+                        recentLocations.length > VISIBLE_RECENT_LOCATIONS
+                          ? "lg:max-h-[10rem] lg:overflow-y-auto lg:overscroll-y-contain"
+                          : ""
                       }`}
                     >
                       {recentLocations.map((locString) => {
@@ -1081,22 +1012,26 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
 
         {currentView === 'map' && (
           <div className="p-3 sm:p-4 relative">
-            <div className="flex items-center mb-3 sm:mb-4">
-              <Button variant="ghost" size="icon" onClick={() => setCurrentView('main')} className="mr-2">
+            <div className="relative flex items-center justify-center mb-3 sm:mb-4 min-h-9">
+              <Button variant="ghost" size="icon" onClick={() => setCurrentView('main')} className="absolute left-0 shrink-0">
                 <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
               </Button>
-              <DialogTitle className="text-lg sm:text-xl font-bold">Set Location on Map</DialogTitle>
+              <DialogTitle className="text-lg sm:text-xl font-bold text-center">Set Location on Map</DialogTitle>
             </div>
             <div className="w-full h-64 sm:h-80 bg-gray-200 rounded-md overflow-hidden mb-3 sm:mb-4">
-              <GoogleMap
-                mapContainerStyle={{ width: "100%", height: "100%" }}
-                center={mapCenter}
-                zoom={SRI_LANKA_MAP_ZOOM}
-                onLoad={fitMapToSriLanka}
-                onClick={handleMapClick}
-              >
-                {markerPosition && <Marker position={markerPosition} />}
-              </GoogleMap>
+              {isLoaded ? (
+                <GoogleMap
+                  mapContainerStyle={{ width: "100%", height: "100%" }}
+                  center={mapCenter}
+                  zoom={SRI_LANKA_MAP_ZOOM}
+                  onLoad={fitMapToSriLanka}
+                  onClick={handleMapClick}
+                >
+                  {markerPosition && <Marker position={markerPosition} />}
+                </GoogleMap>
+              ) : (
+                <div className="h-full w-full animate-pulse bg-gray-200" />
+              )}
             </div>
             <Button className="mt-2 w-full text-xs sm:text-sm" onClick={() => markerPosition && handleSelectLocation(`Lat: ${markerPosition.lat}, Lng: ${markerPosition.lng}`, `Map Location`)}>Confirm Location</Button>
           </div>
@@ -1111,21 +1046,25 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
               <DialogTitle className="text-lg sm:text-xl font-bold">Select Outlet on Map</DialogTitle>
             </div>
             <div className="w-full h-64 sm:h-80 bg-gray-200 rounded-md overflow-hidden mb-3 sm:mb-4">
-              <GoogleMap
-                mapContainerStyle={{ width: "100%", height: "100%" }}
-                center={SRI_LANKA_MAP_CENTER}
-                zoom={SRI_LANKA_MAP_ZOOM}
-                onLoad={fitMapToSriLanka}
-              >
-                {storesWithCoordinates.map((store) => (
-                  <Marker
-                    key={store.id}
-                    position={{ lat: store.location.latitude, lng: store.location.longitude }}
-                    onClick={() => handleSelectOutlet(store)}
-                    title={store.name}
-                  />
-                ))}
-              </GoogleMap>
+              {isLoaded ? (
+                <GoogleMap
+                  mapContainerStyle={{ width: "100%", height: "100%" }}
+                  center={SRI_LANKA_MAP_CENTER}
+                  zoom={SRI_LANKA_MAP_ZOOM}
+                  onLoad={fitMapToSriLanka}
+                >
+                  {storesWithCoordinates.map((store) => (
+                    <Marker
+                      key={store.id}
+                      position={{ lat: store.location.latitude, lng: store.location.longitude }}
+                      onClick={() => handleSelectOutlet(store)}
+                      title={store.name}
+                    />
+                  ))}
+                </GoogleMap>
+              ) : (
+                <div className="h-full w-full animate-pulse bg-gray-200" />
+              )}
             </div>
             <div className="text-xs sm:text-sm text-gray-600 mb-2">
               Click on any marker to select that outlet
@@ -1159,138 +1098,20 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
         )}
 
         {currentView === 'savedAddresses' && (
-          <div className="p-3 sm:p-4 relative">
-            <div className="flex items-center mb-3 sm:mb-4">
-              <Button variant="ghost" size="icon" onClick={() => setCurrentView('main')} className="mr-2">
-                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
-              </Button>
-              <DialogTitle className="text-lg sm:text-xl font-bold">Saved Addresses</DialogTitle>
-            </div>
-            <div className="space-y-3 sm:space-y-4">
-              {savedAddresses.length === 0 ? (
-                <div className="text-center py-6 sm:py-8">
-                  <MapPinIcon className="h-10 w-10 sm:h-12 sm:w-12 text-gray-300 mx-auto mb-3 sm:mb-4" />
-                  <h3 className="text-base sm:text-lg font-medium text-gray-900 mb-2">No saved addresses</h3>
-                  <p className="text-gray-500 mb-3 sm:mb-4 text-sm sm:text-base">Add your first address to get started</p>
-                </div>
-              ) : (
-                savedAddresses.map((address) => (
-                  <div 
-                    key={address.id} 
-                    className="flex flex-col border rounded-md p-3 hover:bg-gray-50 transition-colors"
-                  >
-                    <div 
-                      className="flex items-center justify-between cursor-pointer"
-                      onClick={() => handleSelectLocation(address.address, address.address)}
-                    >
-                      <div className="flex items-center space-x-2 sm:space-x-3 flex-1">
-                        {address.name?.toLowerCase().includes('home') || address.name?.toLowerCase().includes('house') || address.address.toLowerCase().includes('home') || address.address.toLowerCase().includes('house') ? (
-                          <HomeIcon className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-                        ) : address.name?.toLowerCase().includes('office') || address.name?.toLowerCase().includes('work') || address.address.toLowerCase().includes('office') || address.address.toLowerCase().includes('work') ? (
-                          <BriefcaseBusiness className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-                        ) : (
-                          <MapPinIcon className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm sm:text-base font-medium truncate">
-                              {address.name || (address.is_default ? "Default Address" : `Address ${address.id}`)}
-                            </span>
-                            {address.is_default && (
-                              <span className="text-[9px] sm:text-xs bg-green-100 text-green-800 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded whitespace-nowrap">Default</span>
-                            )}
-                          </div>
-                          <p className="text-xs sm:text-sm text-gray-600 truncate mt-0.5">{address.address}</p>
-                        </div>
-                      </div>
-                      <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400 flex-shrink-0 ml-2" />
-                    </div>
-                    {!address.is_default && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="w-full mt-2 text-xs sm:text-sm"
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          try {
-                            await setDefaultAddress(address.id);
-                            
-                            // Update LocationContext
-                            setDefaultAddressContext(address);
-                            setAddressId(address.id);
-                            setSelectedLocation(address.address);
-                            
-                            // Save to localStorage
-                            if (typeof window !== 'undefined') {
-                              localStorage.setItem('selectedAddressId', address.id.toString());
-                              localStorage.setItem('defaultAddress', JSON.stringify(address));
-                              localStorage.setItem('selectedLocation', address.address);
-                            }
-                            
-                            // Check if ondemand delivery is not available
-                            if (address.ondemand_delivery_available === false) {
-                              setShowDeliveryWarning(true);
-                            }
-                            
-                            // Reload addresses to update the UI
-                            const addresses = await getUserAddresses();
-                            if (Array.isArray(addresses)) {
-                              // Load locally stored name mappings
-                              const storedNames = typeof window !== 'undefined' 
-                                ? JSON.parse(localStorage.getItem('addressNames') || '{}')
-                                : {};
-                              
-                              // Merge locally stored names with backend addresses
-                              const addressesWithNames = addresses.map((addr: any) => {
-                                if (!addr.name && storedNames[addr.id]) {
-                                  return { ...addr, name: storedNames[addr.id] };
-                                }
-                                return addr;
-                              });
-                              
-                              const filteredAddresses = addressesWithNames.filter((addr: any) => {
-                                return addr.name || addr.is_default;
-                              });
-                              setSavedAddresses(filteredAddresses);
-                            }
-                            
-                            toast.success("Default address updated!");
-                          } catch (error) {
-                            console.error('Error setting default address:', error);
-                            toast.error('Failed to set default address');
-                          }
-                        }}
-                      >
-                        Set as Default
-                      </Button>
-                    )}
-                  </div>
-                ))
-              )}
-              <Button 
-                className="w-full mt-3 sm:mt-4 flex items-center gap-2 text-xs sm:text-sm" 
-                onClick={() => setIsAddressSelectorOpen(true)}
-              >
-                <PlusIcon className="h-3 w-3 sm:h-4 sm:w-4" />
-                Add New Address
-              </Button>
-            </div>
-          </div>
+          <SavedAddressPicker
+            onBack={() => setCurrentView("main")}
+            user={user}
+            savedAddresses={savedAddresses}
+            applySavedAddress={applySavedAddress}
+            onAddressesChange={setSavedAddresses}
+            onSearchFocus={handleSearchFocus}
+            onStepChange={setSavedStep}
+          />
         )}
           </>
         )}
       </DialogContent>
     </Dialog>
-
-    {isAddressSelectorOpen && (
-      <AddressSelector
-        isOpen={isAddressSelectorOpen}
-        onClose={() => setIsAddressSelectorOpen(false)}
-        onAddressSelect={handleAddressSelect}
-        title="Add New Address"
-        description="Choose your address by searching or clicking on the map"
-      />
-    )}
 
     {/* Delivery Warning Dialog */}
     <DeliveryWarningDialog 

@@ -85,24 +85,27 @@ function DeliveryTypeBadge() {
       onClick={() => picker?.openPicker("mode")}
       aria-label={`${label} options`}
       aria-haspopup="dialog"
-      className="h-6 lg:h-8 bg-white rounded-md flex items-center justify-center gap-0.5 pl-1 pr-0.5 lg:pl-1.5 lg:pr-1 shadow-sm flex-shrink-0"
+      className="h-6 lg:h-8 bg-white rounded-md flex items-center justify-center gap-1 pl-1.5 pr-1 lg:pl-2 lg:pr-1.5 shadow-sm flex-shrink-0"
     >
       <Image
         src={deliveryType === "delivery" ? deliveryIcon : pickupIcon}
         alt=""
-        width={14}
-        height={14}
+        width={12}
+        height={12}
         className="lg:hidden"
-        style={{ width: "14px", height: "14px" }}
+        style={{ width: "12px", height: "12px" }}
       />
       <Image
         src={deliveryType === "delivery" ? deliveryIcon : pickupIcon}
         alt=""
-        width={20}
-        height={20}
+        width={16}
+        height={16}
         className="hidden lg:block"
-        style={{ width: "20px", height: "20px" }}
+        style={{ width: "16px", height: "16px" }}
       />
+      <span className="text-[10px] lg:text-xs font-medium text-black leading-none whitespace-nowrap">
+        {label}
+      </span>
       <ChevronDown className="w-3 h-3 lg:w-3.5 lg:h-3.5 text-black shrink-0" aria-hidden />
     </button>
   );

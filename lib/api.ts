@@ -150,33 +150,65 @@ export async function updateUserProfile(profileData: {
   return response.json();
 }
 
-// Address management functions
-export async function getUserAddresses() {
-  const authHeaders = await getAuthHeaders();
-  const response = await fetch(apiUrl('/users/me/addresses'), {
-    method: 'GET',
-    headers: authHeaders,
-  });
+const USER_ADDRESSES_TTL_MS = 5 * 60 * 1000;
+let userAddressesCache: { data: any[]; at: number } | null = null;
+let userAddressesInflight: Promise<any[]> | null = null;
 
-  if (!response.ok) {
-    if (response.status === 401) {
-      throw new Error('Authentication required');
-    }
-    throw new Error(`Failed to get addresses: ${response.status} ${response.statusText}`);
-  }
+export function invalidateUserAddressesCache() {
+  userAddressesCache = null;
+  userAddressesInflight = null;
+}
 
-  const responseData = await response.json();
-  // Handle new backend response format: {statusCode, message, data: [...]}
-  // Also support old format: direct array
-  if (responseData && typeof responseData === 'object' && 'data' in responseData && Array.isArray(responseData.data)) {
-    return responseData.data;
+export function peekUserAddressesCache(options?: { allowStale?: boolean }): any[] | null {
+  if (!userAddressesCache) return null;
+  if (options?.allowStale || Date.now() - userAddressesCache.at < USER_ADDRESSES_TTL_MS) {
+    return userAddressesCache.data;
   }
-  // If it's already an array, return it directly (backward compatibility)
+  return null;
+}
+
+function parseUserAddressesResponse(responseData: unknown): any[] {
+  if (responseData && typeof responseData === 'object' && 'data' in responseData && Array.isArray((responseData as { data: unknown }).data)) {
+    return (responseData as { data: any[] }).data;
+  }
   if (Array.isArray(responseData)) {
     return responseData;
   }
-  // Fallback: return empty array if unexpected format
   return [];
+}
+
+// Address management functions
+export async function getUserAddresses() {
+  if (userAddressesCache && Date.now() - userAddressesCache.at < USER_ADDRESSES_TTL_MS) {
+    return userAddressesCache.data;
+  }
+  if (userAddressesInflight) {
+    return userAddressesInflight;
+  }
+
+  userAddressesInflight = (async () => {
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(apiUrl('/users/me/addresses'), {
+      method: 'GET',
+      headers: authHeaders,
+    });
+
+    if (!response.ok) {
+      if (response.status === 401) {
+        throw new Error('Authentication required');
+      }
+      throw new Error(`Failed to get addresses: ${response.status} ${response.statusText}`);
+    }
+
+    const responseData = await response.json();
+    const data = parseUserAddressesResponse(responseData);
+    userAddressesCache = { data, at: Date.now() };
+    return data;
+  })().finally(() => {
+    userAddressesInflight = null;
+  });
+
+  return userAddressesInflight;
 }
 
 export async function createUserAddress(addressData: {
@@ -186,6 +218,7 @@ export async function createUserAddress(addressData: {
   is_default?: boolean;
   name?: string; // Kept for UI/localStorage; not sent to API per spec
 }) {
+  invalidateUserAddressesCache();
   const authHeaders = await getAuthHeaders();
   // API spec: only address, latitude, longitude, is_default
   const body = {
@@ -305,6 +338,7 @@ export async function updateUserAddress(addressId: number, addressData: {
   longitude?: number;
   name?: string;
 }) {
+  invalidateUserAddressesCache();
   const authHeaders = await getAuthHeaders();
   const response = await fetch(apiUrl(`/users/me/addresses/${addressId}`), {
     method: 'PUT',
@@ -329,6 +363,7 @@ export async function updateUserAddress(addressId: number, addressData: {
 }
 
 export async function deleteUserAddress(addressId: number) {
+  invalidateUserAddressesCache();
   const authHeaders = await getAuthHeaders();
   const response = await fetch(apiUrl(`/users/me/addresses/${addressId}`), {
     method: 'DELETE',
@@ -346,6 +381,7 @@ export async function deleteUserAddress(addressId: number) {
 }
 
 export async function setDefaultAddress(addressId: number) {
+  invalidateUserAddressesCache();
   const authHeaders = await getAuthHeaders();
   const response = await fetch(apiUrl(`/users/me/addresses/${addressId}/set_default`), {
     method: 'PUT',
