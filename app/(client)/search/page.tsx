@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import Container from "@/components/Container";
 import ProductGrid from "@/components/ProductGrid";
 import { searchProducts } from "@/lib/api";
@@ -246,11 +247,17 @@ const SearchPageContent = () => {
           ) : showEmptyState ? (
             <div className="py-12 text-center">
               <p className="text-base sm:text-lg font-semibold text-gray-800 mb-2">
-                No products found for &quot;{query}&quot;
+                No products matched &quot;{query}&quot;
               </p>
-              <p className="text-sm text-gray-600">
-                Try searching with different keywords
+              <p className="text-sm text-gray-600 mb-5">
+                Try a different search, or go back to browsing.
               </p>
+              <Link
+                href="/"
+                className="inline-block bg-blue-600 text-white font-semibold px-5 py-2.5 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Back to shopping
+              </Link>
             </div>
           ) : (
             <ProductGrid

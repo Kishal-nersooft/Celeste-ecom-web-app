@@ -96,11 +96,12 @@ interface SearchBarProps {
   className?: string;
   placeholder?: string;
   showSuggestions?: boolean;
-  maxResults?: number;
 }
 
-/** Wait for typing pause before hitting the search API. */
-const SEARCH_DEBOUNCE_MS = 400;
+/** Wait for a typing pause so each keystroke does not fire its own search. */
+const SEARCH_DEBOUNCE_MS = 250;
+/** Dropdown mode always returns five products. */
+const DROPDOWN_RESULT_LIMIT = 5;
 
 const PLACEHOLDER_ROTATE_MS = 2500;
 const PLACEHOLDER_ANIMATION = { duration: 0.4, ease: [0.22, 1, 0.36, 1] as const };
@@ -237,7 +238,6 @@ const SearchBar: React.FC<SearchBarProps> = ({
   className = "",
   placeholder = "Search...",
   showSuggestions = true,
-  maxResults = 10
 }) => {
   const router = useRouter();
   const pathname = usePathname();
@@ -341,21 +341,13 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
     try {
       const searchOptions: {
-        limit: number;
         includePricing: boolean;
-        includeInventory: boolean;
-        includeCategories: boolean;
-        includeTags: boolean;
         storeIds?: number[];
         latitude?: number;
         longitude?: number;
         signal: AbortSignal;
       } = {
-        limit: maxResults,
         includePricing: true,
-        includeInventory: true,
-        includeCategories: false,
-        includeTags: false,
         signal,
       };
 
@@ -389,9 +381,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
 
       setResults({
         ...searchResults,
-        products: (searchResults.products || []).map(
-          (product: Record<string, unknown>) => mapSearchProductToProduct(product)
-        ),
+        products: (searchResults.products || [])
+          .slice(0, DROPDOWN_RESULT_LIMIT)
+          .map((product: Record<string, unknown>) => mapSearchProductToProduct(product)),
       });
       lastCompletedSearchQueryRef.current = searchQuery;
       setIsOpen(true);
@@ -416,7 +408,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         setIsLoading(false);
       }
     }
-  }, [maxResults, selectedStore, deliveryType, defaultAddress]);
+  }, [selectedStore, deliveryType, defaultAddress]);
 
   // Load subcategory names for the rotating placeholder (hits the shared categories cache).
   useEffect(() => {
@@ -791,6 +783,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
           onFocus={handleFocus}
           onBlur={handleBlur}
           placeholder=""
+          maxLength={200}
           aria-label={placeholder || 'Search'}
           className="w-full border border-gray-300 rounded-md px-3 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm pr-8"
         />
@@ -998,8 +991,21 @@ const SearchBar: React.FC<SearchBarProps> = ({
               </button>
             </div>
           ) : hasDropdownSearchCompleted && results.products.length === 0 ? (
-            <div className="p-3 text-gray-500 text-sm text-center">
-              No products found for &quot;{trimmedQuery}&quot;
+            <div className="p-3 text-center">
+              <p className="text-gray-500 text-sm">
+                No products matched &quot;{trimmedQuery}&quot;
+              </p>
+              <button
+                type="button"
+                onClick={handleShowAllResults}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  isInteractingRef.current = true;
+                }}
+                className="mt-2 text-sm font-medium text-blue-600 hover:text-blue-800"
+              >
+                Search all products
+              </button>
             </div>
           ) : null}
         </div>

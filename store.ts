@@ -49,12 +49,40 @@ export interface CartItem {
   itemId?: number; // Cart item ID from backend
 }
 
+export interface OrderReplacement {
+  name: string;
+  imageUrl?: string;
+  quantity: number;
+  unitPrice: number;
+}
+
 export interface OrderItem {
   productId: number;
   name: string;
   price: number;
   quantity: number;
+  /** Quantity the customer originally ordered. */
+  orderedQuantity?: number;
+  /** Quantity of this product the warehouse is still sending. */
+  suppliedQuantity?: number;
+  /** Quantity before the warehouse amendment, when the API sends it. */
+  originalQuantity?: number;
   imageUrl?: string; // For compatibility with backend
+  replacement?: OrderReplacement;
+  /** Shown under a substitution, for example "Agreed with you by phone". */
+  agreementNote?: string;
+  /** Warehouse removed this line. The row stays on the card, marked unavailable. */
+  unavailable?: boolean;
+}
+
+/** One product whose quantity changed because the warehouse amended the order. */
+export interface OrderItemChange {
+  key: string;
+  name: string;
+  imageUrl?: string;
+  previousQuantity: number;
+  quantity: number;
+  summary: string;
 }
 
 /** Driver info sent by backend when order status is Shipped or later */
@@ -95,6 +123,18 @@ export interface Order {
   driver?: DriverInfo;
   /** Present when status is Shipped and include_rider=true (from backend) */
   rider?: RiderInfo;
+  /** Warehouse price-increase approval. Card shows only while this is `pending`. */
+  approvalStatus?: "pending" | "approved" | "rejected" | "expired";
+  /** UTC ISO deadline from `approval_deadline_at`. */
+  approvalDeadlineAt?: string;
+  /** Extra amount the customer is being asked to approve. */
+  approvalAmount?: number;
+  /** Amount the customer already paid, before the amendment. */
+  originalTotalAmount?: number;
+  /** Set on a cancelled order: `amendment_rejected` or `amendment_not_approved`. */
+  cancelReasonCode?: string;
+  /** Products whose quantity changed in a warehouse amendment. */
+  itemChanges?: OrderItemChange[];
   createdAt: Date;
   updatedAt: Date;
 }

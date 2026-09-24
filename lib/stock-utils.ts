@@ -1,4 +1,4 @@
-import { Product } from "../store";
+import type { Product } from "../store";
 
 export interface StockAnalysis {
   overallStatus: 'in_stock' | 'partial_stock' | 'out_of_stock' | 'no_data';
@@ -189,6 +189,42 @@ export function getSimpleStockStatus(product: Product, targetStoreId?: number): 
   } else {
     return { status: 'in_stock', icon: '✅', color: 'text-green-600' };
   }
+}
+
+type InventoryFlags = {
+  in_stock?: boolean;
+  can_order?: boolean;
+};
+
+function inventoryRecords(inventory: unknown): InventoryFlags[] {
+  if (inventory == null) return [];
+  if (Array.isArray(inventory)) {
+    return inventory.filter(
+      (entry): entry is InventoryFlags => !!entry && typeof entry === "object"
+    );
+  }
+  if (typeof inventory === "object") return [inventory as InventoryFlags];
+  return [];
+}
+
+/**
+ * True when inventory is present and every record says the product cannot be sold.
+ * Missing inventory is not treated as out of stock.
+ */
+export function isExplicitlyUnavailable(product: {
+  inventory?: unknown;
+} | null | undefined): boolean {
+  const entries = inventoryRecords(product?.inventory);
+  if (entries.length === 0) return false;
+  return entries.every(
+    (entry) => entry.in_stock === false || entry.can_order === false
+  );
+}
+
+/** Catalogue lists should omit products the current store or area cannot sell. */
+export function excludeUnavailableProducts(products: unknown): any[] {
+  if (!Array.isArray(products)) return [];
+  return products.filter((product) => !isExplicitlyUnavailable(product));
 }
 
 /**

@@ -14,6 +14,7 @@ export const BACKEND_PROXY_BASE = "/api/backend";
 import { getCachedProducts, setCachedProducts, hasCachedProducts } from './product-cache';
 import { apiLog, devLog } from './debug-log';
 import { canonicalBackendPath, type BackendQuery } from './backend-path';
+import { excludeUnavailableProducts } from './stock-utils';
 
 export { apiLog, apiError, devLog, resetApiLogDedupe, isDebugEnabled } from './debug-log';
 export { canonicalBackendPath } from './backend-path';
@@ -590,11 +591,12 @@ export async function getProducts(
   if (typeof window !== 'undefined') {
     const cachedProducts = getCachedProducts(cacheParams);
     if (cachedProducts) {
+      const availableProducts = excludeUnavailableProducts(cachedProducts);
       devLog('GET /products/ (cache)', {
         categoryIds,
-        count: cachedProducts.length,
+        count: availableProducts.length,
       });
-      return cachedProducts;
+      return availableProducts;
     }
   }
 
@@ -643,7 +645,7 @@ export async function getProducts(
   const data = await response.json();
   
   
-  let products = data.data?.products || [];
+  let products = excludeUnavailableProducts(data.data?.products);
   
   // Cache the results (only on client side)
   if (typeof window !== 'undefined') {
@@ -781,7 +783,7 @@ export async function getProductsBySubcategory(
     throw new Error("Failed to fetch products by subcategory");
   }
   const data = await response.json();
-  return data.data?.products || [];
+  return excludeUnavailableProducts(data.data?.products);
 }
 
 // Pricing-aware version of getProductsBySubcategory (using backend's built-in pricing)
@@ -1086,7 +1088,7 @@ export async function getAllProducts(
   if (typeof window !== 'undefined') {
     const cachedProducts = getCachedProducts(cacheParams);
     if (cachedProducts) {
-      return cachedProducts;
+      return excludeUnavailableProducts(cachedProducts);
     }
   }
 
@@ -1144,7 +1146,7 @@ export async function getAllProducts(
     }
     
     const data = await response.json();
-    const products = data.data?.products || [];
+    const products = excludeUnavailableProducts(data.data?.products);
     const pagination = data.data?.pagination;
     
     allProducts = [...allProducts, ...products];
@@ -1287,7 +1289,7 @@ export async function getPopularProducts(
     products = data;
   }
 
-  const productsWithPricing = products.map((product: any) => ({
+  const productsWithPricing = excludeUnavailableProducts(products).map((product: any) => ({
     ...product,
     pricing: product.pricing || {
       base_price: product.base_price || product.price || 0,
@@ -1364,7 +1366,7 @@ export async function getRecentProducts(
     products = data.data.products;
   }
 
-  const productsWithPricing = products.map((product: any) => ({
+  const productsWithPricing = excludeUnavailableProducts(products).map((product: any) => ({
     ...product,
     pricing: product.pricing || {
       base_price: product.base_price || product.price || 0,
@@ -1461,7 +1463,7 @@ export async function getSimilarProducts(
     products = data.data.products;
   }
 
-  const productsWithPricing = products.map((product: any) => ({
+  const productsWithPricing = excludeUnavailableProducts(products).map((product: any) => ({
     ...product,
     pricing: product.pricing || {
       base_price: product.base_price || product.price || 0,
@@ -1578,7 +1580,7 @@ export async function getProductsWithCursorPagination(
   }
   
   const data = await response.json();
-  const products = data.data?.products || [];
+  const products = excludeUnavailableProducts(data.data?.products);
   const pagination = data.data?.pagination;
   
   // Only calculate pricing for fetched products
@@ -2497,7 +2499,10 @@ export async function getUserOrders(
 // Get specific order by ID
 export async function getOrderById(orderId: string) {
   const authHeaders = await getAuthHeaders();
-  const response = await fetch(apiUrl(`/orders/${orderId}`), {
+  const params = new URLSearchParams();
+  params.append("include_products", "true");
+  params.append("include_rider", "true");
+  const response = await fetch(apiUrl(`/orders/${orderId}`, params), {
     method: 'GET',
     headers: authHeaders
   });
@@ -2539,6 +2544,52 @@ export async function cancelOrder(orderId: string, reason?: string) {
     { dedupeKey: `order-cancel|${orderId}` }
   );
   return data;
+}
+
+export type OrderAmendmentPostResult =
+  | { ok: true; order: unknown }
+  | { ok: false; tooLate: true };
+
+async function postOrderAmendment(
+  orderId: string,
+  action: "approve" | "reject",
+): Promise<OrderAmendmentPostResult> {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(apiUrl(`/orders/${orderId}/amendment/${action}`), {
+    method: "POST",
+    headers: authHeaders,
+    body: "{}",
+  });
+
+  // Approving after the deadline returns 400. That is a finished order, not a
+  // failure to retry — the caller refetches and shows the resulting state.
+  if (response.status === 400) {
+    return { ok: false, tooLate: true };
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      errorText || `Failed to ${action} order change: ${response.status} ${response.statusText}`,
+    );
+  }
+
+  const data = await response.json();
+  apiLog(
+    `POST /orders/${orderId}/amendment/${action}`,
+    `${response.status} · amendment ${action}d`,
+    { order: data?.data ?? data },
+    { dedupeKey: `order-amendment-${action}|${orderId}` },
+  );
+  return { ok: true, order: data };
+}
+
+export function approveOrderAmendment(orderId: string) {
+  return postOrderAmendment(orderId, "approve");
+}
+
+export function rejectOrderAmendment(orderId: string) {
+  return postOrderAmendment(orderId, "reject");
 }
 
 // ==================== ORDERS API FUNCTIONS ====================
@@ -2746,18 +2797,23 @@ export async function searchProducts(
     signal?: AbortSignal;
   } = {}
 ) {
-  // Validate query
-  if (!query || query.length < 2) {
+  const trimmedQuery = query.trim();
+  // One character is a 422. Queries longer than 200 are rejected the same way.
+  if (trimmedQuery.length < 2) {
     throw new Error('Search query must be at least 2 characters long');
+  }
+  if (trimmedQuery.length > 200) {
+    throw new Error('Search query must be at most 200 characters long');
   }
 
   const params = new URLSearchParams();
-  params.append('q', query);
+  params.append('q', trimmedQuery);
   params.append('mode', mode);
-  
-  // Only add limit if explicitly provided, otherwise use backend default
-  if (options.limit) {
-    params.append('limit', options.limit.toString());
+
+  // Dropdown is fixed at 5. Full defaults to 20 on the server and caps at 100.
+  if (mode === 'full' && options.limit) {
+    const limit = Math.min(100, Math.max(1, Math.floor(options.limit)));
+    params.append('limit', String(limit));
   }
   
   // Add pagination parameters
@@ -2823,7 +2879,7 @@ export async function searchProducts(
   }
 
   const data = await response.json();
-  const products = data.data?.products || [];
+  const products = excludeUnavailableProducts(data.data?.products);
   const pagination = data.data?.pagination;
   const totalResults =
     data.data?.total_results ??
@@ -2845,9 +2901,9 @@ export async function searchProducts(
     },
   };
 
-  apiLog('GET /products/search', `${response.status} · ${result.products.length} products · "${query}"`, {
+  apiLog('GET /products/search', `${response.status} · ${result.products.length} products · "${trimmedQuery}"`, {
     url: url.split('?')[0],
-    query,
+    query: trimmedQuery,
     mode,
     products: result.products,
     total_results: result.total_results,

@@ -239,7 +239,6 @@ export const Header = () => {
               <SearchBar
                 className="w-full lg:flex-1 lg:min-w-0"
                 placeholder="Search..."
-                maxResults={10}
               />
             </Suspense>
 

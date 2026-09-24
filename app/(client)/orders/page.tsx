@@ -17,7 +17,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Order, DriverInfo, RiderInfo } from "@/store";
-import { getAuthHeaders, getUserOrders, apiUrl } from "@/lib/api";
+import { getAuthHeaders, getOrderById, getUserOrders, apiUrl } from "@/lib/api";
 import {
   canCancelOrderAsCustomer,
   getOrderStatusFromPayload,
@@ -25,12 +25,19 @@ import {
   normalizeOrderStatus,
   type OrderFilterTab,
 } from "@/lib/order-status";
+import { mapOrderItems, orderPatchFromPayload, payloadOmitsAmendment, readOrderAmendment, readOrderItemChanges, unwrapOrderPayload } from "@/lib/order-amendment";
+import { subscribeOrderLive } from "@/lib/order-live";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
+import OrderAmendmentApproval from "@/components/OrderAmendmentApproval";
+import OrderLines from "@/components/OrderLines";
 import ReorderDialog from "@/components/ReorderDialog";
 import Loader from "@/components/Loader";
 import AuthRetryScreen from "@/components/AuthRetryScreen";
 import useCartStore from "@/store";
+
+/** Temporary: customers should not see Cancel order. Set true to show it again. */
+const SHOW_CUSTOMER_CANCEL_ORDER = false;
 
 const OrdersPageContent = () => {
   const { user, loading: authLoading, unresolved, isGuest } = useAuth();
@@ -120,6 +127,25 @@ const OrdersPageContent = () => {
           // Nested data.orders structure
           backendOrders = response.data.orders;
         }
+
+        // Amendment fields are guaranteed on GET /orders/{id}. Hydrate when the list omits them.
+        if ((filter === "ongoing" || filter === "cancelled") && backendOrders.length > 0) {
+          backendOrders = await Promise.all(
+            backendOrders.map(async (raw: any) => {
+              if (!payloadOmitsAmendment(raw) || raw?.id == null) return raw;
+              try {
+                const detailResponse = await getOrderById(String(raw.id));
+                const detail = unwrapOrderPayload(detailResponse);
+                if (!detail) return raw;
+                const items =
+                  Array.isArray(detail.items) && detail.items.length > 0 ? detail.items : raw.items;
+                return { ...raw, ...detail, items };
+              } catch {
+                return raw;
+              }
+            }),
+          );
+        }
         
         // Log clean orders data
 
@@ -164,39 +190,15 @@ const OrdersPageContent = () => {
               ));
 
           const normalizedStatus = getOrderStatusFromPayload(order);
+          const amendment = readOrderAmendment(order);
           const statusUpper = normalizedStatus;
           const driver = mapDriver(order);
           const rider = mapRider(order);
           if ((statusUpper === 'SHIPPED' || statusUpper === 'DELIVERED') && (order.rider ?? order.driver ?? order.driver_info ?? order.assigned_driver)) {
           }
 
-          // Use included product data directly from API response
-          const itemsWithDetails = (order.items || []).map((item: any) => {
-            // Handle product data - can be in item.product or null if not included
-            const product = item.product || {};
-            
-            // Extract product name - try multiple possible fields
-            const productName = product.name || 
-                               product.title || 
-                               product.product_name ||
-                               `Product ${item.product_id}`;
-            
-            // Extract image URL - try multiple possible fields
-            const imageUrl = product.image_urls?.[0] || 
-                           product.image_url || 
-                           product.imageUrl || 
-                           product.image ||
-                           product.primary_image ||
-                           null;
-            
-            return {
-              productId: item.product_id,
-              name: productName,
-              price: item.unit_price || 0,
-              quantity: item.quantity || 0,
-              imageUrl: imageUrl
-            };
-          });
+          const itemsWithDetails = mapOrderItems(order.items);
+          const itemChanges = readOrderItemChanges(order);
 
           return {
             id: order.id?.toString() || 'unknown',
@@ -224,6 +226,12 @@ const OrdersPageContent = () => {
             scheduledAt: typeof scheduledAtRaw === "string" && scheduledAtRaw.trim()
               ? scheduledAtRaw.trim()
               : undefined,
+            approvalStatus: amendment.approvalStatus,
+            approvalDeadlineAt: amendment.approvalDeadlineAt,
+            approvalAmount: amendment.approvalAmount,
+            originalTotalAmount: amendment.originalTotalAmount,
+            cancelReasonCode: amendment.cancelReasonCode,
+            itemChanges,
           };
         });
         
@@ -327,6 +335,66 @@ const OrdersPageContent = () => {
     setCancelReason("");
     setCancelDialogOpen(true);
   };
+
+  const handleOrderUpdated = useCallback((orderId: string, patch: Partial<Order>) => {
+    setOrders((current) =>
+      current.map((existing) => (existing.id === orderId ? { ...existing, ...patch } : existing)),
+    );
+  }, []);
+
+  const handleOrderUpdatedRef = useRef(handleOrderUpdated);
+  handleOrderUpdatedRef.current = handleOrderUpdated;
+  const liveRefreshRef = useRef<{ running: Set<string>; pending: Set<string> }>({
+    running: new Set(),
+    pending: new Set(),
+  });
+
+  const ongoingOrderKey =
+    activeFilter === "ongoing"
+      ? orders
+          .map((order) => order.id)
+          .filter((id) => id && id !== "unknown")
+          .join(",")
+      : "";
+
+  useEffect(() => {
+    if (!user || !ongoingOrderKey) return;
+
+    const refreshOrder = (orderId: string) => {
+      const gate = liveRefreshRef.current;
+      if (gate.running.has(orderId)) {
+        gate.pending.add(orderId);
+        return;
+      }
+      gate.running.add(orderId);
+
+      void (async () => {
+        try {
+          const response = await getOrderById(orderId);
+          const raw = unwrapOrderPayload(response);
+          if (raw) {
+            handleOrderUpdatedRef.current(orderId, orderPatchFromPayload(raw) as Partial<Order>);
+          }
+        } catch (error) {
+          console.error(`Failed to refresh live order ${orderId}`, error);
+        } finally {
+          gate.running.delete(orderId);
+          if (gate.pending.has(orderId)) {
+            gate.pending.delete(orderId);
+            refreshOrder(orderId);
+          }
+        }
+      })();
+    };
+
+    const stops = ongoingOrderKey.split(",").map((orderId) =>
+      subscribeOrderLive(orderId, () => refreshOrder(orderId)),
+    );
+
+    return () => {
+      stops.forEach((stop) => stop());
+    };
+  }, [user, ongoingOrderKey]);
 
   const submitCancel = async () => {
     if (!cancelTargetOrder) return;
@@ -519,6 +587,7 @@ const OrdersPageContent = () => {
                 return (
                   <Card key={order.id} className="w-full hover:shadow-lg transition-shadow cursor-pointer">
                     <CardContent className="p-4 sm:p-6">
+                      <OrderAmendmentApproval order={order} onUpdated={handleOrderUpdated} />
                       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                         {/* Order Info */}
                         <div className="flex-1">
@@ -638,48 +707,37 @@ const OrdersPageContent = () => {
                             );
                           })()}
 
-                          {/* Order Items */}
-                          <div className={`space-y-2 sm:space-y-3 ${order.items && order.items.length > 2 ? 'max-h-40 sm:max-h-48 overflow-y-auto' : ''}`}>
-                            {order.items?.map((item, index) => (
-                              <div key={index} className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 bg-gray-50 rounded-lg">
-                                {item.imageUrl ? (
-                                  <img
-                                    src={item.imageUrl}
-                                    alt={item.name}
-                                    className="w-10 h-10 sm:w-12 sm:h-12 object-cover rounded-md"
-                                    onError={(e) => {
-                                      e.currentTarget.style.display = 'none';
-                                      e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                    }}
-                                  />
-                                ) : null}
-                                <div className={`w-10 h-10 sm:w-12 sm:h-12 bg-gray-300 rounded-md flex items-center justify-center ${item.imageUrl ? 'hidden' : ''}`}>
-                                  <span className="text-gray-500 text-[10px] sm:text-xs">No Image</span>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <h4 className="font-medium text-gray-900 text-xs sm:text-sm truncate">{item.name}</h4>
-                                  <p className="text-[10px] sm:text-xs text-gray-600">Qty: {item.quantity}</p>
-                                </div>
-                                <div className="text-right">
-                                  <PriceFormatter
-                                    amount={item.price * item.quantity}
-                                    className="font-semibold text-xs sm:text-sm"
-                                  />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                          <OrderLines
+                            items={order.items ?? []}
+                            paid={order.originalTotalAmount}
+                            totalNow={order.totalAmount}
+                          />
                         </div>
 
                         {/* Order Total */}
                         <div className="lg:ml-6 lg:border-l lg:pl-6 pt-4 lg:pt-0">
                           <div className="text-right">
-                            <div className="flex justify-between items-center mb-2 sm:mb-3">
-                              <span className="text-xs sm:text-sm text-gray-600 mr-2 sm:mr-4">Total:</span>
-                              <PriceFormatter
-                                amount={order.totalAmount}
-                                className="text-base sm:text-xl font-bold text-green-600"
-                              />
+                            <div className="mb-2 sm:mb-3">
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs sm:text-sm text-gray-600 mr-2 sm:mr-4">Total:</span>
+                                <PriceFormatter
+                                  amount={order.totalAmount}
+                                  className="text-base sm:text-xl font-bold text-green-600"
+                                />
+                              </div>
+                              {order.originalTotalAmount != null &&
+                                order.totalAmount != null &&
+                                Math.abs(order.originalTotalAmount - order.totalAmount) > 0.009 && (
+                                <p className="mt-0.5 text-[10px] text-gray-400 sm:text-xs">
+                                  <PriceFormatter
+                                    amount={Math.abs(order.originalTotalAmount - order.totalAmount)}
+                                    className="text-[10px] font-normal text-gray-400 sm:text-xs"
+                                  />
+                                  {order.totalAmount < order.originalTotalAmount
+                                    ? " was taken off the total"
+                                    : " was added to the total"}
+                                </p>
+                              )}
                             </div>
                             
                             {/* Reorder Button - Only for completed orders */}
@@ -697,7 +755,10 @@ const OrdersPageContent = () => {
                             )}
 
                             {/* Cancel Button - Customers can cancel up to PACKED */}
-                            {activeFilter === "ongoing" && canCancelOrderAsCustomer(order.status) && (
+                            {SHOW_CUSTOMER_CANCEL_ORDER &&
+                              activeFilter === "ongoing" &&
+                              order.approvalStatus !== "pending" &&
+                              canCancelOrderAsCustomer(order.status) && (
                               <div className="mt-2">
                                 <Button
                                   type="button"
