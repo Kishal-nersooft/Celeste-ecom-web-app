@@ -134,7 +134,10 @@ const ProductRow = ({
       typeof product.name === "string"
   );
 
-  // Debug logging for ProductRow
+  // A finished fetch with nothing to show should not keep the skeleton up.
+  if (isLoaded && !loading && visibleProducts.length === 0) {
+    return null;
+  }
 
   const handleSeeAllClick = () => {
     if (typeof window !== 'undefined') {

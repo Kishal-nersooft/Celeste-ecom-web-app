@@ -192,12 +192,19 @@ export const Header = () => {
 
     const update = () => {
       const isDesktop = window.matchMedia("(min-width: 1024px)").matches;
-      setSearchHeight(search.offsetHeight);
+      const height = search.offsetHeight;
+      setSearchHeight(height);
       if (isDesktop) {
         setPinned(false);
+        document.documentElement.style.setProperty("--app-sticky-top", `${height}px`);
         return;
       }
-      setPinned(brand.getBoundingClientRect().bottom <= 0);
+      const isPinned = brand.getBoundingClientRect().bottom <= 0;
+      setPinned(isPinned);
+      document.documentElement.style.setProperty(
+        "--app-sticky-top",
+        isPinned ? `${height}px` : "0px"
+      );
     };
 
     update();
@@ -206,6 +213,7 @@ export const Header = () => {
     return () => {
       window.removeEventListener("scroll", update);
       window.removeEventListener("resize", update);
+      document.documentElement.style.removeProperty("--app-sticky-top");
     };
   }, []);
 

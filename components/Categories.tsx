@@ -17,6 +17,96 @@ interface LazyCategoryImageProps {
   root: HTMLDivElement | null;
 }
 
+function readStickyTop() {
+  const raw = getComputedStyle(document.documentElement)
+    .getPropertyValue("--app-sticky-top")
+    .trim();
+  if (!raw) return 0;
+  if (raw.endsWith("rem")) {
+    const root = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return parseFloat(raw) * root;
+  }
+  return parseFloat(raw) || 0;
+}
+
+function FrozenBar({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const barRef = useRef<HTMLDivElement>(null);
+  const sentinelRef = useRef<HTMLDivElement>(null);
+  const [frozen, setFrozen] = useState(false);
+  const [barHeight, setBarHeight] = useState(0);
+  const [top, setTop] = useState(0);
+  const [left, setLeft] = useState(0);
+  const [width, setWidth] = useState(0);
+
+  useEffect(() => {
+    let frame = 0;
+
+    const update = () => {
+      const bar = barRef.current;
+      const sentinel = sentinelRef.current;
+      if (!bar || !sentinel) return;
+
+      const nextTop = Math.round(readStickyTop());
+      const nextHeight = bar.offsetHeight;
+      const sentinelRect = sentinel.getBoundingClientRect();
+      const nextLeft = Math.round(sentinelRect.left);
+      const nextWidth = Math.round(sentinelRect.width);
+      const nextFrozen = nextTop > 0 && sentinelRect.top <= nextTop + 0.5;
+
+      setTop((prev) => (prev === nextTop ? prev : nextTop));
+      setBarHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+      setLeft((prev) => (prev === nextLeft ? prev : nextLeft));
+      setWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+      setFrozen((prev) => (prev === nextFrozen ? prev : nextFrozen));
+    };
+
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(update);
+    };
+
+    schedule();
+    window.addEventListener("scroll", schedule, { passive: true });
+    window.addEventListener("resize", schedule);
+    const observer = new ResizeObserver(schedule);
+    if (barRef.current) observer.observe(barRef.current);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      observer.disconnect();
+    };
+  }, []);
+
+  return (
+    <>
+      <div
+        ref={sentinelRef}
+        style={{ height: frozen ? barHeight : 0 }}
+        aria-hidden
+      />
+      <div
+        ref={barRef}
+        className={cn("relative z-30 bg-white", className)}
+        style={
+          frozen
+            ? { position: "fixed", top, left, width, zIndex: 30 }
+            : undefined
+        }
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
 function LazyCategoryImage({ src, alt, root }: LazyCategoryImageProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
@@ -88,11 +178,16 @@ interface Props {
     categoryName?: string
   ) => void;
   categories?: Category[];
+  /** When set, selection is local to this list instead of the global category. */
+  controlledCategoryId?: number | null;
+  controlledIsDeals?: boolean;
 }
 
 const Categories = ({
   onSelectCategory,
   categories: initialCategories,
+  controlledCategoryId,
+  controlledIsDeals,
 }: Props) => {
   const {
     selectedCategoryId,
@@ -110,9 +205,15 @@ const Categories = ({
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
 
+  const barPadding = "py-2 sm:py-3 md:py-4";
+  // Cancel the page container's side padding so the bar spans the viewport.
+  const fullBleed =
+    "-mx-4 w-[calc(100%+2rem)] md:-mx-6 md:w-[calc(100%+3rem)] lg:-mx-8 lg:w-[calc(100%+4rem)]";
+
   const CategorySelectorSkeleton = ({ count = 14 }: { count?: number }) => {
     return (
-      <div className="py-2 sm:py-3 md:py-4 px-4">
+      <div className={fullBleed}>
+        <FrozenBar className={barPadding}>
         <div className="relative">
           <button
             disabled
@@ -132,6 +233,7 @@ const Categories = ({
             ))}
           </div>
         </div>
+        </FrozenBar>
       </div>
     );
   };
@@ -157,8 +259,11 @@ const Categories = ({
     checkScrollButtons();
   }, [categories]);
 
-  // Determine active category based on context
-  const activeCategory = isDealsSelected ? -1 : selectedCategoryId;
+  const resolvedCategoryId =
+    controlledCategoryId !== undefined ? controlledCategoryId : selectedCategoryId;
+  const resolvedIsDeals =
+    controlledIsDeals !== undefined ? controlledIsDeals : isDealsSelected;
+  const activeCategory = resolvedIsDeals ? -1 : resolvedCategoryId;
 
   // Create an "All" category option that will be shown first
   const allCategoryOption: SelectableCategory = {
@@ -214,7 +319,8 @@ const Categories = ({
 
 
   return (
-    <div className="py-2 sm:py-3 md:py-4 px-4">
+    <div className={fullBleed}>
+      <FrozenBar className={barPadding}>
       <div className="relative">
         {/* Left scroll button — only after the row has scrolled right; overlays the category icon */}
         {canScrollLeft && (
@@ -337,6 +443,7 @@ const Categories = ({
           })}
         </div>
       </div>
+      </FrozenBar>
     </div>
   );
 };

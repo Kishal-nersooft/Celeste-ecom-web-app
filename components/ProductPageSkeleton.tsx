@@ -24,6 +24,12 @@ const ProductPageSkeleton = () => {
             <div className="absolute top-2 left-2 sm:top-3 sm:left-3 md:top-4 md:left-4 z-10">
               <div className="h-6 w-16 sm:h-7 sm:w-20 md:h-8 md:w-24 bg-gray-300 rounded-md"></div>
             </div>
+
+            {/* Favorite and share skeletons (top right) */}
+            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-20 flex flex-col gap-2">
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-gray-300 rounded-full"></div>
+              <div className="h-7 w-7 sm:h-8 sm:w-8 bg-gray-300 rounded-full"></div>
+            </div>
             
             {/* Image */}
             <div className="w-full h-[300px] sm:h-[400px] md:h-[500px] lg:h-[550px] bg-gray-300"></div>

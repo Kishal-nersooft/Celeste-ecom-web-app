@@ -7,7 +7,6 @@ import ProductList from "@/components/ProductList";
 import PopularItemsSection from "@/components/PopularItemsSection";
 import RecentItemsSection from "@/components/RecentItemsSection";
 import StoresGrid from "@/components/StoresGrid";
-import DiscountBanner from "@/components/DiscountBanner";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import PopupAds from "@/components/PopupAds";
 import LazyMount from "@/components/LazyMount";
@@ -56,11 +55,7 @@ const HomeClient: React.FC<HomeClientProps> = ({
       />
       
       {deliveryType === "pickup" ? (
-        // Pickup mode: Show only stores (no popular items or products)
-        <>
-          <StoresGrid />
-          <DiscountBanner />
-        </>
+        <StoresGrid />
       ) : (
         // Delivery mode: Show catalogue immediately; auth/location refine pricing in ProductList
         <>

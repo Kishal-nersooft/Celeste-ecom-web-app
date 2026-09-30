@@ -55,7 +55,7 @@ export const SidePanel = () => {
         </Button>
       </SheetTrigger>
       <SheetContent side="left" className="w-[280px] sm:w-[320px]">
-        <SheetHeader className="mb-6 sm:mb-8">
+        <SheetHeader className="mb-6 flex flex-row items-center justify-between space-y-0 pr-12 sm:mb-8">
           <SheetTitle>
             <Link href="/" onClick={goHome}>
               <Image src={logo} alt="Shop Logo" width={90} height={36} className="h-auto w-auto max-w-[100px]" />

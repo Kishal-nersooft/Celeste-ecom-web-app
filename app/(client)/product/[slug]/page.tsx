@@ -155,33 +155,40 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
     }
   };
 
+  const imageActions = (
+    <div className="flex flex-col items-center gap-2">
+      <FavoriteButton
+        productId={product.id}
+        className="!relative !top-0 !right-0"
+      />
+      <button
+        type="button"
+        onClick={handleShare}
+        aria-label="Share product"
+        className="p-1.5 rounded-full shadow-md bg-white/90 text-gray-500 hover:bg-white hover:text-gray-700 transition-colors duration-200"
+      >
+        <LuShare2 className="h-4 w-4 sm:h-5 sm:w-5" />
+      </button>
+    </div>
+  );
+
   return (
     <div>
-      {/* Top bar: breadcrumb left, favorites button right */}
       <Container className="py-2 sm:py-3 md:py-4">
-        <div className="flex justify-between items-center gap-2 mb-2 sm:mb-3 md:mb-4">
-          {breadcrumbItems.length > 0 ? (
+        {breadcrumbItems.length > 0 && (
+          <div className="mb-2 sm:mb-3 md:mb-4 min-w-0 overflow-x-auto">
             <Breadcrumb items={breadcrumbItems} />
-          ) : (
-            <div />
-          )}
-          <div className="relative flex-shrink-0 flex items-center gap-3">
-            <FavoriteButton productId={product.id} className="!relative !top-0 !right-0 !p-2.5" />
-            <button
-              type="button"
-              onClick={handleShare}
-              aria-label="Share product"
-              className="p-2.5 rounded-full shadow-md bg-white/90 text-gray-500 hover:bg-white hover:text-gray-700 transition-colors duration-200"
-            >
-              <LuShare2 className="h-4 w-4 sm:h-5 sm:w-5" />
-            </button>
           </div>
-        </div>
+        )}
       </Container>
 
       <Container className="flex flex-col md:flex-row gap-4 sm:gap-6 md:gap-8 lg:gap-10 py-2 sm:py-4 md:py-6 lg:py-8">
         {hasValidImage && (
           <div className="w-full md:w-1/2 h-auto border border-darkBlue/20 shadow-md rounded-md group overflow-hidden relative">
+            {/* Favorite and share — top right of the image, same as product cards */}
+            <div className="absolute top-1.5 right-1.5 sm:top-2 sm:right-2 z-20">
+              {imageActions}
+            </div>
             {/* Discount Tag on Product Image */}
             {(() => {
               const discountPercentage = product?.pricing?.discount_percentage || 0;
@@ -213,6 +220,9 @@ const ProductPage = ({ params }: { params: { slug: string } }) => {
           </div>
         )}
         <div className="w-full md:w-1/2 flex flex-col gap-3 sm:gap-4 md:gap-5">
+          {!hasValidImage && (
+            <div className="flex justify-end">{imageActions}</div>
+          )}
           <div>
             {/* Discount Tag for Product Page - Only show if there's an actual discount */}
             {(() => {

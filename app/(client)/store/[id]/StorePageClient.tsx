@@ -1,259 +1,86 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, MapPin, Phone, Home, Tag } from 'lucide-react';
-import ProductCard from '@/components/ProductCard';
-import ProductRow from '@/components/ProductRow';
+import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import ProductList from '@/components/ProductList';
-import VerticalCategorySelector from '@/components/VerticalCategorySelector';
-import { Product } from '@/store';
-import { getProducts, getStoreById } from '@/lib/api';
+import Container from '@/components/Container';
+import { getStoreById } from '@/lib/api';
 import { useLocation } from '@/contexts/LocationContext';
 import { useCategory } from '@/contexts/CategoryContext';
 import { Store } from '@/types/store';
+import storeImage from '@/images/store-image.jpeg';
+import celesteLogo from '@/images/CelesteLogoiconwhitecopy2.png';
 
 const StorePageClient: React.FC<{ storeId: string }> = ({ storeId }) => {
-  const router = useRouter();
   const { selectedStore } = useLocation();
   const { categories } = useCategory();
-  const [activeTab, setActiveTab] = useState<'shop' | 'deals'>('shop');
-  const [products, setProducts] = useState<Product[]>([]);
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
-  const [isDealsSelected, setIsDealsSelected] = useState<boolean>(false);
-  const [dealsProducts, setDealsProducts] = useState<Product[]>([]);
-  const [loadingDeals, setLoadingDeals] = useState<boolean>(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [store, setStore] = useState<Store | null>(null);
 
-  // Fetch data on component mount
   useEffect(() => {
-    async function fetchData() {
+    let cancelled = false;
+
+    async function loadStore() {
+      if (selectedStore && String(selectedStore.id) === String(storeId)) {
+        setStore(selectedStore);
+        return;
+      }
+
       try {
-        setLoading(true);
-        
-        // Use selectedStore from context if available and matches the storeId
-        if (selectedStore && selectedStore.id === storeId) {
-          setStore(selectedStore);
-        } else {
-          // Try to fetch store data from API
-          try {
-            const storeData = await getStoreById(storeId);
-            setStore(storeData);
-          } catch (storeError) {
-            console.warn('Failed to fetch store data from API, using context data if available:', storeError);
-            // Fallback to context data if API fails
-            if (selectedStore) {
-              setStore(selectedStore);
-            }
-          }
-        }
-        
-        const productsData = await getProducts(
-          null,
-          1,
-          100,
-          false,
-          true,
-          true,
-          true,
-          [parseInt(storeId)]
-        );
-        
-        setProducts(Array.isArray(productsData) ? productsData : []);
-      } catch (err: any) {
-        setError(err.message);
-        console.error('Error fetching data:', err);
-      } finally {
-        setLoading(false);
+        const storeData = await getStoreById(storeId);
+        if (!cancelled && storeData) setStore(storeData);
+      } catch (error) {
+        console.error('Error fetching store:', error);
+        if (!cancelled && selectedStore) setStore(selectedStore);
       }
     }
 
-    fetchData();
+    loadStore();
+    return () => {
+      cancelled = true;
+    };
   }, [storeId, selectedStore]);
 
-  // Fetch deals products when deals category is selected
-  useEffect(() => {
-    if (isDealsSelected) {
-      setLoadingDeals(true);
-      getProducts(null, 1, 100, true, true, true, true, [parseInt(storeId)]) // Include store ID for filtering
-        .then((discountedProducts) => {
-          setDealsProducts(Array.isArray(discountedProducts) ? discountedProducts : []);
-        })
-        .catch((error) => {
-          console.error("Error fetching deals products:", error);
-          setDealsProducts([]);
-        })
-        .finally(() => {
-          setLoadingDeals(false);
-        });
-    }
-  }, [isDealsSelected]);
-
-  // ProductList component handles its own filtering based on selectedCategoryId and isDealsSelected
-
-  const handleBackClick = () => {
-    router.back();
-  };
+  const storeName = store?.name || 'Store';
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header with back button */}
-      {/* <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <button
-            onClick={handleBackClick}
-            className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-          >
-            <ArrowLeft className="h-5 w-5 mr-2" />
-            Back
-          </button>
-        </div>
-      </div> */}
-
-      <div className="w-full px-4 md:px-6 lg:px-8 py-6">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Left Sidebar - Store Profile */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-lg shadow-sm p-6 sticky top-6">
-              {/* Store Image */}
-              <div className="relative mb-6">
-                <div className="w-24 h-24 mx-auto rounded-full overflow-hidden bg-gray-200">
-                  <div className="w-full h-full bg-gray-300 flex items-center justify-center text-gray-500 text-lg font-bold">
-                    {store ? store.name.charAt(0) : 'S'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Store Info */}
-              <div className="text-center mb-6">
-                <h1 className="text-xl font-bold text-gray-900 mb-2">
-                  {store ? store.name : 'Loading...'}
-                </h1>
-                <div className="space-y-2 text-sm text-gray-600">
-                  <div className="flex items-center justify-center">
-                    <MapPin className="h-4 w-4 mr-2" />
-                    <span className="text-center">
-                      {store ? store.address : 'Loading address...'}
-                    </span>
-                  </div>
-                  {store?.phone && (
-                    <div className="flex items-center justify-center">
-                      <Phone className="h-4 w-4 mr-2" />
-                      <span>{store.phone}</span>
-                    </div>
-                  )}
-                  {store?.email && (
-                    <div className="flex items-center justify-center">
-                      <span className="text-xs text-gray-500">{store.email}</span>
-                    </div>
-                  )}
-                  {store?.description && (
-                    <div className="mt-3 text-xs text-gray-500">
-                      {store.description}
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Navigation Tabs */}
-              <div className="space-y-2 mb-6">
-                <button
-                  onClick={() => setActiveTab('shop')}
-                  className={`w-full flex items-center px-4 py-3 rounded-lg text-left transition-colors ${
-                    activeTab === 'shop' 
-                      ? 'bg-gray-100 text-gray-900' 
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <Home className="h-5 w-5 mr-3" />
-                  Shop
-                </button>
-                <button
-                  onClick={() => setActiveTab('deals')}
-                  className={`w-full flex items-center px-4 py-3 rounded-lg text-left transition-colors ${
-                    activeTab === 'deals' 
-                      ? 'bg-gray-100 text-gray-900' 
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  <Tag className="h-5 w-5 mr-3" />
-                  Deals
-                </button>
-              </div>
-
-              {/* Category Selector */}
-              {activeTab === 'shop' && (
-                <VerticalCategorySelector 
-                  onSelectCategory={(categoryId, isDeals) => {
-                    setSelectedCategoryId(categoryId);
-                    setIsDealsSelected(isDeals || false);
-                  }}
-                  selectedCategoryId={selectedCategoryId}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Right Main Content */}
-          <div className="lg:col-span-3">
-            {loading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 mx-auto mb-4"></div>
-                  <p className="text-gray-600">Loading products...</p>
-                </div>
-              </div>
-            ) : error ? (
-              <div className="text-center py-12">
-                <p className="text-red-600 mb-4">Error loading products: {error}</p>
-                <button 
-                  onClick={() => window.location.reload()} 
-                  className="px-4 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
-                >
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <>
-                {activeTab === 'shop' && (
-                  <ProductList 
-                    products={products} 
-                    categories={categories} 
-                    title={true}
-                    storeId={parseInt(storeId)}
-                    selectedCategoryId={selectedCategoryId}
-                    isDealsSelected={isDealsSelected}
-                  />
-                )}
-              </>
-            )}
-
-            {activeTab === 'deals' && (
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900 mb-6">All Deals</h2>
-                {(() => {
-                  const dealsProducts = products.filter(product => (product.pricing?.discount_percentage ?? 0) > 0);
-                  return dealsProducts.length > 0 ? (
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                      {dealsProducts.map((product) => (
-                        <ProductCard key={product.id} product={product} />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="text-center py-12">
-                      <Tag className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">No deals available at the moment</p>
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-
-          </div>
-        </div>
+    <div className="min-h-screen bg-white">
+      <div className="relative h-20 overflow-hidden bg-neutral-900 sm:h-24 md:h-28">
+        <Image
+          src={storeImage}
+          alt=""
+          fill
+          priority
+          className="object-cover"
+          sizes="100vw"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/35 to-black/20" />
       </div>
+
+      <Container className="relative pb-10">
+        <div className="-mt-6 flex flex-col items-center text-center sm:-mt-7">
+          <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-black ring-4 ring-white sm:h-14 sm:w-14">
+            <Image
+              src={celesteLogo}
+              alt=""
+              width={40}
+              height={40}
+              className="h-8 w-8 object-contain sm:h-9 sm:w-9"
+            />
+          </div>
+          <h1 className="mt-3 max-w-2xl text-2xl font-bold tracking-tight text-neutral-950 sm:text-3xl">
+            {storeName}
+          </h1>
+        </div>
+
+        <div className="mt-4">
+          <ProductList
+            products={[]}
+            categories={categories}
+            title
+            storeId={parseInt(storeId, 10)}
+          />
+        </div>
+      </Container>
     </div>
   );
 };

@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import ProductGrid from "./ProductGrid";
 import ProductRow from "./ProductRow";
 import ProductCardSkeleton from "./ProductCardSkeleton";
@@ -19,8 +19,7 @@ import {
 import { usePaginatedProducts } from "../hooks/usePaginatedProducts";
 import { useCategory } from "../contexts/CategoryContext";
 import { useLocation } from "../contexts/LocationContext";
-import { HOME_PAGE_SIZE } from "@/lib/home-catalogue-constants";
-import { stripCategoryEmojis } from "@/lib/category-display-name";
+import { HOME_PAGE_SIZE, INITIAL_VISIBLE_PARENT_CATEGORIES, INITIAL_VISIBLE_SUBCATEGORIES } from "@/lib/home-catalogue-constants";
 import LazyMount from "./LazyMount";
 
 const CategoryProductsSkeleton = ({ rows = 2 }: { rows?: number }) => (
@@ -87,28 +86,37 @@ const ProductList = ({
       typeof product.name === "string"
   );
 
-  // Use context values if available, otherwise fall back to props (for store pages)
-  const selectedCategory = storeId
-    ? (selectedCategoryId ?? null)
-    : contextCategoryId;
-  const isDeals = storeId ? (isDealsSelected ?? false) : contextIsDeals;
+  const [storeCategoryId, setStoreCategoryId] = useState<number | null>(
+    selectedCategoryId ?? null
+  );
+  const [storeIsDeals, setStoreIsDeals] = useState(isDealsSelected ?? false);
 
-  // Category selection handler
+  // Store pages keep their own category so the home catalogue selection stays put.
+  const selectedCategory = storeId
+    ? storeIsDeals
+      ? null
+      : storeCategoryId
+    : contextCategoryId;
+  const isDeals = storeId ? storeIsDeals : contextIsDeals;
+
   const handleCategorySelect = (
     categoryId: number | null,
-    isDealsSelected: boolean = false,
+    dealsSelected: boolean = false,
     categoryName?: string
   ) => {
     if (storeId) {
-    } else {
-      const name =
-        categoryName ??
-        (categoryId != null
-          ? categories.find((c) => c.id === categoryId)?.name
-          : undefined);
-      setSelectedCategory(categoryId, isDealsSelected, name);
-      setLastVisitedCategory(categoryId, isDealsSelected);
+      setStoreIsDeals(dealsSelected);
+      setStoreCategoryId(dealsSelected ? null : categoryId);
+      return;
     }
+
+    const name =
+      categoryName ??
+      (categoryId != null
+        ? categories.find((c) => c.id === categoryId)?.name
+        : undefined);
+    setSelectedCategory(categoryId, dealsSelected, name);
+    setLastVisitedCategory(categoryId, dealsSelected);
   };
 
   // Use paginated products hook for efficient lazy loading
@@ -128,9 +136,7 @@ const ProductList = ({
     hasMore,
     loadMore,
     loadSubcategoryProducts,
-    preloadNextSubcategories,
     loadParentCategoryProducts,
-    loadingParentCategories,
     currentPage,
     totalProducts,
   } = usePaginatedProducts({
@@ -145,6 +151,137 @@ const ProductList = ({
     initialParentCategoryNames,
     initialParentProducts,
   });
+
+  const [visibleSubcategoryCount, setVisibleSubcategoryCount] = useState(
+    INITIAL_VISIBLE_SUBCATEGORIES
+  );
+  const subcategorySentinelRef = useRef<HTMLDivElement>(null);
+  const visibleSubcategoryCountRef = useRef(visibleSubcategoryCount);
+  const subcategoriesRef = useRef(subcategories);
+  const selectedCategoryRef = useRef(selectedCategory);
+  const loadSubcategoryProductsRef = useRef(loadSubcategoryProducts);
+  visibleSubcategoryCountRef.current = visibleSubcategoryCount;
+  subcategoriesRef.current = subcategories;
+  selectedCategoryRef.current = selectedCategory;
+  loadSubcategoryProductsRef.current = loadSubcategoryProducts;
+
+  useEffect(() => {
+    setVisibleSubcategoryCount(INITIAL_VISIBLE_SUBCATEGORIES);
+  }, [selectedCategory]);
+
+  const visibleSubcategories = subcategories.slice(0, visibleSubcategoryCount);
+  const visibleSubcategoryLoadKey = visibleSubcategories
+    .map(
+      (subcategory) =>
+        `${subcategory.id}:${loadedSubcategories[subcategory.id] ? "1" : "0"}`
+    )
+    .join(",");
+
+  useEffect(() => {
+    if (!selectedCategory || !visibleSubcategoryLoadKey) return;
+    const subs = subcategoriesRef.current.slice(
+      0,
+      visibleSubcategoryCountRef.current
+    );
+    const belongsToSelection = subs.every(
+      (subcategory) =>
+        subcategory.parent_category_id == null ||
+        subcategory.parent_category_id === selectedCategory
+    );
+    if (!belongsToSelection) return;
+
+    subs.forEach((subcategory) => {
+      loadSubcategoryProductsRef.current(subcategory.id);
+    });
+  }, [selectedCategory, visibleSubcategoryLoadKey]);
+
+  useEffect(() => {
+    const sentinel = subcategorySentinelRef.current;
+    if (!sentinel || visibleSubcategoryCount >= subcategories.length) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting) return;
+
+      const parentId = selectedCategoryRef.current;
+      const subs = subcategoriesRef.current;
+      const count = visibleSubcategoryCountRef.current;
+      const next = subs[count];
+      if (!next || count >= subs.length) return;
+      if (
+        next.parent_category_id != null &&
+        next.parent_category_id !== parentId
+      ) {
+        return;
+      }
+
+      // Stop this observation before revealing the row. The effect
+      // re-attaches after paint, so another row loads only if the
+      // sentinel is still on screen.
+      observer.disconnect();
+      loadSubcategoryProductsRef.current(next.id);
+      setVisibleSubcategoryCount(count + 1);
+    });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [selectedCategory, subcategories.length, visibleSubcategoryCount]);
+
+  const allParentCategories = categories.filter((cat) => !cat.parent_category_id);
+  const [visibleParentCount, setVisibleParentCount] = useState(
+    INITIAL_VISIBLE_PARENT_CATEGORIES
+  );
+  const parentSentinelRef = useRef<HTMLDivElement>(null);
+  const visibleParentCountRef = useRef(visibleParentCount);
+  const allParentCategoriesRef = useRef(allParentCategories);
+  const parentLoadLockRef = useRef(false);
+  const loadParentCategoryProductsRef = useRef(loadParentCategoryProducts);
+  visibleParentCountRef.current = visibleParentCount;
+  allParentCategoriesRef.current = allParentCategories;
+  loadParentCategoryProductsRef.current = loadParentCategoryProducts;
+
+  const catalogueLocationKey = shouldUseLocation
+    ? `${defaultAddress?.latitude ?? ""}:${defaultAddress?.longitude ?? ""}`
+    : "no-location";
+
+  useEffect(() => {
+    setVisibleParentCount(INITIAL_VISIBLE_PARENT_CATEGORIES);
+  }, [catalogueLocationKey, storeId]);
+
+  useEffect(() => {
+    if (selectedCategory !== null || isDeals || loading) return;
+    const sentinel = parentSentinelRef.current;
+    const parents = allParentCategoriesRef.current;
+    if (!sentinel || visibleParentCount >= parents.length) return;
+
+    const observer = new IntersectionObserver(([entry]) => {
+      if (!entry.isIntersecting || parentLoadLockRef.current) return;
+
+      const nextIndex = visibleParentCountRef.current;
+      const next = allParentCategoriesRef.current[nextIndex];
+      if (!next) return;
+
+      // One parent at a time. The effect re-attaches after that row settles,
+      // and loads another only if the sentinel is still on screen.
+      observer.disconnect();
+      parentLoadLockRef.current = true;
+      void loadParentCategoryProductsRef
+        .current(next.id)
+        .finally(() => {
+          parentLoadLockRef.current = false;
+          setVisibleParentCount(nextIndex + 1);
+        });
+    }, { rootMargin: "300px" });
+
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [
+    storeId,
+    selectedCategory,
+    isDeals,
+    loading,
+    visibleParentCount,
+    allParentCategories.length,
+  ]);
 
   // Clean console logs - only show once when data changes
   React.useEffect(() => {
@@ -161,13 +298,14 @@ const ProductList = ({
 
   return (
     <div>
-      {/* Add Categories component - only show on homepage (when storeId is not provided) */}
-      {!storeId && (
-        <Categories
-          onSelectCategory={handleCategorySelect}
-          categories={categories}
-        />
-      )}
+      <Categories
+        onSelectCategory={handleCategorySelect}
+        categories={categories}
+        controlledCategoryId={
+          storeId ? (storeIsDeals ? -1 : storeCategoryId) : undefined
+        }
+        controlledIsDeals={storeId ? storeIsDeals : undefined}
+      />
 
       {/* Discount Banner - only show on homepage when "All" category is selected */}
       {!storeId && selectedCategory === null && !isDeals && (
@@ -193,268 +331,152 @@ const ProductList = ({
         // Show subcategories and their products when a specific category is selected
         <div>
           {subcategories.length > 0 ? (
-            subcategories.map((subcategory, index) => {
-              // Set parent category ID for back navigation
-              if (typeof window !== 'undefined') {
-                (window as any).currentParentCategoryId = selectedCategory;
-              }
-              const subcategoryProductsList = subcategoryProducts[subcategory.id] || [];
-              const isLoaded = loadedSubcategories[subcategory.id] || false;
-              const isLoading = loadingSubcategories[subcategory.id] || false;
+            <>
+              {subcategories.slice(0, visibleSubcategoryCount).map((subcategory) => {
+                if (typeof window !== 'undefined') {
+                  (window as any).currentParentCategoryId = selectedCategory;
+                }
+                const subcategoryProductsList = subcategoryProducts[subcategory.id] || [];
+                const isLoaded = loadedSubcategories[subcategory.id] || false;
+                const isLoading = loadingSubcategories[subcategory.id] || false;
 
-              return (
-                <ProductRow
-                  key={subcategory.id}
-                  products={subcategoryProductsList}
-                  categoryName={subcategory.name}
-                  categoryId={subcategory.id.toString()}
-                  loading={isLoading}
-                  loadingMore={false}
-                  onLoadMore={() => {
-                    loadSubcategoryProducts(subcategory.id);
-                    preloadNextSubcategories(index, subcategories);
-                  }}
-                  hasMore={false}
-                  isLoaded={isLoaded && subcategoryProductsList.length > 0}
-                  onScrollIntoView={() => {
-                    if (!isLoaded && !isLoading) {
-                      loadSubcategoryProducts(subcategory.id);
-                      preloadNextSubcategories(index, subcategories);
-                    }
-                  }}
-                />
-              );
-            })
+                if (isLoaded && !isLoading && subcategoryProductsList.length === 0) {
+                  return null;
+                }
+
+                return (
+                  <ProductRow
+                    key={subcategory.id}
+                    products={subcategoryProductsList}
+                    categoryName={subcategory.name}
+                    categoryId={subcategory.id.toString()}
+                    loading={isLoading}
+                    loadingMore={false}
+                    hasMore={false}
+                    isLoaded={isLoaded}
+                  />
+                );
+              })}
+              {visibleSubcategoryCount < subcategories.length && (
+                <div ref={subcategorySentinelRef} className="h-px w-full" aria-hidden />
+              )}
+            </>
           ) : loading ? (
             <CategoryProductsSkeleton rows={2} />
           ) : null}
         </div>
       ) : (
-        // Show all products grouped by parent categories when "All" is selected
         <div>
-          {Object.keys(parentCategoryNames).length === 0 ? (
-            // Show skeleton cards for parent categories during initial loading
-            categories
-              .filter(cat => !cat.parent_category_id)
-              .slice(0, 5) // Show skeleton for first 5 parent categories
-              .map((parentCategory) => (
-                <div key={`skeleton-${parentCategory.id}`} className="mb-8">
-                  {/* Category title */}
-                  <div className="flex items-center justify-between mb-4">
-                    <h3 className="text-xl font-semibold text-gray-800">
-                      {stripCategoryEmojis(parentCategory.name) || parentCategory.name}
-                    </h3>
-                  </div>
-                  
-                  {/* Skeleton cards row */}
-                  <div className="flex gap-3 overflow-x-auto scrollbar-hide pb-4">
-                    {Array.from({ length: 6 }).map((_, index) => (
-                      <div
-                        key={`skeleton-${parentCategory.id}-${index}`}
-                        className="flex-shrink-0 w-[180px] sm:w-[200px]"
-                      >
-                        <ProductCardSkeleton />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))
-          ) : Object.keys(parentCategoryNames).length > 0 ? (
-            (() => {
-              const parentIds = Object.keys(parentCategoryNames);
-              const isHomepageAll = !storeId;
+          {(() => {
+            const openedParents = allParentCategories.slice(0, visibleParentCount);
+            const displayedParents = openedParents.filter((cat) => {
+              const categoryProducts = parentProducts[cat.id];
+              return Array.isArray(categoryProducts) && categoryProducts.length > 0;
+            });
+            const sentinel =
+              visibleParentCount < allParentCategories.length && !loading ? (
+                <div ref={parentSentinelRef} className="h-px w-full" aria-hidden />
+              ) : null;
 
-              // Homepage "All": first 2 category rows with ad on the right (Option A)
-              if (isHomepageAll && parentIds.length >= 2) {
-                const [firstId, secondId, ...restIds] = parentIds;
-                const firstName = parentCategoryNames[parseInt(firstId)] || "Unknown Category";
-                const secondName = parentCategoryNames[parseInt(secondId)] || "Unknown Category";
-                const firstProducts = parentProducts[parseInt(firstId)] || [];
-                const secondProducts = parentProducts[parseInt(secondId)] || [];
+            const renderRow = (cat: Category) => {
+              const categoryProducts = parentProducts[cat.id] || [];
+              if (typeof window !== "undefined") {
+                (window as any).isParentCategoryFromAll = true;
+              }
+              return (
+                <ProductRow
+                  key={cat.id}
+                  products={categoryProducts}
+                  categoryName={cat.name}
+                  categoryId={String(cat.id)}
+                  loading={false}
+                  loadingMore={loadingMore}
+                  onLoadMore={loadMore}
+                  hasMore={hasMore}
+                  isLoaded
+                />
+              );
+            };
 
-                if (typeof window !== "undefined") {
-                  (window as any).isParentCategoryFromAll = true;
-                }
-
-                return (
+            if (storeId) {
+              if (displayedParents.length === 0) {
+                return loading ? (
                   <>
-                    <div className="flex flex-col md:flex-row md:gap-6 md:items-stretch">
-                      <div className="flex-1 min-w-0">
-                        <ProductRow
-                          products={firstProducts}
-                          categoryName={firstName}
-                          categoryId={firstId}
-                          loading={loading || !!loadingParentCategories[parseInt(firstId)]}
-                          loadingMore={loadingMore}
-                          onLoadMore={loadMore}
-                          hasMore={hasMore}
-                          isLoaded={firstProducts.length > 0}
-                          onScrollIntoView={() => {
-                            if (firstProducts.length === 0) {
-                              loadParentCategoryProducts(parseInt(firstId));
-                            }
-                          }}
-                        />
-                        <ProductRow
-                          products={secondProducts}
-                          categoryName={secondName}
-                          categoryId={secondId}
-                          loading={loading || !!loadingParentCategories[parseInt(secondId)]}
-                          loadingMore={loadingMore}
-                          onLoadMore={loadMore}
-                          hasMore={hasMore}
-                          isLoaded={secondProducts.length > 0}
-                          onScrollIntoView={() => {
-                            if (secondProducts.length === 0) {
-                              loadParentCategoryProducts(parseInt(secondId));
-                            }
-                          }}
-                        />
-                      </div>
-                      <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
-                        <CategoryRowAdSlot imageUrl={promotionBanner1} alt="Promotion Banner 1" />
-                      </div>
-                    </div>
-                    <LazyMount skeletonCount={3}>
-                      <OfferBannerSlider />
-                    </LazyMount>
-                    {/* 3rd category: single full-width row (lazy-mounted) */}
-                    {restIds.length > 0 && (() => {
-                      const thirdId = restIds[0];
-                      const thirdName = parentCategoryNames[parseInt(thirdId)] || "Unknown Category";
-                      const thirdProducts = parentProducts[parseInt(thirdId)] || [];
-                      return (
-                        <LazyMount key={`lazy-${thirdId}`} onMount={() => loadParentCategoryProducts(parseInt(thirdId))}>
-                          <ProductRow
-                            key={thirdId}
-                            products={thirdProducts}
-                            categoryName={thirdName}
-                            categoryId={thirdId}
-                            loading={loading || !!loadingParentCategories[parseInt(thirdId)]}
-                            loadingMore={loadingMore}
-                            onLoadMore={loadMore}
-                            hasMore={hasMore}
-                            isLoaded={
-                              !loadingParentCategories[parseInt(thirdId)] &&
-                              thirdProducts.length > 0
-                            }
-                          />
-                        </LazyMount>
-                      );
-                    })()}
-                    {/* 4th and 5th category rows with ad on the right (lazy-mounted) */}
-                    {restIds.length >= 3 && (() => {
-                      const fourthId = restIds[1];
-                      const fifthId = restIds[2];
-                      const fourthName = parentCategoryNames[parseInt(fourthId)] || "Unknown Category";
-                      const fifthName = parentCategoryNames[parseInt(fifthId)] || "Unknown Category";
-                      const fourthProducts = parentProducts[parseInt(fourthId)] || [];
-                      const fifthProducts = parentProducts[parseInt(fifthId)] || [];
-                      return (
-                        <LazyMount
-                          key={`lazy-ad-block-${fourthId}-${fifthId}`}
-                          onMount={() => {
-                            loadParentCategoryProducts(parseInt(fourthId));
-                            loadParentCategoryProducts(parseInt(fifthId));
-                          }}
-                        >
-                          <div className="flex flex-col md:flex-row md:gap-6 md:items-stretch">
-                            <div className="flex-1 min-w-0">
-                              <ProductRow
-                                products={fourthProducts}
-                                categoryName={fourthName}
-                                categoryId={fourthId}
-                                loading={loading || !!loadingParentCategories[parseInt(fourthId)]}
-                                loadingMore={loadingMore}
-                                onLoadMore={loadMore}
-                                hasMore={hasMore}
-                                isLoaded={
-                                  !loadingParentCategories[parseInt(fourthId)] &&
-                                  fourthProducts.length > 0
-                                }
-                              />
-                              <ProductRow
-                                products={fifthProducts}
-                                categoryName={fifthName}
-                                categoryId={fifthId}
-                                loading={loading || !!loadingParentCategories[parseInt(fifthId)]}
-                                loadingMore={loadingMore}
-                                onLoadMore={loadMore}
-                                hasMore={hasMore}
-                                isLoaded={
-                                  !loadingParentCategories[parseInt(fifthId)] &&
-                                  fifthProducts.length > 0
-                                }
-                              />
-                            </div>
-                            <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
-                              <CategoryRowAdSlot imageUrl={promotionBanner2} alt="Promotion Banner 2" />
-                            </div>
-                          </div>
-                        </LazyMount>
-                      );
-                    })()}
-                    {/* 6th category onward: full-width rows (lazy-mounted) */}
-                    {restIds.slice(3).map((parentId) => {
-                      const parentCategoryName =
-                        parentCategoryNames[parseInt(parentId)] || "Unknown Category";
-                      const categoryProducts = parentProducts[parseInt(parentId)] || [];
-                      if (typeof window !== "undefined") {
-                        (window as any).isParentCategoryFromAll = true;
-                      }
-                      return (
-                        <LazyMount
-                          key={`lazy-${parentId}`}
-                          onMount={() => loadParentCategoryProducts(parseInt(parentId))}
-                        >
-                          <ProductRow
-                            products={categoryProducts}
-                            categoryName={parentCategoryName}
-                            categoryId={parentId}
-                            loading={loading || !!loadingParentCategories[parseInt(parentId)]}
-                            loadingMore={loadingMore}
-                            onLoadMore={loadMore}
-                            hasMore={hasMore}
-                            isLoaded={
-                              !loadingParentCategories[parseInt(parentId)] &&
-                              categoryProducts.length > 0
-                            }
-                          />
-                        </LazyMount>
-                      );
-                    })}
+                    <CategoryProductsSkeleton rows={2} />
+                    {sentinel}
                   </>
+                ) : (
+                  sentinel
                 );
               }
 
-              // Store page or fewer than 2 categories: original layout
-              return parentIds.map((parentId, index) => {
-                const parentCategoryName =
-                  parentCategoryNames[parseInt(parentId)] || "Unknown Category";
-                const categoryProducts = parentProducts[parseInt(parentId)] || [];
+              return (
+                <>
+                  {displayedParents.map((cat, index) => (
+                    <React.Fragment key={cat.id}>
+                      {renderRow(cat)}
+                      {index === 1 ? <OfferBannerSlider /> : null}
+                    </React.Fragment>
+                  ))}
+                  {sentinel}
+                </>
+              );
+            }
 
-                if (typeof window !== "undefined") {
-                  (window as any).isParentCategoryFromAll = true;
-                }
+            if (displayedParents.length === 0) {
+              return loading ? (
+                <>
+                  <CategoryProductsSkeleton rows={2} />
+                  {sentinel}
+                </>
+              ) : (
+                sentinel
+              );
+            }
 
-                return (
-                  <React.Fragment key={parentId}>
-                    <ProductRow
-                      products={categoryProducts}
-                      categoryName={parentCategoryName}
-                      categoryId={parentId}
-                      loading={loading}
-                      loadingMore={loadingMore}
-                      onLoadMore={loadMore}
-                      hasMore={hasMore}
-                      isLoaded={!loading && categoryProducts.length > 0}
-                    />
-                    {index === 1 && <OfferBannerSlider />}
-                  </React.Fragment>
-                );
-              });
-            })()
-          ) : null}
+            if (displayedParents.length < 2) {
+              return (
+                <>
+                  {displayedParents.map(renderRow)}
+                  {sentinel}
+                </>
+              );
+            }
+
+            const [first, second, ...rest] = displayedParents;
+            const tail = rest.length >= 3 ? rest.slice(3) : rest.slice(1);
+
+            return (
+              <>
+                <div className="flex flex-col md:flex-row md:gap-6 md:items-stretch">
+                  <div className="flex-1 min-w-0">
+                    {renderRow(first)}
+                    {renderRow(second)}
+                  </div>
+                  <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
+                    <CategoryRowAdSlot imageUrl={promotionBanner1} alt="Promotion Banner 1" />
+                  </div>
+                </div>
+                <LazyMount skeletonCount={3}>
+                  <OfferBannerSlider />
+                </LazyMount>
+                {rest[0] ? renderRow(rest[0]) : null}
+                {rest.length >= 3 ? (
+                  <div className="flex flex-col md:flex-row md:gap-6 md:items-stretch">
+                    <div className="flex-1 min-w-0">
+                      {renderRow(rest[1])}
+                      {renderRow(rest[2])}
+                    </div>
+                    <div className="hidden md:flex md:flex-col md:w-[20%] flex-shrink-0 self-stretch min-h-0">
+                      <CategoryRowAdSlot imageUrl={promotionBanner2} alt="Promotion Banner 2" />
+                    </div>
+                  </div>
+                ) : null}
+                {tail.map(renderRow)}
+                {sentinel}
+              </>
+            );
+          })()}
         </div>
       )}
       

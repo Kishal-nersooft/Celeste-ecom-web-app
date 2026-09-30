@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { getProductsWithPricing, getProductsBySubcategoryWithPricing, resolveSubcategories, getDiscountedProductsOptimized } from '@/lib/api';
 import { Product } from '@/store';
 import { Category } from '@/components/Categories';
-import { HOME_PARENT_CATEGORY_LIMIT, getHomeProductsPerCategory } from '@/lib/home-catalogue-constants';
+import { HOME_PARENT_CATEGORY_LIMIT, INITIAL_VISIBLE_PARENT_CATEGORIES, getHomeProductsPerCategory } from '@/lib/home-catalogue-constants';
 
 interface UsePaginatedProductsOptions {
   selectedCategory: number | null;
@@ -169,10 +169,28 @@ export const usePaginatedProducts = ({
   }, []);
 
   const loadingParentCategoriesRef = useRef<{ [key: number]: boolean }>({});
+  const subcategoryLoadRef = useRef<Set<number>>(new Set());
+  const locationKeyRef = useRef(`${storeId ?? ""}:${latitude ?? ""}:${longitude ?? ""}`);
 
-  // Load products for a single parent category row (homepage lazy rows)
+  const rememberParentRow = (parentId: number, name: string, products: Product[]) => {
+    if (selectedCategoryRef.current !== null || isDealsRef.current) return;
+    const cached = allViewCacheRef.current;
+    if (!cached || Object.prototype.hasOwnProperty.call(cached.parentProducts, parentId)) return;
+    allViewCacheRef.current = {
+      ...cached,
+      products: [...cached.products, ...products],
+      parentProducts: { ...cached.parentProducts, [parentId]: products },
+      parentCategoryNames: { ...cached.parentCategoryNames, [parentId]: name },
+      totalProducts: cached.totalProducts + products.length,
+    };
+  };
+
+  // Load products for a single parent category row (homepage lazy rows).
+  // A stored list, including [], means this category already settled — do not fetch again.
   const loadParentCategoryProducts = useCallback(async (parentId: number) => {
-    if (data.parentProducts[parentId]?.length > 0) return;
+    if (Object.prototype.hasOwnProperty.call(dataRef.current.parentProducts, parentId)) {
+      return;
+    }
     if (loadingParentCategoriesRef.current[parentId]) return;
 
     loadingParentCategoriesRef.current[parentId] = true;
@@ -198,36 +216,58 @@ export const usePaginatedProducts = ({
           longitude
         )
       );
+      const list = Array.isArray(products) ? products : [];
+      const name =
+        parentCat?.name ??
+        dataRef.current.parentCategoryNames[parentId] ??
+        "Unknown Category";
+      rememberParentRow(parentId, name, list);
 
       setData(prev => ({
         ...prev,
         parentProducts: {
           ...prev.parentProducts,
-          [parentId]: Array.isArray(products) ? products : [],
+          [parentId]: list,
         },
         parentCategoryNames: {
           ...prev.parentCategoryNames,
-          [parentId]: parentCat?.name ?? prev.parentCategoryNames[parentId] ?? "Unknown Category",
+          [parentId]: name,
         },
         loadingParentCategories: { ...prev.loadingParentCategories, [parentId]: false },
       }));
     } catch (error) {
       console.error(`Error loading products for parent category ${parentId}:`, error);
+      const name =
+        parentCat?.name ??
+        dataRef.current.parentCategoryNames[parentId] ??
+        "Unknown Category";
+      rememberParentRow(parentId, name, []);
       setData(prev => ({
         ...prev,
+        parentProducts: {
+          ...prev.parentProducts,
+          [parentId]: prev.parentProducts[parentId] ?? [],
+        },
         loadingParentCategories: { ...prev.loadingParentCategories, [parentId]: false },
       }));
     } finally {
       loadingParentCategoriesRef.current[parentId] = false;
     }
-  }, [categories, storeId, latitude, longitude, data.parentProducts]);
+  }, [categories, storeId, latitude, longitude]);
 
-  // Load products for a specific subcategory
+  // Load products for one subcategory. Call this only for a row that is on screen.
   const loadSubcategoryProducts = useCallback(async (subcategoryId: number) => {
-    if (data.loadedSubcategories[subcategoryId] || data.loadingSubcategories[subcategoryId]) {
-      return; // Already loaded or loading
+    const current = dataRef.current;
+    if (
+      subcategoryLoadRef.current.has(subcategoryId) ||
+      current.loadedSubcategories[subcategoryId] ||
+      current.loadingSubcategories[subcategoryId]
+    ) {
+      return;
     }
 
+    const requestCategory = selectedCategoryRef.current;
+    subcategoryLoadRef.current.add(subcategoryId);
     setData(prev => ({
       ...prev,
       loadingSubcategories: { ...prev.loadingSubcategories, [subcategoryId]: true }
@@ -237,6 +277,7 @@ export const usePaginatedProducts = ({
       const products = await executeWithLimit(() =>
         getProductsBySubcategoryWithPricing(subcategoryId, 10, storeId ? [storeId] : undefined, latitude, longitude)
       );
+      if (selectedCategoryRef.current !== requestCategory) return;
 
       setData(prev => ({
         ...prev,
@@ -246,22 +287,15 @@ export const usePaginatedProducts = ({
       }));
     } catch (error) {
       console.error(`Error loading products for subcategory ${subcategoryId}:`, error);
+      if (selectedCategoryRef.current !== requestCategory) return;
       setData(prev => ({
         ...prev,
         loadingSubcategories: { ...prev.loadingSubcategories, [subcategoryId]: false }
       }));
+    } finally {
+      subcategoryLoadRef.current.delete(subcategoryId);
     }
-  }, [data.loadedSubcategories, data.loadingSubcategories, storeId]);
-
-  // Preload next 1-2 subcategories
-  const preloadNextSubcategories = useCallback((currentIndex: number, subcategories: Category[]) => {
-    const nextSubcategories = subcategories.slice(currentIndex + 1, currentIndex + 3); // Next 1-2 subcategories
-    nextSubcategories.forEach(subcategory => {
-      if (!data.loadedSubcategories[subcategory.id] && !data.loadingSubcategories[subcategory.id]) {
-        loadSubcategoryProducts(subcategory.id);
-      }
-    });
-  }, [data.loadedSubcategories, data.loadingSubcategories, loadSubcategoryProducts]);
+  }, [storeId, latitude, longitude]);
 
   // Fetch deals products with pagination
   const fetchDealsProducts = useCallback(async (page: number = 1, append: boolean = false) => {
@@ -348,13 +382,9 @@ export const usePaginatedProducts = ({
         ) {
           return;
         }
-        setData(prev => ({ ...prev, subcategories: subcats }));
-
-        // Don't load products immediately - just set up subcategories for lazy loading
         const loadedSubcategories: { [key: number]: boolean } = {};
         const loadingSubcategories: { [key: number]: boolean } = {};
-        
-        // Initialize all subcategories as not loaded
+
         subcats.forEach((subcat: any) => {
           loadedSubcategories[subcat.id] = false;
           loadingSubcategories[subcat.id] = false;
@@ -369,13 +399,14 @@ export const usePaginatedProducts = ({
 
         setData(prev => ({
           ...prev,
-          products: [], // No products initially
-          subcategoryProducts: {}, // No products initially
-          loadedSubcategories: loadedSubcategories,
-          loadingSubcategories: loadingSubcategories,
+          products: [],
+          subcategories: subcats,
+          subcategoryProducts: {},
+          loadedSubcategories,
+          loadingSubcategories,
           loading: false,
           loadingMore: false,
-          hasMore: false, // No pagination for subcategories
+          hasMore: false,
           currentPage: page,
           totalProducts: 0
         }));
@@ -451,18 +482,22 @@ export const usePaginatedProducts = ({
     try {
       // Get all parent categories first
       const parentCategories = categories.filter(cat => !cat.parent_category_id);
-      
-      // Fetch products for first few parent categories only (lazy loading)
-      const limitedParentCategories = parentCategories.slice(0, HOME_PARENT_CATEGORY_LIMIT);
+      // First screen only. Later parent rows load when the user scrolls,
+      // on the homepage and on a pickup store.
+      const limitedParentCategories = parentCategories.slice(
+        0,
+        INITIAL_VISIBLE_PARENT_CATEGORIES
+      );
+      const perCategorySize = getHomeProductsPerCategory(HOME_PARENT_CATEGORY_LIMIT);
       
       const productPromises = limitedParentCategories.map(parentCat =>
         executeWithLimit(() =>
-          getProductsWithPricing([parentCat.id], page, getHomeProductsPerCategory(limitedParentCategories.length), false, true, true, storeId ? [storeId] : undefined, latitude, longitude)
+          getProductsWithPricing([parentCat.id], page, perCategorySize, false, true, true, storeId ? [storeId] : undefined, latitude, longitude)
         ).then((prods) => {
           return {
             parentId: parentCat.id,
             parentName: parentCat.name,
-            products: prods // Products already limited by API call
+            products: Array.isArray(prods) ? prods : []
           };
         })
       );
@@ -487,20 +522,33 @@ export const usePaginatedProducts = ({
 
 
       if (!append) {
+        const previous = preserveExisting ? allViewCacheRef.current : null;
         allViewCacheRef.current = {
-          products: allProducts,
-          parentCategoryNames: parentNames,
-          parentProducts,
-          totalProducts: allProducts.length,
+          products: previous ? previous.products : allProducts,
+          parentCategoryNames: previous
+            ? { ...previous.parentCategoryNames, ...parentNames }
+            : parentNames,
+          parentProducts: previous
+            ? { ...previous.parentProducts, ...parentProducts }
+            : parentProducts,
+          totalProducts: previous ? previous.totalProducts : allProducts.length,
         };
-        hasAllRowsRef.current = Object.keys(parentProducts).length > 0;
+        hasAllRowsRef.current = Object.keys(allViewCacheRef.current.parentProducts).length > 0;
       }
 
       setData(prev => ({
         ...prev,
-        products: append ? [...prev.products, ...allProducts] : allProducts,
-        parentCategoryNames: parentNames,
-        parentProducts: parentProducts,
+        products: append
+          ? [...prev.products, ...allProducts]
+          : preserveExisting
+            ? prev.products
+            : allProducts,
+        parentCategoryNames: preserveExisting
+          ? { ...prev.parentCategoryNames, ...parentNames }
+          : parentNames,
+        parentProducts: preserveExisting
+          ? { ...prev.parentProducts, ...parentProducts }
+          : parentProducts,
         loading: false,
         loadingMore: false,
         hasMore: allProducts.length === pageSize,
@@ -569,6 +617,12 @@ export const usePaginatedProducts = ({
     prevSelectedCategoryRef.current = selectedCategory;
 
     const isAllView = selectedCategory === null && !isDeals;
+    const locationKey = `${storeId ?? ""}:${latitude ?? ""}:${longitude ?? ""}`;
+    if (locationKeyRef.current !== locationKey) {
+      locationKeyRef.current = locationKey;
+      allViewCacheRef.current = null;
+      hasAllRowsRef.current = false;
+    }
     const isParentCategoryView =
       selectedCategory !== null &&
       !isDeals &&
@@ -688,6 +742,5 @@ export const usePaginatedProducts = ({
     loadMore,
     loadSubcategoryProducts,
     loadParentCategoryProducts,
-    preloadNextSubcategories
   };
 };

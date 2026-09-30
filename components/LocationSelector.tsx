@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -83,6 +83,8 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   startView = "location",
 }) => {
   const { user } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
   const {
     selectedLocation,
     setSelectedLocation,
@@ -282,6 +284,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
   const handleSelectLocation = async (location: string, description?: string) => {
     setDeliveryType('delivery');
     setHasSelectedDeliveryType(true);
+    showHomeForMode();
     setRecentLocations(addRecentLocation(location, description));
     setSelectedLocation(location);
     onLocationSelect(location);
@@ -521,6 +524,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
 
     setDeliveryType("delivery");
     setHasSelectedDeliveryType(true);
+    showHomeForMode();
     setSelectedLocation(address.address);
     setAddressId(address.id);
     setDefaultAddressContext(address);
@@ -536,14 +540,20 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     });
   };
 
+  const showHomeForMode = () => {
+    if (pathname !== "/") router.push("/");
+  };
+
   const handleSelectOutlet = (store: Store) => {
     setPickerMode('pickup');
     setDeliveryType('pickup');
     setHasSelectedDeliveryType(true);
     setSelectedOutlet(store);
     setSelectedStore(store);
+    setSelectedLocation(store.name);
     onOpenChange(false);
     setCurrentView('main');
+    router.push(`/store/${store.id}`);
   };
 
   const hasDeliverySelection = !!(defaultAddress?.latitude && defaultAddress?.longitude);
@@ -554,6 +564,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
       setDeliveryType("delivery");
       setHasSelectedDeliveryType(true);
       setPickerMode("delivery");
+      showHomeForMode();
       if (hasDeliverySelection) {
         if (defaultAddress?.address) {
           setSelectedLocation(defaultAddress.address);
@@ -565,10 +576,11 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
       return;
     }
 
+    setDeliveryType("pickup");
+    setHasSelectedDeliveryType(true);
     setPickerMode("pickup");
+    showHomeForMode();
     if (hasPickupSelection) {
-      setDeliveryType("pickup");
-      setHasSelectedDeliveryType(true);
       onOpenChange(false);
       return;
     }
