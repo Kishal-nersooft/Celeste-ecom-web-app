@@ -23,7 +23,7 @@ const DEFAULT_GRID_CLASS =
 const CENTERED_LAYOUT_CLASS =
   "flex flex-wrap justify-center gap-1 sm:gap-1.5 md:gap-2";
 
-const CENTERED_ITEM_CLASS = "w-[140px] sm:w-[160px] md:w-[180px]";
+const CENTERED_ITEM_CLASS = "w-[120px] sm:w-[140px] md:w-[160px]";
 
 const ProductGrid = memo(
   ({

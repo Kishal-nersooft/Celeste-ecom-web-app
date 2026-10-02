@@ -38,6 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import SuggestedAddonsDialog from "@/components/SuggestedAddonsDialog";
+import StoreProductsDialog from "@/components/StoreProductsDialog";
 
 // Global type declaration for Mastercard Checkout
 declare global {
@@ -71,7 +72,10 @@ const CheckoutPage = () => {
   const [splitDecisionMade, setSplitDecisionMade] = useState(false);
   const [splitOrderSelected, setSplitOrderSelected] = useState<boolean>(false);
   const [editorMode, setEditorMode] = useState(false);
+  const editItemsByStoreRef = React.useRef<HTMLDivElement>(null);
+  const scrollToEditItemsRef = React.useRef(false);
   const [confirmStoreId, setConfirmStoreId] = useState<number | null>(null);
+  const [productsStore, setProductsStore] = useState<any | null>(null);
   // Payment gateway state
   const [selectedCardId, setSelectedCardId] = useState<number | null>(null);
   const [paymentSessionData, setPaymentSessionData] = useState<any>(null);
@@ -291,14 +295,19 @@ const CheckoutPage = () => {
     fetchPreviewData();
   }, [fetchPreviewData]);
 
-  // Show multi-store confirmation when preview indicates multiple stores
+  // Show multi-store confirmation when preview indicates multiple stores.
+  // If the suggestions popup is open (?suggest=1), wait until it is closed or continued.
   useEffect(() => {
+    if (showSuggestedAddons) {
+      setShowMultiStoreDialog(false);
+      return;
+    }
     const backendData = previewData?.data || previewData;
     const fulfillableStores = backendData?.fulfillable_stores || [];
     if (fulfillableStores.length > 1 && !splitDecisionMade) {
       setShowMultiStoreDialog(true);
     }
-  }, [previewData, splitDecisionMade]);
+  }, [previewData, splitDecisionMade, showSuggestedAddons]);
 
   const handleLocationChange = (location: any) => {
     // If location is "Location", it means user clicked "Change" button
@@ -509,7 +518,6 @@ const CheckoutPage = () => {
           setTimeout(() => {
             setPaymentModal('none');
             router.push(`/orders?paymentSuccess=true&paymentRef=${encodeURIComponent(paymentRef)}`);
-            toast.success('Payment successful! Your order has been placed.');
           }, 500);
         } else if (normalizedStatus === 'failed' || normalizedStatus === 'declined') {
           stopPolling();
@@ -765,7 +773,20 @@ const CheckoutPage = () => {
     setSplitDecisionMade(true);
     setEditorMode(true);
     setShowMultiStoreDialog(false);
+    scrollToEditItemsRef.current = window.matchMedia("(max-width: 1023px)").matches;
   };
+
+  useEffect(() => {
+    if (!editorMode || !scrollToEditItemsRef.current) return;
+    const node = editItemsByStoreRef.current;
+    if (!node) return;
+    const timer = window.setTimeout(() => {
+      scrollToEditItemsRef.current = false;
+      node.scrollIntoView({ behavior: "smooth", block: "start" });
+      node.focus({ preventScroll: true });
+    }, 400);
+    return () => window.clearTimeout(timer);
+  }, [editorMode]);
 
   const backendData = previewData?.data || previewData;
   const fulfillableStores = backendData?.fulfillable_stores || [];
@@ -1013,17 +1034,23 @@ const CheckoutPage = () => {
             </Card>
           )}
 
-          <PaymentMethod
-            selectedCardId={selectedCardId}
-            onCardSelect={setSelectedCardId}
-            previewLoading={loadingPreview}
-          />
+          <div className="hidden lg:block">
+            <PaymentMethod
+              selectedCardId={selectedCardId}
+              onCardSelect={setSelectedCardId}
+              previewLoading={loadingPreview}
+            />
+          </div>
         </div>
 
         {/* Right Side - Order Summary */}
         <div className="space-y-4 sm:space-y-5 md:space-y-6">
           {editorMode && fulfillableStores.length > 0 && (
-            <Card>
+            <Card
+              ref={editItemsByStoreRef}
+              tabIndex={-1}
+              className="scroll-mt-[calc(var(--app-sticky-top,0px)+16px)] outline-none"
+            >
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-2 text-sm sm:text-base md:text-lg">
                   <span>Edit Items by Store</span>
@@ -1045,7 +1072,7 @@ const CheckoutPage = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                   {fulfillableStores.map((store: any) => {
                     return (
-                    <div key={store.store_id} className="border rounded-lg p-2 sm:p-3 space-y-1.5 sm:space-y-2">
+                    <div key={store.store_id} className="space-y-1.5 rounded-lg border-2 border-neutral-400 bg-white p-2 shadow-sm sm:space-y-2 sm:p-3">
                       <div className="flex items-center justify-between gap-2">
                         <div className="font-medium text-xs sm:text-sm flex items-center gap-1.5 sm:gap-2">
                           {store.store_name}
@@ -1088,6 +1115,7 @@ const CheckoutPage = () => {
                                 <div className="flex-shrink-0">
                                   <QuantityButtons
                                     product={fullProduct}
+                                    alwaysExpanded
                                     className="text-[10px] sm:text-xs"
                                     onQuantityChange={schedulePreviewRefresh}
                                   />
@@ -1119,6 +1147,14 @@ const CheckoutPage = () => {
                 ? "Please select a store for pickup to place your order."
                 : "Please select a delivery location to place your order."
             }
+            mobilePayment={
+              <PaymentMethod
+                variant="inline"
+                selectedCardId={selectedCardId}
+                onCardSelect={setSelectedCardId}
+                previewLoading={loadingPreview}
+              />
+            }
           />
         </div>
       </div>
@@ -1134,8 +1170,22 @@ const CheckoutPage = () => {
       />
 
       {/* Multi-store confirmation dialog */}
-      <Dialog open={showMultiStoreDialog} onOpenChange={setShowMultiStoreDialog}>
-        <DialogContent className="max-w-[92vw] gap-5 rounded-2xl border-0 p-6 shadow-xl sm:max-w-xl">
+      <Dialog
+        open={showMultiStoreDialog}
+        onOpenChange={(open) => {
+          if (!open && productsStore) return;
+          setShowMultiStoreDialog(open);
+        }}
+      >
+        <DialogContent
+          className="max-w-[92vw] gap-5 rounded-2xl border-0 p-6 shadow-xl sm:max-w-xl"
+          onInteractOutside={(event) => {
+            if (productsStore) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (productsStore) event.preventDefault();
+          }}
+        >
           <DialogHeader className="space-y-3 text-left">
             <div className="flex items-start gap-3">
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted">
@@ -1153,16 +1203,18 @@ const CheckoutPage = () => {
           </DialogHeader>
 
           <div className="max-h-[min(50vh,320px)] overflow-y-auto pr-0.5">
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {fulfillableStores.map((s: any, sIdx: number) => {
                 const storeItems = s.items || [];
                 const itemCount = storeItems.length;
                 const previewItems = storeItems.slice(0, 4);
 
                 return (
-                  <div
+                  <button
+                    type="button"
                     key={s.store_id ?? `store-${sIdx}`}
-                    className="flex min-h-[120px] flex-col rounded-xl border border-border/50 bg-muted/40 p-3"
+                    onClick={() => setProductsStore(s)}
+                    className="flex min-h-[120px] w-full min-w-0 flex-col rounded-xl border-2 border-neutral-400 bg-white p-3 text-left shadow-sm transition-colors hover:bg-neutral-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400"
                   >
                     <div className="mb-2.5 flex flex-wrap gap-1">
                       {previewItems.map((it: any, idx: number) => {
@@ -1222,7 +1274,8 @@ const CheckoutPage = () => {
                     <p className="mt-auto pt-2 text-sm font-semibold tabular-nums text-foreground">
                       LKR {(s.subtotal || 0).toFixed(2)}
                     </p>
-                  </div>
+                    <p className="pt-1 text-[11px] font-medium text-neutral-600">View products</p>
+                  </button>
                 );
               })}
             </div>
@@ -1256,6 +1309,15 @@ const CheckoutPage = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <StoreProductsDialog
+        open={productsStore != null}
+        onOpenChange={(open) => {
+          if (!open) setProductsStore(null);
+        }}
+        store={productsStore}
+        onQuantityChange={schedulePreviewRefresh}
+      />
 
       {/* Confirm delete store dialog */}
       <Dialog open={confirmStoreId != null} onOpenChange={(open) => { if (!open) setConfirmStoreId(null); }}>

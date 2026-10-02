@@ -91,8 +91,7 @@ const CartPage = () => {
   const handleCreateNewCart = async () => {
     try {
       setIsCreatingCart(true);
-      const newCart = await cartStore.createNewCart();
-      toast.success(`New cart "${newCart.name}" created!`);
+      await cartStore.createNewCart();
     } catch (error) {
       console.error('Failed to create new cart:', error);
       toast.error('Failed to create new cart. Please try again.');
@@ -104,8 +103,6 @@ const CartPage = () => {
   const handleSwitchCart = async (cartId: number) => {
     try {
       await cartStore.switchCart(cartId);
-      const cart = cartStore.getCartById(cartId);
-      toast.success(`Switched to "${cart?.name || 'Cart'}"`);
     } catch (error) {
       console.error('Failed to switch cart:', error);
       toast.error('Failed to switch cart. Please try again.');

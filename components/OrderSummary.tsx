@@ -26,6 +26,9 @@ import QuantityButtons from "./QuantityButtons";
 import useCartStore from "@/store";
 import paymentGatewaySolutions from "@/images/Payment Gateway Solutions-03.jpg";
 import { PaymentTermsContent } from "@/components/PaymentTermsContent";
+import StoreProductsDialog from "@/components/StoreProductsDialog";
+import { getProductImageUrl } from "@/lib/product-image";
+import { isPickupFulfillment } from "@/lib/order-status";
 
 interface OrderSummaryProps {
   previewData: any;
@@ -39,6 +42,7 @@ interface OrderSummaryProps {
   editMultiStoreDisabled?: boolean;
   canPlaceOrder?: boolean;
   locationRequiredMessage?: string;
+  mobilePayment?: React.ReactNode;
 }
 
 const OrderSummary: React.FC<OrderSummaryProps> = ({
@@ -53,10 +57,12 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
   editMultiStoreDisabled = false,
   canPlaceOrder = true,
   locationRequiredMessage = "Please select a delivery location to place your order.",
+  mobilePayment,
 }) => {
   const [isCartExpanded, setIsCartExpanded] = useState(true);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isTermsOpen, setIsTermsOpen] = useState(false);
+  const [productsStore, setProductsStore] = useState<any | null>(null);
   // Subscribe directly so line-item prices update instantly (same as cart preview / order total).
   const liveCartItems = useCartStore((state) => state.items);
   const liveSubtotal = useCartStore((state) =>
@@ -155,6 +161,13 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
 
           <Separator />
 
+          {mobilePayment ? (
+            <div className="space-y-3 lg:hidden">
+              {mobilePayment}
+              <Separator className="bg-neutral-200" />
+            </div>
+          ) : null}
+
           {/* Order total */}
           <div className="space-y-2.5 sm:space-y-3">
             <div className="h-4 sm:h-5 w-28 rounded-md bg-gray-300 animate-pulse" />
@@ -207,6 +220,12 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
+            {mobilePayment ? (
+              <div className="space-y-3 lg:hidden">
+                {mobilePayment}
+                <Separator className="bg-neutral-200" />
+              </div>
+            ) : null}
             <div className="space-y-2">
               <div className="flex justify-between text-xs sm:text-sm">
                 <span>Subtotal:</span>
@@ -306,7 +325,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
 
   const isMultiStore = (fulfillable_stores?.length || 0) > 1;
 
-  const fulfillmentLabel = fulfillment_mode === "delivery" ? "Delivery" : "Pickup";
+  const fulfillmentLabel = isPickupFulfillment(fulfillment_mode)
+    ? "Pickup"
+    : "Delivery";
 
   const getCartItem = (productId: number) =>
     liveCartItems.find((ci) => ci?.product?.id === productId);
@@ -416,34 +437,55 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           ) : null
         ) : null}
 
-        {/* Unavailable Items - Detailed list */}
         {unavailable_items && unavailable_items.length > 0 && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-2 sm:p-3 space-y-2">
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-4 sm:h-5 sm:w-5 text-red-600">⚠️</div>
-              <div className="flex-1">
-                <p className="text-xs sm:text-sm font-medium text-red-800">Some items unavailable</p>
-                <p className="text-[10px] sm:text-xs text-red-600">
-                  {unavailable_items.length} item{unavailable_items.length !== 1 ? 's' : ''} not available for order
-                </p>
-              </div>
-            </div>
-            <div className="max-h-48 overflow-y-auto space-y-2">
-              {unavailable_items.map((ui: any, idx: number) => (
-                <div key={`unavail-${ui.product_id ?? idx}`} className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm">
-                  <div className="w-8 h-8 sm:w-10 sm:h-10 bg-white rounded border flex items-center justify-center overflow-hidden">
-                    {ui.image_url ? (
-                      <Image src={ui.image_url} alt={ui.name || `#${ui.product_id}`} width={32} height={32} className="object-cover w-full h-full sm:w-10 sm:h-10" />
-                    ) : (
-                      <ShoppingCart className="h-3 w-3 sm:h-4 sm:w-4 text-gray-400" />
-                    )}
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-neutral-900 sm:text-sm">Some items unavailable</p>
+            <div className="max-h-64 space-y-2 overflow-y-auto">
+              {unavailable_items.map((ui: any, idx: number) => {
+                const product = ui?.product && typeof ui.product === "object" ? ui.product : null;
+                const productId = product?.id ?? ui?.product_id;
+                const cartProduct = liveCartItems.find((ci) => ci?.product?.id === productId)?.product;
+                const name =
+                  (typeof product?.name === "string" && product.name) ||
+                  (typeof cartProduct?.name === "string" && cartProduct.name) ||
+                  (typeof ui?.name === "string" && ui.name) ||
+                  "Product";
+                const imageUrl =
+                  getProductImageUrl(product) ||
+                  getProductImageUrl(cartProduct) ||
+                  getProductImageUrl(ui);
+                const quantity = Number(ui?.quantity ?? ui?.requested_quantity ?? 0);
+
+                return (
+                  <div
+                    key={`unavail-${productId ?? idx}`}
+                    className="relative overflow-hidden rounded-lg bg-gray-50"
+                  >
+                    <div className="pointer-events-none flex select-none items-center gap-2 p-2 opacity-60 blur-[2px] grayscale sm:gap-3 sm:p-3">
+                      {imageUrl ? (
+                        <img
+                          src={imageUrl}
+                          alt=""
+                          className="h-10 w-10 shrink-0 rounded-md object-cover sm:h-12 sm:w-12"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-gray-300 text-[10px] text-gray-500 sm:h-12 sm:w-12">
+                          No Image
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <h4 className="truncate text-xs font-medium text-gray-900 sm:text-sm">{name}</h4>
+                        <p className="text-[10px] text-gray-600 sm:text-xs">Qty: {quantity}</p>
+                      </div>
+                    </div>
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <span className="rounded-full border border-gray-200 bg-white/95 px-3 py-1 text-xs font-semibold text-gray-800 shadow-sm">
+                        Unavailable
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="truncate">{ui.name || `Product ${ui.product_id}`}</div>
-                    <div className="text-[10px] sm:text-xs text-gray-500">Requested: {ui.requested_quantity || ui.quantity || 0}</div>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -453,15 +495,16 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
           {isMultiStore ? (
             <div className="space-y-2">
               <h4 className="font-medium text-gray-900 text-xs sm:text-sm">Items by store</h4>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 sm:gap-4">
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2 sm:gap-4">
                 {fulfillable_stores.map((store: any, sIdx: number) => (
-                  <div key={store.store_id ?? `store-${sIdx}`} className="border rounded-lg p-2 sm:p-3 space-y-2">
-                    <div className="font-medium text-xs sm:text-sm">Fulfilled by: {store.store_name || "Store"}</div>
+                  <div
+                    key={store.store_id ?? `store-${sIdx}`}
+                    onClick={() => setProductsStore(store)}
+                    className="min-w-0 cursor-pointer space-y-2 rounded-lg border-2 border-neutral-400 bg-white p-2 shadow-sm transition-colors hover:bg-neutral-50 sm:p-3"
+                  >
+                    <div className="min-w-0 font-medium text-xs sm:text-sm">Fulfilled by: {store.store_name || "Store"}</div>
                     <div className="text-[10px] sm:text-xs text-gray-500">
-                      {(store.items?.length || 0)} items • Subtotal LKR{" "}
-                      {(store.items || [])
-                        .reduce((sum: number, it: any) => sum + getOptimisticLine(it).lineTotal, 0)
-                        .toFixed(2)}
+                      {(store.items?.length || 0)} {(store.items?.length || 0) === 1 ? "item" : "items"}
                     </div>
                     <div className="max-h-56 overflow-y-auto space-y-2">
                       {(store.items || []).map((it: any, idx: number) => {
@@ -492,9 +535,10 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                               <div className="text-xs sm:text-sm font-medium mt-1">LKR {lineTotal.toFixed(2)}</div>
                             </div>
                             {fullProduct && (
-                              <div className="flex-shrink-0">
+                              <div className="flex-shrink-0" onClick={(event) => event.stopPropagation()}>
                                 <QuantityButtons
                                   product={fullProduct}
+                                  alwaysExpanded
                                   className="text-[10px] sm:text-xs"
                                   onQuantityChange={() => {
                                     if (onQuantityChange) {
@@ -609,6 +653,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                           <div className="flex-shrink-0">
                             <QuantityButtons
                               product={product}
+                              alwaysExpanded
                               className="text-[10px] sm:text-xs"
                               onQuantityChange={() => {
                                 if (onQuantityChange) {
@@ -634,6 +679,12 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
 
         <Separator />
 
+        {mobilePayment ? (
+          <div className="space-y-3 lg:hidden">
+            {mobilePayment}
+            <Separator className="bg-neutral-200" />
+          </div>
+        ) : null}
 
         {/* Order total */}
         <div className="space-y-2 sm:space-y-3">
@@ -670,14 +721,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
             <div className="flex justify-between text-xs sm:text-sm">
               <span className="flex min-w-0 items-center gap-1">
                 <Truck className="h-2.5 w-2.5 sm:h-3 sm:w-3 shrink-0" />
-                <span className="truncate">
-                  {fulfillmentLabel} Fee (
-                  {fulfillable_stores
-                    .map((s: any) => s?.store_name)
-                    .filter(Boolean)
-                    .join(" + ") || "Stores"}
-                  )
-                </span>
+                <span className="truncate">{fulfillmentLabel} Fee</span>
               </span>
               <span className="tabular-nums">
                 LKR{" "}
@@ -780,6 +824,14 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
         )}
       </CardContent>
       {TermsDialog}
+      <StoreProductsDialog
+        open={productsStore != null}
+        onOpenChange={(open) => {
+          if (!open) setProductsStore(null);
+        }}
+        store={productsStore}
+        onQuantityChange={onQuantityChange}
+      />
     </Card>
   );
 };

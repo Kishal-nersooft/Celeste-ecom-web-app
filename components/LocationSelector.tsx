@@ -204,6 +204,14 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
     }
   }, [isOpen, currentView]);
 
+  // Bumped when the user adds or deletes an address so an older prefetch
+  // cannot replace the list they just changed.
+  const savedAddressesEpochRef = useRef(0);
+  const handleSavedAddressesChange = React.useCallback((addresses: any[]) => {
+    savedAddressesEpochRef.current += 1;
+    setSavedAddresses(addresses);
+  }, []);
+
   // Prefetch saved addresses as soon as the picker opens so the list is ready
   React.useEffect(() => {
     if (!isOpen || !user) {
@@ -211,20 +219,21 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
       return;
     }
 
+    const epoch = savedAddressesEpochRef.current;
     const cached = peekUserAddressesCache({ allowStale: true });
-    if (cached) {
+    if (cached && epoch === savedAddressesEpochRef.current) {
       setSavedAddresses(getNamedSavedAddresses(cached));
     }
 
     let cancelled = false;
     getUserAddresses()
       .then((addresses) => {
-        if (cancelled) return;
+        if (cancelled || epoch !== savedAddressesEpochRef.current) return;
         setSavedAddresses(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
       })
       .catch((error) => {
         console.error("Error loading addresses:", error);
-        if (!cancelled) setSavedAddresses([]);
+        if (!cancelled && epoch === savedAddressesEpochRef.current) setSavedAddresses([]);
       });
 
     return () => {
@@ -459,7 +468,6 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
                       setSavedAddresses([]);
                     }
                     
-                    toast.success("Address saved as default!");
                   } else {
                     console.error('❌ Could not extract address ID from response:', newAddress);
                     // Fallback: save to localStorage only
@@ -768,7 +776,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
         sheetAutoHeight={currentView !== "mode"}
         sheetResizable={currentView !== "mode"}
         sheetSizeKey={`${currentView}-${savedStep}-${isOpen ? "open" : "closed"}`}
-        hideCloseButton={required}
+        hideCloseButton={required || currentView === "savedAddresses"}
         onDismiss={() => {
           if (!required) onOpenChange(false);
         }}
@@ -1115,7 +1123,7 @@ const LocationSelectorDialog: React.FC<LocationSelectorDialogProps> = ({
             user={user}
             savedAddresses={savedAddresses}
             applySavedAddress={applySavedAddress}
-            onAddressesChange={setSavedAddresses}
+            onAddressesChange={handleSavedAddressesChange}
             onSearchFocus={handleSearchFocus}
             onStepChange={setSavedStep}
           />

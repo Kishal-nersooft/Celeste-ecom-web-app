@@ -102,3 +102,84 @@ body {
 /* h2 {
   font-family: var(--font-geist-mono);
 } */
+
+/* Login phone field: flag + number on one row. Library CSS can fail to hide the native country <select>. */
+.login-phone.PhoneInput {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0.625rem;
+}
+
+.login-phone .PhoneInputCountry {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  align-self: stretch;
+  margin: 0;
+}
+
+.login-phone .PhoneInputCountrySelect {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+  appearance: none;
+}
+
+.login-phone .PhoneInputCountryIcon {
+  width: 22px;
+  height: 16px;
+  overflow: hidden;
+  border-radius: 2px;
+  box-shadow: none;
+  background: transparent;
+}
+
+.login-phone .PhoneInputCountryIconImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.login-phone .PhoneInputCountrySelectArrow {
+  display: block;
+  width: 0.35rem;
+  height: 0.35rem;
+  margin-left: 0.4rem;
+  border-style: solid;
+  border-color: currentColor;
+  border-top-width: 0;
+  border-right-width: 1.5px;
+  border-bottom-width: 1.5px;
+  border-left-width: 0;
+  opacity: 0.45;
+  transform: rotate(45deg) translateY(-1px);
+}
+
+.login-phone .PhoneInputInput {
+  flex: 1;
+  min-width: 0;
+  height: 2.75rem;
+  border: 0 !important;
+  border-radius: 0;
+  background: transparent !important;
+  padding: 0;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  box-shadow: none !important;
+}
+
+.login-phone .PhoneInputInput:focus,
+.login-phone .PhoneInputInput:focus-visible {
+  outline: none;
+  box-shadow: none !important;
+  --tw-ring-shadow: 0 0 #0000;
+}

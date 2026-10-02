@@ -58,7 +58,6 @@ export default function SavedAddressPicker({
       forgetAddressName(address.id);
       const addresses = await getUserAddresses();
       onAddressesChange(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
-      toast.success("Address deleted");
     } catch (error) {
       console.error("Error deleting address:", error);
       toast.error("Failed to delete address");

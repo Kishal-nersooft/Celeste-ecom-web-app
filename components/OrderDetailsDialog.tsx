@@ -11,6 +11,7 @@ import {
 import PriceFormatter from "./PriceFormatter";
 import Image from "next/image";
 import { Order } from "@/store";
+import { getCustomerOrderStatus } from "@/lib/order-status";
 
 interface OrderDetailsDialogProps {
   order: Order | null;
@@ -49,7 +50,8 @@ const OrderDetailsDialog: React.FC<OrderDetailsDialogProps> = ({
             {order.createdAt && new Date(order.createdAt).toLocaleDateString()}
           </p>
           <p>
-            <strong>Status:</strong> {order.status}
+            <strong>Status:</strong>{" "}
+            {getCustomerOrderStatus(order.status, order.fulfillmentMode).label}
           </p>
         </div>
         <Table>

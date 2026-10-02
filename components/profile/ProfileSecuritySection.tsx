@@ -211,13 +211,13 @@ export default function ProfileSecuritySection({
         {linkedProviders.map((provider) => (
           <div
             key={provider.id}
-            className="flex items-center justify-between py-4 border-b border-gray-100 last:border-0"
+            className="flex items-center justify-between gap-3 border-b border-gray-100 py-4 last:border-0"
           >
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center text-sm font-semibold">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100 text-sm font-semibold">
                 {provider.label.charAt(0)}
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className={`font-medium ${provider.brandClass}`}>{provider.label}</p>
                 <p className="text-xs text-gray-500">
                   {provider.connected ? "Connected" : "Not connected"}
@@ -228,7 +228,7 @@ export default function ProfileSecuritySection({
               type="button"
               variant={provider.connected ? "outline" : "default"}
               size="sm"
-              className={provider.connected ? "" : "bg-black hover:bg-gray-800"}
+              className={provider.connected ? "shrink-0" : "shrink-0 bg-black hover:bg-gray-800"}
               onClick={() => handleDisconnectSocial(provider.label, provider.connected)}
             >
               {provider.connected ? "Disconnect" : "Connect"}
@@ -236,17 +236,17 @@ export default function ProfileSecuritySection({
           </div>
         ))}
         {user.providerData.some((p) => p.providerId === "phone") && (
-          <div className="flex items-center justify-between py-4 border-t border-gray-100 mt-2">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-gray-100 flex items-center justify-center">
+          <div className="mt-2 flex items-center justify-between gap-3 border-t border-gray-100 py-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
                 <Smartphone className="h-4 w-4 text-gray-700" />
               </div>
-              <div>
+              <div className="min-w-0">
                 <p className="font-medium text-gray-900">Phone number</p>
-                <p className="text-xs text-gray-500">{displayPhone}</p>
+                <p className="truncate text-xs text-gray-500">{displayPhone}</p>
               </div>
             </div>
-            <Badge variant="secondary">Primary</Badge>
+            <Badge variant="secondary" className="shrink-0">Primary</Badge>
           </div>
         )}
       </SectionBlock>
@@ -264,14 +264,14 @@ export default function ProfileSecuritySection({
             loginActivitySessions.map((session) => (
               <div
                 key={session.id}
-                className="flex items-start justify-between gap-4 py-4 border-b border-gray-100 last:border-0"
+                className="flex items-start justify-between gap-3 border-b border-gray-100 py-4 last:border-0"
               >
-                <div className="flex gap-3">
+                <div className="flex min-w-0 gap-3">
                   <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gray-100">
                     <Monitor className="h-4 w-4 text-gray-700" />
                   </div>
-                  <div>
-                    <p className="font-medium text-gray-900">{session.label}</p>
+                  <div className="min-w-0">
+                    <p className="break-words font-medium text-gray-900">{session.label}</p>
                     {session.isCurrent && (
                       <Badge variant="default" className="mt-1 mb-1 text-xs">
                         Your current login
@@ -291,16 +291,16 @@ export default function ProfileSecuritySection({
         <button
           type="button"
           onClick={() => setActiveDialog("signOutAll")}
-          className="mt-4 w-full flex items-center justify-between rounded-lg border border-gray-200 px-4 py-4 hover:bg-gray-50 transition-colors text-left"
+          className="mt-4 flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-4 py-4 text-left transition-colors hover:bg-gray-50"
         >
-          <div className="flex items-center gap-3">
-            <LogOut className="h-5 w-5 text-gray-600" />
-            <div>
+          <div className="flex min-w-0 items-center gap-3">
+            <LogOut className="h-5 w-5 shrink-0 text-gray-600" />
+            <div className="min-w-0">
               <p className="font-medium text-gray-900">Sign out all devices</p>
               <p className="text-sm text-gray-500">All except your current login</p>
             </div>
           </div>
-          <ChevronRight className="h-5 w-5 text-gray-400" />
+          <ChevronRight className="h-5 w-5 shrink-0 text-gray-400" />
         </button>
       </SectionBlock>
 

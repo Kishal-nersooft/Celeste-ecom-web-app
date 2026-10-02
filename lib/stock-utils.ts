@@ -242,16 +242,23 @@ export function isProductAvailable(product: Product, targetStoreId?: number): bo
 }
 
 /**
+ * Order cap from `inventory.max_available`.
+ * Returns null when the product payload has no inventory, so callers do not treat "unknown" as zero.
+ */
+export function getMaxAvailableQuantity(product: Product | null | undefined, targetStoreId?: number): number | null {
+  if (!product) return null;
+  const inventory = getStoreInventory(product, targetStoreId);
+  if (!inventory || inventory.max_available == null) return null;
+  const max = Number(inventory.max_available);
+  if (!Number.isFinite(max)) return null;
+  return Math.max(0, Math.floor(max));
+}
+
+/**
  * Gets the total available quantity across all stores
  */
 export function getTotalAvailableQuantity(product: Product, targetStoreId?: number): number {
-  const inventory = getStoreInventory(product, targetStoreId);
-  
-  if (!inventory) {
-    return 0;
-  }
-  
-  return inventory.max_available || 0;
+  return getMaxAvailableQuantity(product, targetStoreId) ?? 0;
 }
 
 /**

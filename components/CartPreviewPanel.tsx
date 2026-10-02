@@ -34,7 +34,6 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
 
   const handleDeleteProduct = async (productId: number) => {
     await cartStore.deleteCartProduct(productId);
-    toast.success("Product removed from cart!");
   };
 
   const handleCreateNewCart = async () => {
@@ -51,8 +50,7 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
   const createNewCart = async () => {
     try {
       setIsCreatingCart(true);
-      const newCart = await cartStore.createNewCart();
-      toast.success(`New cart "${newCart.name}" created!`);
+      await cartStore.createNewCart();
       setShowNewCartDialog(false);
     } catch (error) {
       console.error('Failed to create new cart:', error);
@@ -67,7 +65,6 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
     try {
       setIsClearingCart(true);
       await cartStore.clearCart();
-      toast.success("Cart cleared successfully!");
     } catch (error) {
       console.error('Failed to clear cart:', error);
       toast.error('Failed to clear cart. Please try again.');
@@ -218,6 +215,7 @@ const CartPreviewPanel = ({ children }: CartPreviewPanelProps) => {
                       <div className="flex items-center justify-between gap-1 sm:gap-2">
                         <QuantityButtons
                           product={item.product}
+                          alwaysExpanded
                           className="text-[10px] sm:text-xs"
                           onQuantityChange={() => {
                             // No need to refresh preview data - cart is purely local

@@ -89,7 +89,7 @@ const ProductRow = ({
 
   const scrollLeft = () => {
     if (scrollContainerRef.current) {
-      const cardWidth = 200; // Approximate width of each product card + gap
+      const cardWidth = 180; // Approximate width of each product card + gap
       scrollContainerRef.current.scrollBy({
         left: -cardWidth * 3, // Scroll by 3 cards at a time
         behavior: "smooth",
@@ -101,7 +101,7 @@ const ProductRow = ({
 
   const scrollRight = () => {
     if (scrollContainerRef.current) {
-      const cardWidth = 200; // Approximate width of each product card + gap
+      const cardWidth = 180; // Approximate width of each product card + gap
       const container = scrollContainerRef.current;
       const { scrollLeft, scrollWidth, clientWidth } = container;
 
@@ -239,7 +239,7 @@ const ProductRow = ({
         <div
           ref={assignScrollContainer}
           onScroll={checkScrollButtons}
-          className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
+          className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide px-1.5 pt-1.5 -mx-1.5 -mt-1.5 pb-4 scroll-smooth"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -250,7 +250,7 @@ const ProductRow = ({
               Array.from({ length: 6 }).map((_, index) => (
                 <div
                   key={`skeleton-${index}`}
-                  className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
+                  className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px]"
                 >
                   <ProductCardSkeleton />
                 </div>
@@ -260,7 +260,7 @@ const ProductRow = ({
               Array.from({ length: 6 }).map((_, index) => (
                 <div
                   key={`skeleton-unloaded-${index}`}
-                  className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
+                  className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px]"
                 >
                   <ProductCardSkeleton />
                 </div>
@@ -272,7 +272,7 @@ const ProductRow = ({
                   initial={{ opacity: 0.2 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
+                  className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px]"
                 >
                   <ProductCard product={product} scrollRoot={scrollRoot} />
                 </motion.div>
@@ -283,7 +283,7 @@ const ProductRow = ({
             Array.from({ length: 3 }).map((_, index) => (
               <div
                 key={`loading-more-${index}`}
-                className="flex-shrink-0 w-[180px] sm:w-[200px]"
+                className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px]"
               >
                 <ProductCardSkeleton />
               </div>

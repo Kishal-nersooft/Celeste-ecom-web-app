@@ -40,7 +40,7 @@ export const SidePanel = () => {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('cart-store');
       }
-      toast.success("Signed out successfully!");
+      toast.success("Signed out!");
       setIsOpen(false);
     } catch (error: any) {
       toast.error(error.message);

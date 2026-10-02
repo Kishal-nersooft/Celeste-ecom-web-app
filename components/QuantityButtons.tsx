@@ -1,11 +1,13 @@
-import React, { useState } from "react";
-import { Button } from "./ui/button";
-import { HiMinus, HiPlus } from "react-icons/hi2";
+"use client";
+
+import React, { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Minus, Plus } from "lucide-react";
 import toast from "react-hot-toast";
 import useCartStore from "@/store";
 import { Product } from "../store";
+import { getMaxAvailableQuantity } from "@/lib/stock-utils";
 import { twMerge } from "tailwind-merge";
-// Removed stock validation imports - validation now happens only at checkout
 
 interface Props {
   product: Product;
@@ -14,128 +16,304 @@ interface Props {
   onQuantityChange?: () => void;
   /** When true, sync cart changes to backend immediately (no debounce). */
   immediateSync?: boolean;
+  size?: "sm" | "md";
+  /** Slide the current quantity into view the first time this control appears. */
+  rollOnMount?: boolean;
+  /** Open the minus and plus controls as soon as this mounts, such as right after add. */
+  startExpanded?: boolean;
+  /** Keep minus and plus visible. Used in the cart preview and on checkout. */
+  alwaysExpanded?: boolean;
 }
 
-const QuantityButtons = ({ product, className, borderStyle, onQuantityChange, immediateSync }: Props) => {
-  const { addItem, removeItem, updateItemQuantity, getItemCount } = useCartStore();
+const rollVariants = {
+  enter: (direction: number) => ({
+    y: direction >= 0 ? 14 : -14,
+    opacity: 0,
+  }),
+  center: { y: 0, opacity: 1 },
+  exit: (direction: number) => ({
+    y: direction >= 0 ? -14 : 14,
+    opacity: 0,
+  }),
+};
+
+const sizeStyles = {
+  sm: {
+    side: 28,
+    icon: "h-3.5 w-3.5",
+    circle: "h-6 w-6",
+    number: "h-4 min-w-4 text-[13px]",
+    shell: "h-7",
+  },
+  md: {
+    side: 32,
+    icon: "h-4 w-4",
+    circle: "h-7 w-7",
+    number: "h-[18px] min-w-[18px] text-sm",
+    shell: "h-8",
+  },
+} as const;
+
+function RollingQuantity({
+  value,
+  rollOnMount,
+  className,
+}: {
+  value: number;
+  rollOnMount?: boolean;
+  className?: string;
+}) {
+  const previous = useRef(value);
+  const directionRef = useRef(rollOnMount ? 1 : 0);
+
+  if (value !== previous.current) {
+    directionRef.current = value > previous.current ? 1 : -1;
+    previous.current = value;
+  }
+
+  return (
+    <span
+      className={twMerge(
+        "relative inline-grid place-items-center overflow-hidden",
+        className
+      )}
+    >
+      <AnimatePresence
+        mode="popLayout"
+        initial={Boolean(rollOnMount)}
+        custom={directionRef.current}
+      >
+        <motion.span
+          key={value}
+          custom={directionRef.current}
+          variants={rollVariants}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+          className="col-start-1 row-start-1 flex items-center justify-center font-semibold tabular-nums leading-none text-black"
+          aria-live="polite"
+        >
+          {value}
+        </motion.span>
+      </AnimatePresence>
+    </span>
+  );
+}
+
+const capRequested = new Map<number, number>();
+
+const QuantityButtons = ({
+  product,
+  className,
+  onQuantityChange,
+  immediateSync,
+  size = "md",
+  rollOnMount = false,
+  startExpanded = false,
+  alwaysExpanded = false,
+}: Props) => {
+  const { addItem, removeItem, updateItemQuantity, getItemCount, mergeProductInventory } = useCartStore();
   const itemCount = getItemCount(product?.id);
-  const isDiscounted = product?.pricing && product.pricing.discount_applied > 0;
+  const maxAvailable = getMaxAvailableQuantity(product);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [localItemCount, setLocalItemCount] = useState(0);
-  
-  // Update local count when cart count changes
-  React.useEffect(() => {
+  const [localItemCount, setLocalItemCount] = useState(itemCount);
+  const [expanded, setExpanded] = useState(alwaysExpanded);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const styles = sizeStyles[size];
+  const atMax = maxAvailable != null && localItemCount >= maxAvailable;
+
+  useEffect(() => {
     setLocalItemCount(itemCount);
   }, [itemCount]);
-  
-  // Removed stock validation - users can add any quantity, validation happens at checkout
 
-  const handleRemoveProduct = async () => {
-    if (isProcessing) return;
-    
+  useEffect(() => {
+    if (!product?.id || maxAvailable == null) return;
+    mergeProductInventory(product);
+    if (itemCount <= maxAvailable) {
+      if (capRequested.get(product.id) === maxAvailable) {
+        capRequested.delete(product.id);
+      }
+      return;
+    }
+    if (capRequested.get(product.id) === maxAvailable) return;
+    capRequested.set(product.id, maxAvailable);
+    void updateItemQuantity(product.id, maxAvailable, { immediateSync }).then(() => {
+      onQuantityChange?.();
+    });
+    // Cap from the inventory on this product. Callback identity must not retrigger the sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id, maxAvailable, itemCount, immediateSync]);
+
+  useEffect(() => {
+    if (!startExpanded || alwaysExpanded) return;
+    const frame = requestAnimationFrame(() => setExpanded(true));
+    return () => cancelAnimationFrame(frame);
+  }, [startExpanded, alwaysExpanded]);
+
+  useEffect(() => {
+    if (!expanded || alwaysExpanded) return;
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) {
+        setExpanded(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [expanded, alwaysExpanded]);
+
+  const finish = () => {
+    setTimeout(() => setIsProcessing(false), 200);
+  };
+
+  const openEditor = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    setExpanded(true);
+  };
+
+  const handleRemoveProduct = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isProcessing || itemCount === 0) return;
+
     setIsProcessing(true);
     const newQuantity = Math.max(0, itemCount - 1);
     setLocalItemCount(newQuantity);
-    
+
     try {
       if (newQuantity === 0) {
-        // Use removeItem for complete removal
         await removeItem(product?.id, { immediateSync });
-        toast.success(`${product?.name?.substring(0, 12)} removed successfully!`);
       } else {
-        // Use updateItemQuantity for quantity changes
         await updateItemQuantity(product?.id, newQuantity, { immediateSync });
-        toast.success("Quantity Decreased successfully!");
       }
-      // Call the quantity change callback
-      if (onQuantityChange) {
-        onQuantityChange();
-      }
+      onQuantityChange?.();
     } catch (error) {
-      console.error('Failed to remove item from cart:', error);
-      toast.error('Failed to update cart');
-      // Revert local count on error
+      console.error("Failed to remove item from cart:", error);
+      toast.error("Failed to update cart");
       setLocalItemCount(itemCount);
     } finally {
-      setTimeout(() => setIsProcessing(false), 200);
+      finish();
     }
   };
+
+  const handleAddProduct = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (isProcessing) return;
+    if (maxAvailable != null && itemCount >= maxAvailable) return;
+
+    setIsProcessing(true);
+    const newQuantity = itemCount + 1;
+    setLocalItemCount(newQuantity);
+
+    try {
+      if (itemCount === 0) {
+        await addItem(product, { immediateSync });
+      } else {
+        await updateItemQuantity(product?.id, newQuantity, { immediateSync });
+      }
+      onQuantityChange?.();
+    } catch (error) {
+      console.error("Failed to add item to cart:", error);
+      toast.error("Failed to update cart");
+      setLocalItemCount(itemCount);
+    } finally {
+      finish();
+    }
+  };
+
   return (
     <div
-      className={twMerge(
-        "flex items-center bg-gray-200 rounded-full border-2 border-dashed border-white shadow-lg relative",
-        className
-      )}
-      style={{
-        boxShadow: "0 0 10px rgba(0, 0, 0, 0.3)"
+      ref={rootRef}
+      className={twMerge("inline-flex", className)}
+      onPointerLeave={(event) => {
+        if (alwaysExpanded || !expanded || event.pointerType === "touch") return;
+        setExpanded(false);
       }}
     >
-      {/* Minus Button */}
-      <button
-        onClick={handleRemoveProduct}
-        disabled={itemCount === 0 || isProcessing}
-        className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-          isDiscounted 
-            ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' 
-            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-        } ${(itemCount === 0 || isProcessing) ? 'opacity-50 cursor-not-allowed' : ''}`}
+      <div
+        className={twMerge(
+          "inline-flex items-center overflow-hidden rounded-full bg-white shadow-[0_1px_2px_rgba(16,24,40,0.08),0_1px_4px_rgba(16,24,40,0.12)]",
+          styles.shell
+        )}
       >
-        <HiMinus className="w-3 h-3" />
-      </button>
-      
-      {/* Quantity Display */}
-      <span className={`font-bold text-sm px-2 ${
-        isDiscounted ? 'text-gray-700' : 'text-gray-700'
-      }`}>
-        {localItemCount}
-      </span>
-      
-      {/* Plus Button */}
-      <button
-        onClick={async () => {
-          // Prevent multiple rapid clicks
-          if (isProcessing) {
-            return;
-          }
-          
-          setIsProcessing(true);
-          const newQuantity = itemCount + 1;
-          
-          // Update local count immediately for instant UI feedback
-          setLocalItemCount(newQuantity);
-          
-          try {
-            if (itemCount === 0) {
-              // Use addItem for adding new items
-              await addItem(product, { immediateSync });
-            } else {
-              // Use updateItemQuantity for existing items
-              await updateItemQuantity(product?.id, newQuantity, { immediateSync });
-            }
-            toast.success("Quantity increased successfully!");
-            // Call the quantity change callback
-            if (onQuantityChange) {
-              onQuantityChange();
-            }
-          } catch (error) {
-            console.error('Failed to add item to cart:', error);
-            toast.error('Failed to update cart');
-            // Revert local count on error
-            setLocalItemCount(itemCount);
-          } finally {
-            setTimeout(() => setIsProcessing(false), 200);
-          }
-        }}
-        disabled={isProcessing}
-        title="Increase quantity"
-        className={`w-6 h-6 rounded-full flex items-center justify-center transition-colors ${
-          isDiscounted 
-            ? 'bg-gray-200 hover:bg-gray-300 text-gray-700' 
-            : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-        } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-      >
-        <HiPlus className="w-3 h-3" />
-      </button>
+        <div
+          className="overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{
+            width: expanded ? styles.side : 0,
+            pointerEvents: expanded ? "auto" : "none",
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleRemoveProduct}
+            disabled={!expanded || itemCount === 0 || isProcessing}
+            aria-hidden={!expanded}
+            tabIndex={expanded ? 0 : -1}
+            aria-label="Decrease quantity"
+            className="group/step flex h-full items-center justify-center text-black focus-visible:outline-none disabled:pointer-events-none disabled:text-gray-300"
+            style={{ width: styles.side }}
+          >
+            <span
+              className={twMerge(
+                "flex items-center justify-center rounded-full bg-transparent transition-colors group-hover/step:bg-gray-200 group-active/step:bg-gray-300",
+                styles.circle
+              )}
+            >
+              <Minus className={styles.icon} strokeWidth={2.5} />
+            </span>
+          </button>
+        </div>
+
+        <button
+          type="button"
+          onClick={expanded ? (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          } : openEditor}
+          aria-label={expanded ? `Quantity ${localItemCount}` : `Quantity ${localItemCount}. Change quantity`}
+          title={expanded ? undefined : "Change quantity"}
+          className="flex h-full min-w-7 items-center justify-center px-1.5 text-black focus-visible:outline-none"
+        >
+          <RollingQuantity
+            value={localItemCount}
+            rollOnMount={rollOnMount}
+            className={styles.number}
+          />
+        </button>
+
+        <div
+          className="overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.22,1,0.36,1)]"
+          style={{
+            width: expanded ? styles.side : 0,
+            pointerEvents: expanded ? "auto" : "none",
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleAddProduct}
+            disabled={!expanded || isProcessing || atMax}
+            aria-hidden={!expanded}
+            tabIndex={expanded ? 0 : -1}
+            aria-label="Increase quantity"
+            title={atMax ? undefined : "Increase quantity"}
+            className="group/step flex h-full items-center justify-center text-black focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-300"
+            style={{ width: styles.side }}
+          >
+            <span
+              className={twMerge(
+                "flex items-center justify-center rounded-full bg-transparent transition-colors group-hover/step:bg-gray-200 group-active/step:bg-gray-300",
+                styles.circle
+              )}
+            >
+              <Plus className={styles.icon} strokeWidth={2.5} />
+            </span>
+          </button>
+        </div>
+      </div>
     </div>
   );
 };

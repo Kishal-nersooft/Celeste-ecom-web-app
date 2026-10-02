@@ -79,7 +79,7 @@ const ProductCard = memo(({
 
   return (
     <div
-      className={`border border-gray-300 rounded-lg overflow-hidden group text-xs flex flex-col h-[170px] sm:h-[190px] md:h-[210px] lg:h-[240px] w-full max-w-[140px] sm:max-w-[160px] md:max-w-[180px] relative ${
+      className={`rounded-lg overflow-hidden shadow-[0_0_1px_rgba(16,24,40,0.14),0_0_4px_rgba(16,24,40,0.12)] group text-xs flex flex-col h-[170px] sm:h-[190px] md:h-[210px] lg:h-[240px] w-full max-w-[120px] sm:max-w-[140px] md:max-w-[160px] lg:max-w-[180px] relative ${
         isDiscounted ? "bg-black text-white" : "bg-gray-100"
       }`}
     >

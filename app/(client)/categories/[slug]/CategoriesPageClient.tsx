@@ -466,7 +466,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
               </h1>
             </div>
 
-            <div className="overflow-y-auto max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] pr-1 sm:pr-2">
+            <div className="overflow-y-auto max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] pt-1.5 pl-1.5 pr-1 sm:pr-2">
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
                 {isLoadingProducts ? (
                   Array.from({ length: 12 }).map((_, index) => (
@@ -503,7 +503,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
             <div 
               ref={scrollContainerRef}
               onScroll={handleScroll}
-              className="overflow-y-auto max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] pr-1 sm:pr-2"
+              className="overflow-y-auto max-h-[60vh] sm:max-h-[65vh] md:max-h-[70vh] pt-1.5 pl-1.5 pr-1 sm:pr-2"
             >
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
                 {isLoadingProducts ? (
@@ -584,7 +584,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
               </div>
               
               {/* Scrollable Products Container - 2 columns on mobile */}
-              <div className="flex-1 overflow-y-auto pr-1 sm:pr-2 min-h-0">
+              <div className="flex-1 overflow-y-auto pt-1.5 pl-1.5 pr-1 sm:pr-2 min-h-0">
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
                   {isLoadingProducts ? (
                     // Show skeleton cards while loading

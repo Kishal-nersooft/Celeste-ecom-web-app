@@ -33,7 +33,7 @@ const CategoryProductsSkeleton = ({ rows = 2 }: { rows?: number }) => (
           {Array.from({ length: 6 }).map((_, index) => (
             <div
               key={`category-skeleton-card-${rowIndex}-${index}`}
-              className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
+              className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px]"
             >
               <ProductCardSkeleton />
             </div>

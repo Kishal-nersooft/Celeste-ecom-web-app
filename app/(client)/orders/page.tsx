@@ -20,10 +20,12 @@ import { Order, DriverInfo, RiderInfo } from "@/store";
 import { getAuthHeaders, getOrderById, getUserOrders, apiUrl } from "@/lib/api";
 import {
   canCancelOrderAsCustomer,
+  getCustomerOrderStatus,
   getOrderStatusFromPayload,
   getOrderStatusesForTab,
-  normalizeOrderStatus,
+  isPickupFulfillment,
   type OrderFilterTab,
+  type OrderStatusTone,
 } from "@/lib/order-status";
 import { mapOrderItems, orderPatchFromPayload, payloadOmitsAmendment, readOrderAmendment, readOrderItemChanges, unwrapOrderPayload } from "@/lib/order-amendment";
 import { subscribeOrderLive } from "@/lib/order-live";
@@ -57,41 +59,19 @@ const OrdersPageContent = () => {
   const cartStore = useCartStore();
   const paymentSuccessHandled = React.useRef(false);
 
-  // Get status display info
-  const getStatusInfo = (status: string) => {
-    const statusUpper = normalizeOrderStatus(status);
-    switch (statusUpper) {
-      case 'PENDING':
-      case 'PAYMENT_PENDING':
-        return { label: 'Pending', color: 'bg-yellow-100 text-yellow-800', icon: Clock };
-      case 'CONFIRMED':
-      case 'PAID':
-        return { label: 'Confirmed', color: 'bg-blue-100 text-blue-800', icon: CheckSquare };
-      case 'PROCESSING':
-      case 'PREPARING':
-      case 'IN_PROGRESS':
-        return { label: 'Processing', color: 'bg-purple-100 text-purple-800', icon: Package };
-      case 'PACKED':
-        return { label: 'Packed', color: 'bg-indigo-100 text-indigo-800', icon: Package };
-      case 'READY':
-        return { label: 'Ready', color: 'bg-indigo-100 text-indigo-800', icon: Package };
-      case 'SHIPPED':
-      case 'OUT_FOR_DELIVERY':
-      case 'DISPATCHED':
-        return { label: 'Shipped', color: 'bg-orange-100 text-orange-800', icon: Truck };
-      case 'DELIVERED':
-      case 'COMPLETED':
-      case 'COMPLETE':
-        return { label: 'Delivered', color: 'bg-green-100 text-green-800', icon: CheckCircle };
-      case 'CANCELLED':
-      case 'CANCELED':
-      case 'VOID':
-      case 'REFUNDED':
-      case 'PARTIALLY_REFUNDED':
-        return { label: 'Cancelled', color: 'bg-red-100 text-red-800', icon: XCircle };
-      default:
-        return { label: statusUpper.replace(/_/g, ' '), color: 'bg-gray-100 text-gray-800', icon: Clock };
-    }
+  const getStatusInfo = (status: string, fulfillmentMode?: string) => {
+    const { label, tone } = getCustomerOrderStatus(status, fulfillmentMode);
+    const toneStyle: Record<OrderStatusTone, { color: string; icon: typeof Clock }> = {
+      pending: { color: "bg-yellow-100 text-yellow-800", icon: Clock },
+      confirmed: { color: "bg-blue-100 text-blue-800", icon: CheckSquare },
+      preparing: { color: "bg-purple-100 text-purple-800", icon: Package },
+      ready: { color: "bg-indigo-100 text-indigo-800", icon: Package },
+      on_the_way: { color: "bg-orange-100 text-orange-800", icon: Truck },
+      completed: { color: "bg-green-100 text-green-800", icon: CheckCircle },
+      cancelled: { color: "bg-red-100 text-red-800", icon: XCircle },
+      failed: { color: "bg-red-100 text-red-800", icon: XCircle },
+    };
+    return { label, ...toneStyle[tone] };
   };
 
   // Fetch orders function - extracted to be reusable
@@ -268,8 +248,7 @@ const OrdersPageContent = () => {
         window.history.replaceState({}, '', '/orders');
       }
       
-      // Show success message immediately (don't wait for cart operations)
-      toast.success('Payment successful! Your order has been placed.');
+      toast.success('Your Order has been Placed!!');
       
       // Handle cart operations in background (non-blocking)
       const handlePaymentSuccessRedirect = async () => {
@@ -295,7 +274,7 @@ const OrdersPageContent = () => {
     } else if (success === 'true' && orderId && !paymentSuccessHandled.current) {
       paymentSuccessHandled.current = true;
       // Show success message and refresh orders
-      toast.success('Order placed successfully!');
+      toast.success('Your Order has been Placed!!');
       // Remove query params from URL
       if (typeof window !== 'undefined') {
         window.history.replaceState({}, '', '/orders');
@@ -581,7 +560,7 @@ const OrdersPageContent = () => {
           ) : orders?.length ? (
             <div className="space-y-4">
               {orders.map((order) => {
-                const statusInfo = getStatusInfo(order.status);
+                const statusInfo = getStatusInfo(order.status, order.fulfillmentMode);
                 const StatusIcon = statusInfo.icon;
                 
                 return (
@@ -644,7 +623,10 @@ const OrdersPageContent = () => {
                             const driver = order.driver;
                             const hasRider = rider && (rider.name || rider.phone || rider.vehicle_type || rider.vehicle_registration_number);
                             const hasDriver = driver && (driver.name || driver.phone || driver.vehicle_number || driver.vehicle);
-                            const showDetails = (statusStr === 'SHIPPED' || statusStr === 'DELIVERED') && (hasRider || hasDriver);
+                            const showDetails =
+                              !isPickupFulfillment(order.fulfillmentMode) &&
+                              (statusStr === "SHIPPED" || statusStr === "DELIVERED") &&
+                              (hasRider || hasDriver);
                             if (!showDetails) return null;
                             return (
                               <div className="mb-3 sm:mb-4 p-3 bg-orange-50 border border-orange-100 rounded-lg">
@@ -754,7 +736,7 @@ const OrdersPageContent = () => {
                               </div>
                             )}
 
-                            {/* Cancel Button - Customers can cancel up to PACKED */}
+                            {/* Cancel Button - hidden. Allowed through approved and processing. */}
                             {SHOW_CUSTOMER_CANCEL_ORDER &&
                               activeFilter === "ongoing" &&
                               order.approvalStatus !== "pending" &&

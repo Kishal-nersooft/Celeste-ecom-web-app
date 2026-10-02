@@ -1,16 +1,15 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Container from "@/components/Container";
 import Title from "@/components/Title";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import AuthRetryScreen from "@/components/AuthRetryScreen";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription } from "@/components/ui/dialog";
-import { BriefcaseBusiness, HeartIcon, HomeIcon, PlusIcon, EditIcon, TrashIcon } from "lucide-react";
+import { BriefcaseBusiness, Heart, Home, Pencil, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import AddressSelector from "@/components/AddressSelector";
 import DeliveryWarningDialog from "@/components/DeliveryWarningDialog";
 import toast from "react-hot-toast";
@@ -34,55 +33,82 @@ import SavedAddressAddFlow from "@/components/saved-address/SavedAddressAddFlow"
 import type { SavedAddress } from "@/components/saved-address/types";
 
 const MAX_ADDRESSES = 10;
-const CARD_ICON = "h-4 w-4 sm:h-5 sm:w-5 text-gray-600 shrink-0";
-const CARD_GRID = "grid gap-4 md:grid-cols-2 lg:grid-cols-3";
 
-function SavedAddressSkeleton({ count = 6 }: { count?: number }) {
+function AddressIcon({ children }: { children: React.ReactNode }) {
   return (
-    <Container className="py-10">
-      <div className="flex justify-between items-center mb-8">
-        <div className="space-y-2">
-          <div className="h-9 w-56 bg-gray-200 rounded animate-pulse" />
-          <div className="h-4 w-40 bg-gray-200 rounded animate-pulse" />
-        </div>
-        <div className="h-6 w-10 bg-gray-200 rounded animate-pulse" />
-      </div>
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-100 text-gray-800">
+      {children}
+    </span>
+  );
+}
 
-      <div className={CARD_GRID}>
-        {Array.from({ length: count }).map((_, idx) => (
-          <Card key={idx} className="relative h-full">
-            <CardHeader className="pb-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <div className="h-5 w-5 rounded-full bg-gray-200 animate-pulse flex-shrink-0" />
-                  <div className="h-5 w-32 bg-gray-200 rounded animate-pulse" />
-                </div>
-                <div className="flex gap-1">
-                  <div className="h-8 w-8 rounded bg-gray-200 animate-pulse" />
-                  <div className="h-8 w-8 rounded bg-gray-200 animate-pulse" />
-                </div>
+function SavedAddressSkeleton() {
+  return (
+    <Container className="py-8 sm:py-10">
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-6 flex items-center justify-between">
+          <div className="h-8 w-52 rounded bg-gray-200 animate-pulse" />
+          <div className="h-9 w-20 rounded-full bg-gray-200 animate-pulse" />
+        </div>
+        <div className="overflow-hidden rounded-2xl border border-gray-200">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div key={idx} className="flex items-center gap-3 border-b border-gray-100 px-4 py-4 last:border-b-0">
+              <div className="h-10 w-10 shrink-0 rounded-full bg-gray-200 animate-pulse" />
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="h-4 w-24 rounded bg-gray-200 animate-pulse" />
+                <div className="h-3 w-48 max-w-full rounded bg-gray-200 animate-pulse" />
               </div>
-              <div className="mt-2 h-5 w-20 bg-gray-200 rounded animate-pulse" />
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 mb-3">
-                <div className="h-4 w-full bg-gray-200 rounded animate-pulse" />
-                <div className="h-4 w-4/5 bg-gray-200 rounded animate-pulse" />
-              </div>
-              <div className="h-9 w-full bg-gray-200 rounded animate-pulse" />
-            </CardContent>
-          </Card>
-        ))}
+            </div>
+          ))}
+        </div>
       </div>
     </Container>
   );
 }
 
-function SavedAddressCard({
+function DeliveryChoice({
+  selected,
+  busy,
+  label,
+  onSelect,
+}: {
+  selected: boolean;
+  busy: boolean;
+  label: string;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={selected || busy}
+      aria-pressed={selected}
+      aria-label={selected ? `${label} is the delivery address` : `Use ${label} for delivery`}
+      className={cn(
+        "mt-2.5 inline-flex items-center gap-2 rounded-full py-1 pr-1 text-left text-sm disabled:cursor-default disabled:opacity-100",
+        selected ? "font-medium text-gray-900" : "font-medium text-gray-600 hover:text-gray-900"
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2",
+          selected ? "border-gray-900" : "border-gray-300"
+        )}
+      >
+        {selected ? <span className="h-2 w-2 rounded-full bg-gray-900" /> : null}
+      </span>
+      {selected ? "Delivery address" : "Use for delivery"}
+    </button>
+  );
+}
+
+function SavedAddressRow({
   address,
   label,
   icon,
   emptyHint,
+  busy,
   onEmptyAdd,
   onEdit,
   onDelete,
@@ -92,6 +118,7 @@ function SavedAddressCard({
   label: string;
   icon: React.ReactNode;
   emptyHint?: string;
+  busy?: boolean;
   onEmptyAdd?: () => void;
   onEdit: (address: SavedAddress) => void;
   onDelete: (addressId: number) => void;
@@ -99,66 +126,53 @@ function SavedAddressCard({
 }) {
   if (!address) {
     return (
-      <Card className="relative h-full">
-        <CardHeader className="pb-3">
-          <div className="flex items-center gap-2 min-w-0">
-            {icon}
-            <CardTitle className="text-lg truncate">{label}</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-gray-500 mb-3">{emptyHint}</p>
-          <Button variant="outline" size="sm" className="w-full" onClick={onEmptyAdd}>
-            <PlusIcon className="h-4 w-4 mr-2" />
-            Add address
-          </Button>
-        </CardContent>
-      </Card>
+      <button
+        type="button"
+        onClick={onEmptyAdd}
+        className="flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-gray-50"
+      >
+        <AddressIcon>{icon}</AddressIcon>
+        <span className="min-w-0 flex-1">
+          <span className="block font-medium text-gray-900">{label}</span>
+          <span className="mt-0.5 block text-sm text-gray-500">{emptyHint}</span>
+        </span>
+        <Plus className="h-4 w-4 shrink-0 text-gray-400" />
+      </button>
     );
   }
 
   return (
-    <Card className="relative h-full min-w-0">
-      <CardHeader className="pb-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            {icon}
-            <CardTitle className="text-lg truncate">{label}</CardTitle>
-          </div>
-          <div className="flex gap-1 shrink-0">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onEdit(address)}
-              className="h-8 w-8 p-0"
-            >
-              <EditIcon className="h-4 w-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => onDelete(address.id)}
-              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-            >
-              <TrashIcon className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-        {address.is_default && (
-          <Badge variant="default" className="w-fit">
-            Default
-          </Badge>
-        )}
-      </CardHeader>
-      <CardContent>
-        <p className="text-sm text-gray-600 mb-3 break-words">{address.address}</p>
-        {!address.is_default && (
-          <Button variant="outline" size="sm" onClick={() => onSetDefault(address.id)} className="w-full">
-            Set as Default
-          </Button>
-        )}
-      </CardContent>
-    </Card>
+    <div className="flex items-start gap-3 px-4 py-4">
+      <AddressIcon>{icon}</AddressIcon>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className="truncate font-medium text-gray-900">{label}</p>
+        <p className="mt-0.5 text-sm leading-relaxed text-gray-500 break-words">{address.address}</p>
+        <DeliveryChoice
+          selected={Boolean(address.is_default)}
+          busy={Boolean(busy)}
+          label={label}
+          onSelect={() => onSetDefault(address.id)}
+        />
+      </div>
+      <div className="flex shrink-0 items-center">
+        <button
+          type="button"
+          aria-label={`Edit ${label}`}
+          onClick={() => onEdit(address)}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+        >
+          <Pencil className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          aria-label={`Delete ${label}`}
+          onClick={() => onDelete(address.id)}
+          className="flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-red-50 hover:text-red-600"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -171,6 +185,13 @@ const SavedAddressPageContent = () => {
   const [addPreset, setAddPreset] = useState<string | null>(null);
   const [editingAddress, setEditingAddress] = useState<SavedAddress | null>(null);
   const [showDeliveryWarning, setShowDeliveryWarning] = useState(false);
+  const [settingDefaultId, setSettingDefaultId] = useState<number | null>(null);
+  const savedAddressesEpochRef = useRef(0);
+
+  const applySavedAddresses = (addresses: SavedAddress[]) => {
+    savedAddressesEpochRef.current += 1;
+    setSavedAddresses(addresses);
+  };
 
   useEffect(() => {
     if (isGuest) {
@@ -181,18 +202,19 @@ const SavedAddressPageContent = () => {
   useEffect(() => {
     if (!user) return;
 
+    const epoch = savedAddressesEpochRef.current;
     const cached = peekUserAddressesCache({ allowStale: true });
-    if (cached) {
+    if (cached && epoch === savedAddressesEpochRef.current) {
       setSavedAddresses(getNamedSavedAddresses(cached));
       setLoadingAddresses(false);
-    } else {
+    } else if (epoch === savedAddressesEpochRef.current) {
       setLoadingAddresses(true);
     }
 
     let cancelled = false;
     getUserAddresses()
       .then((addresses) => {
-        if (cancelled) return;
+        if (cancelled || epoch !== savedAddressesEpochRef.current) return;
         if (Array.isArray(addresses)) {
           setSavedAddresses(getNamedSavedAddresses(addresses));
         } else {
@@ -201,13 +223,13 @@ const SavedAddressPageContent = () => {
       })
       .catch((error) => {
         console.error("Error loading addresses:", error);
-        if (!cancelled) {
+        if (!cancelled && epoch === savedAddressesEpochRef.current) {
           setSavedAddresses([]);
           toast.error("Failed to load addresses");
         }
       })
       .finally(() => {
-        if (!cancelled) setLoadingAddresses(false);
+        if (!cancelled && epoch === savedAddressesEpochRef.current) setLoadingAddresses(false);
       });
 
     return () => {
@@ -247,7 +269,7 @@ const SavedAddressPageContent = () => {
       rememberAddressName(editingAddress.id, addressData.name);
 
       const addresses = await getUserAddresses();
-      setSavedAddresses(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
+      applySavedAddresses(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
       setEditingAddress(null);
       toast.success("Address updated successfully!");
     } catch (error) {
@@ -261,8 +283,7 @@ const SavedAddressPageContent = () => {
       await deleteUserAddress(addressId);
       forgetAddressName(addressId);
       const addresses = await getUserAddresses();
-      setSavedAddresses(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
-      toast.success("Address deleted successfully!");
+      applySavedAddresses(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
     } catch (error) {
       console.error("Error deleting address:", error);
       toast.error("Failed to delete address");
@@ -270,9 +291,29 @@ const SavedAddressPageContent = () => {
   };
 
   const handleSetDefault = async (addressId: number) => {
+    const current = savedAddresses.find((address) => address.id === addressId);
+    if (!current || current.is_default || settingDefaultId !== null) return;
+
+    const previous = savedAddresses;
+    setSettingDefaultId(addressId);
+    applySavedAddresses(
+      savedAddresses.map((address) => ({
+        ...address,
+        is_default: address.id === addressId,
+      }))
+    );
+
     try {
       await setDefaultAddress(addressId);
+    } catch (error) {
+      console.error("Error setting default address:", error);
+      applySavedAddresses(previous);
+      toast.error("Failed to set default address");
+      setSettingDefaultId(null);
+      return;
+    }
 
+    try {
       const addresses = await getUserAddresses();
       if (Array.isArray(addresses)) {
         const defaultAddr = addresses.find((a: SavedAddress) => a.id === addressId);
@@ -289,14 +330,12 @@ const SavedAddressPageContent = () => {
             setShowDeliveryWarning(true);
           }
         }
-        setSavedAddresses(getNamedSavedAddresses(addresses));
-      } else {
-        setSavedAddresses([]);
+        applySavedAddresses(getNamedSavedAddresses(addresses));
       }
-      toast.success("Default address updated!");
     } catch (error) {
-      console.error("Error setting default address:", error);
-      toast.error("Failed to set default address");
+      console.error("Error refreshing addresses:", error);
+    } finally {
+      setSettingDefaultId(null);
     }
   };
 
@@ -321,63 +360,64 @@ const SavedAddressPageContent = () => {
   }
 
   return (
-    <Container className="py-10">
-      <div className="flex justify-between items-center mb-8 min-w-0 gap-3">
-        <div>
-          <Title className="!text-3xl">Saved Addresses</Title>
-          {savedAddresses.length > 0 && (
-            <p className="text-sm text-gray-500 mt-1">
-              {savedAddresses.length} of {MAX_ADDRESSES} addresses
+    <Container className="py-8 sm:py-10">
+      <div className="mx-auto max-w-2xl">
+        <div className="mb-6 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <Title className="!text-2xl">Saved Addresses</Title>
+            <p className="mt-1 text-sm text-gray-500">
+              One address is used for delivery when you order.
             </p>
-          )}
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 rounded-full"
+            onClick={() => startAdd("")}
+          >
+            <Plus className="h-4 w-4" />
+            Add
+          </Button>
         </div>
-        <button
-          type="button"
-          className="text-blue-600 text-sm sm:text-base font-medium shrink-0"
-          onClick={() => startAdd("")}
-        >
-          Add
-        </button>
-      </div>
 
-      <div className={CARD_GRID}>
-        <SavedAddressCard
-          address={homeAddress}
-          label="Home"
-          icon={<HomeIcon className={CARD_ICON} />}
-          emptyHint="Add home address"
-          onEmptyAdd={() => startAdd("Home")}
-          onEdit={handleEditAddress}
-          onDelete={handleDeleteAddress}
-          onSetDefault={handleSetDefault}
-        />
-        <SavedAddressCard
-          address={workAddress}
-          label="Work"
-          icon={<BriefcaseBusiness className={CARD_ICON} />}
-          emptyHint="Add work address"
-          onEmptyAdd={() => startAdd("Work")}
-          onEdit={handleEditAddress}
-          onDelete={handleDeleteAddress}
-          onSetDefault={handleSetDefault}
-        />
-      </div>
-
-      {otherAddresses.length > 0 && (
-        <div className={`${CARD_GRID} mt-6`}>
+        <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white divide-y divide-gray-100">
+          <SavedAddressRow
+            address={homeAddress}
+            label="Home"
+            icon={<Home className="h-4 w-4" />}
+            emptyHint="Add home address"
+            onEmptyAdd={() => startAdd("Home")}
+            busy={settingDefaultId !== null}
+            onEdit={handleEditAddress}
+            onDelete={handleDeleteAddress}
+            onSetDefault={handleSetDefault}
+          />
+          <SavedAddressRow
+            address={workAddress}
+            label="Work"
+            icon={<BriefcaseBusiness className="h-4 w-4" />}
+            emptyHint="Add work address"
+            onEmptyAdd={() => startAdd("Work")}
+            busy={settingDefaultId !== null}
+            onEdit={handleEditAddress}
+            onDelete={handleDeleteAddress}
+            onSetDefault={handleSetDefault}
+          />
           {otherAddresses.map((address) => (
-            <SavedAddressCard
+            <SavedAddressRow
               key={address.id}
               address={address}
               label={address.name || "Saved address"}
-              icon={<HeartIcon className={CARD_ICON} />}
+              icon={<Heart className="h-4 w-4" />}
+              busy={settingDefaultId !== null}
               onEdit={handleEditAddress}
               onDelete={handleDeleteAddress}
               onSetDefault={handleSetDefault}
             />
           ))}
         </div>
-      )}
+      </div>
 
       <Dialog
         open={addPreset !== null}
@@ -400,7 +440,7 @@ const SavedAddressPageContent = () => {
             <SavedAddressAddFlow
               onBack={() => setAddPreset(null)}
               onSaved={(addresses) => {
-                setSavedAddresses(addresses);
+                applySavedAddresses(addresses);
                 setAddPreset(null);
               }}
               existingAddresses={savedAddresses}

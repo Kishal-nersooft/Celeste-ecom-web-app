@@ -4,20 +4,31 @@ export type OrderFilterTab = "ongoing" | "completed" | "cancelled";
 export type OrderApiStatus =
   | "pending"
   | "confirmed"
+  | "approved"
   | "processing"
   | "packed"
+  | "dispatched"
   | "shipped"
   | "delivered"
   | "cancelled"
   | "refunded"
-  | "partially_refunded";
+  | "partially_refunded"
+  | "delivery_failed";
 
 /** Query `status` values per orders page tab (API filters server-side). */
 export const ORDER_TAB_API_STATUSES: Record<
   OrderFilterTab,
   readonly OrderApiStatus[]
 > = {
-  ongoing: ["pending", "confirmed", "processing", "packed", "shipped"],
+  ongoing: [
+    "pending",
+    "confirmed",
+    "approved",
+    "processing",
+    "packed",
+    "dispatched",
+    "shipped",
+  ],
   completed: ["delivered"],
   cancelled: ["cancelled"],
 };
@@ -60,5 +71,80 @@ export function getOrderStatusFromPayload(order: Record<string, unknown>): strin
 
 export function canCancelOrderAsCustomer(status: unknown): boolean {
   const normalized = normalizeOrderStatus(status).toLowerCase();
-  return ["pending", "confirmed", "processing", "packed"].includes(normalized);
+  return ["pending", "confirmed", "approved", "processing", "packed"].includes(
+    normalized,
+  );
+}
+
+/** Badge color family for a customer-facing order status. */
+export type OrderStatusTone =
+  | "pending"
+  | "confirmed"
+  | "preparing"
+  | "ready"
+  | "on_the_way"
+  | "completed"
+  | "cancelled"
+  | "failed";
+
+/**
+ * Collection is the only mode that is not a delivery.
+ * `far_delivery` is still a delivery to the customer.
+ */
+export function isPickupFulfillment(fulfillmentMode: unknown): boolean {
+  return String(fulfillmentMode ?? "").trim().toLowerCase() === "pickup";
+}
+
+/**
+ * Customer label for an order. Warehouse statuses `approved`, `processing`,
+ * and `dispatched` collapse to "Preparing..." on a delivery. On a pickup,
+ * `processing` means the order is packed and waiting, so it reads "Ready".
+ * An unrecognised status falls back to "Preparing..." so the badge is never blank.
+ */
+export function getCustomerOrderStatus(
+  status: unknown,
+  fulfillmentMode?: unknown,
+): { label: string; tone: OrderStatusTone } {
+  const normalized = normalizeOrderStatus(status);
+  const isPickup = isPickupFulfillment(fulfillmentMode);
+
+  switch (normalized) {
+    case "PENDING":
+    case "PAYMENT_PENDING":
+      return { label: "Pending", tone: "pending" };
+    case "CONFIRMED":
+    case "PAID":
+      return { label: "Confirmed", tone: "confirmed" };
+    case "APPROVED":
+    case "DISPATCHED":
+      return { label: "Preparing...", tone: "preparing" };
+    case "PROCESSING":
+    case "PREPARING":
+    case "IN_PROGRESS":
+    case "PACKED":
+      return isPickup
+        ? { label: "Ready", tone: "ready" }
+        : { label: "Preparing...", tone: "preparing" };
+    case "READY":
+      return { label: "Ready", tone: "ready" };
+    case "SHIPPED":
+    case "OUT_FOR_DELIVERY":
+      return { label: "On the way", tone: "on_the_way" };
+    case "DELIVERED":
+    case "COMPLETED":
+    case "COMPLETE":
+      return isPickup
+        ? { label: "Collected", tone: "completed" }
+        : { label: "Delivered", tone: "completed" };
+    case "CANCELLED":
+    case "CANCELED":
+    case "VOID":
+    case "REFUNDED":
+    case "PARTIALLY_REFUNDED":
+      return { label: "Cancelled", tone: "cancelled" };
+    case "DELIVERY_FAILED":
+      return { label: "Delivery failed", tone: "failed" };
+    default:
+      return { label: "Preparing...", tone: "preparing" };
+  }
 }

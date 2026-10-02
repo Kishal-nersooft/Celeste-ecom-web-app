@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { GoogleMap, Marker } from "@react-google-maps/api";
 import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon } from "lucide-react";
 import toast from "react-hot-toast";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useGoogleMaps } from "@/components/GoogleMapsProvider";
-import { addUserAddress, getUserAddresses } from "@/lib/api";
+import { addUserAddress, getUserAddresses, writeUserAddressesCache } from "@/lib/api";
 import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/lib/google-maps-config";
 import {
   classifyAddressName,
@@ -17,6 +17,48 @@ import {
   rememberAddressName,
 } from "@/lib/named-addresses";
 import type { SavedAddStep, SavedAddress } from "./types";
+
+function unwrapAddressPayload(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== "object") return null;
+  if (Array.isArray(payload)) {
+    const first = payload[0];
+    return first && typeof first === "object" ? (first as Record<string, unknown>) : null;
+  }
+  const record = payload as Record<string, unknown>;
+  if (record.data && typeof record.data === "object" && !Array.isArray(record.data)) {
+    const data = record.data as Record<string, unknown>;
+    if ("id" in data) return data;
+  }
+  return record;
+}
+
+function toSavedAddress(
+  payload: unknown,
+  fallback: { address: string; latitude: number; longitude: number; name: string }
+): SavedAddress | null {
+  const source = unwrapAddressPayload(payload);
+  const id = Number(source?.id);
+  if (!Number.isFinite(id)) return null;
+  return {
+    id,
+    address: typeof source?.address === "string" && source.address ? source.address : fallback.address,
+    latitude: Number(source?.latitude ?? fallback.latitude),
+    longitude: Number(source?.longitude ?? fallback.longitude),
+    name: fallback.name,
+    is_default: Boolean(source?.is_default),
+    ondemand_delivery_available:
+      typeof source?.ondemand_delivery_available === "boolean"
+        ? source.ondemand_delivery_available
+        : undefined,
+  };
+}
+
+function withCreatedAddress(raw: SavedAddress[], created: SavedAddress | null): SavedAddress[] {
+  const list = created
+    ? [...raw.filter((address) => Number(address.id) !== created.id), created]
+    : raw;
+  return getNamedSavedAddresses(list);
+}
 
 interface SavedAddressAddFlowProps {
   onBack: () => void;
@@ -48,6 +90,14 @@ export default function SavedAddressAddFlow({
   const [saving, setSaving] = useState(false);
   const [geocoderService, setGeocoderService] = useState<google.maps.Geocoder | null>(null);
   const [autocompleteService, setAutocompleteService] = useState<google.maps.places.AutocompleteService | null>(null);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     onStepChange?.("search");
@@ -203,6 +253,7 @@ export default function SavedAddressAddFlow({
     }
 
     setSaving(true);
+    let created: SavedAddress | null = null;
     try {
       const newAddress = await addUserAddress({
         address: selectedAddress,
@@ -212,18 +263,45 @@ export default function SavedAddressAddFlow({
         name,
       });
 
-      if (newAddress?.id) {
-        rememberAddressName(newAddress.id, name);
+      created = toSavedAddress(newAddress, {
+        address: selectedAddress,
+        latitude: markerPosition.lat,
+        longitude: markerPosition.lng,
+        name,
+      });
+
+      if (created) {
+        rememberAddressName(created.id, name);
       }
 
-      const addresses = await getUserAddresses();
-      onSaved(Array.isArray(addresses) ? getNamedSavedAddresses(addresses) : []);
-      toast.success("Address saved");
+      onSaved(withCreatedAddress(existingAddresses, created));
     } catch (error) {
       console.error("Error saving address:", error);
       toast.error("Failed to save address");
-    } finally {
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
+      return;
+    }
+
+    if (mountedRef.current) setSaving(false);
+
+    try {
+      const addresses = await getUserAddresses();
+      const serverList = Array.isArray(addresses) ? addresses : [];
+      let resolved = created;
+      if (!resolved) {
+        const match = serverList.find((address) => address.address === selectedAddress);
+        if (match?.id) {
+          rememberAddressName(match.id, name);
+          resolved = { ...match, name };
+        }
+      }
+      onSaved(withCreatedAddress(serverList, resolved));
+      const savedAddress = resolved;
+      if (savedAddress && !serverList.some((address) => Number(address.id) === savedAddress.id)) {
+        writeUserAddressesCache([...serverList, savedAddress]);
+      }
+    } catch (error) {
+      console.error("Error refreshing saved addresses:", error);
     }
   };
 

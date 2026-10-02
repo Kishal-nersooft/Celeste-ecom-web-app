@@ -36,7 +36,6 @@ export default function PhoneAuth({ onSuccess, onError }: PhoneAuthProps) {
     try {
       await sendOtp(phoneNumber);
       setStep('otp');
-      toast.success('OTP sent successfully!');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Failed to send OTP';
       console.error('Error sending OTP:', error);
@@ -69,7 +68,6 @@ export default function PhoneAuth({ onSuccess, onError }: PhoneAuthProps) {
       const idToken = await user.getIdToken();
       // Prefer the number the user entered; custom-token users may not have phoneNumber set on the Firebase user.
       onSuccess(idToken, phoneNumber, isNewUser);
-      toast.success('Phone number verified successfully!');
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'Invalid OTP. Please try again.';
       console.error('Error verifying OTP:', error);
@@ -97,83 +95,84 @@ export default function PhoneAuth({ onSuccess, onError }: PhoneAuthProps) {
   };
 
   return (
-    <div className="w-full max-w-md space-y-4">
+    <div className="w-full">
       {step === 'phone' ? (
-        <form onSubmit={sendOTP} className="space-y-4">
+        <form onSubmit={sendOTP} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Phone Number
-            </label>
+            <h1 className="text-xl font-semibold tracking-tight text-neutral-900">Sign in</h1>
+            <p className="mt-1 text-sm text-neutral-500">We&apos;ll text you a code.</p>
+          </div>
+          <div className="rounded-xl border border-neutral-200 bg-neutral-50 px-3 transition-colors focus-within:border-black focus-within:bg-white focus-within:ring-2 focus-within:ring-black/10">
             <PhoneInput
               international
               defaultCountry="LK"
-              placeholder="Enter phone number"
+              countryCallingCodeEditable={false}
+              placeholder="77 123 4567"
               value={phoneNumber}
               onChange={setPhoneNumber}
+              className="login-phone"
+              numberInputProps={{ 'aria-label': 'Phone number' }}
               inputComponent={Input as React.ComponentType<React.InputHTMLAttributes<HTMLInputElement>>}
             />
-            <p className="text-xs text-gray-500 mt-1">
-              Select your country and enter your number (e.g., +94771234567)
-            </p>
           </div>
-          <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? 'Sending OTP...' : 'Send OTP'}
+          <Button type="submit" className={primaryButtonClass} disabled={loading}>
+            {loading ? 'Sending…' : 'Continue'}
           </Button>
         </form>
       ) : (
-        <form onSubmit={verifyOTP} className="space-y-4">
+        <form onSubmit={verifyOTP} className="space-y-6">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Enter OTP
-            </label>
-            <div className="flex justify-center">
-              <InputOTP
-                maxLength={6}
-                value={otp}
-                onChange={(value) => setOtp((value ?? "").replace(/\D/g, "").slice(0, 6))}
-                containerClassName="justify-center"
-                autoFocus
-              >
-                <InputOTPGroup>
-                  <InputOTPSlot index={0} />
-                  <InputOTPSlot index={1} />
-                  <InputOTPSlot index={2} />
-                  <InputOTPSlot index={3} />
-                  <InputOTPSlot index={4} />
-                  <InputOTPSlot index={5} />
-                </InputOTPGroup>
-              </InputOTP>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              OTP sent to {phoneNumber ?? ''}
-            </p>
+            <h1 className="text-xl font-semibold tracking-tight text-neutral-900">Enter code</h1>
+            <p className="mt-1 text-sm text-neutral-500">Sent to {phoneNumber}</p>
           </div>
-          <div className="flex space-x-2">
-            <Button type="submit" className="flex-1" disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify OTP'}
-            </Button>
-            <Button
+          <div className="flex justify-center">
+            <InputOTP
+              maxLength={6}
+              value={otp}
+              onChange={(value) => setOtp((value ?? "").replace(/\D/g, "").slice(0, 6))}
+              containerClassName="justify-center"
+              autoFocus
+            >
+              <InputOTPGroup className="gap-2">
+                {[0, 1, 2, 3, 4, 5].map((index) => (
+                  <InputOTPSlot
+                    key={index}
+                    index={index}
+                    className="h-12 w-10 rounded-xl border-neutral-200 text-lg shadow-none sm:w-11"
+                  />
+                ))}
+              </InputOTPGroup>
+            </InputOTP>
+          </div>
+          <Button type="submit" className={primaryButtonClass} disabled={loading}>
+            {loading ? 'Checking…' : 'Verify'}
+          </Button>
+          <div className="flex items-center justify-center gap-5 text-sm">
+            <button
               type="button"
-              variant="outline"
               onClick={resendOTP}
               disabled={loading}
+              className="font-medium text-neutral-500 transition-colors hover:text-black disabled:opacity-50"
             >
               Resend
-            </Button>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStep('phone');
+                setOtp('');
+              }}
+              disabled={loading}
+              className="font-medium text-neutral-500 transition-colors hover:text-black disabled:opacity-50"
+            >
+              Change number
+            </button>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => {
-              setStep('phone');
-              setOtp('');
-            }}
-            className="w-full"
-          >
-            Change Phone Number
-          </Button>
         </form>
       )}
     </div>
   );
 }
+
+const primaryButtonClass =
+  "h-11 w-full rounded-full bg-black text-sm font-semibold text-white shadow-sm hover:bg-neutral-800";

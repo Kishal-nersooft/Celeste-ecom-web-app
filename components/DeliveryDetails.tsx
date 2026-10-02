@@ -1,21 +1,25 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   MapPin,
   Truck,
   ShoppingBag,
-  AlertCircle,
   Sparkles,
   Clock,
   Zap,
   DoorOpen,
   UserRound,
   Building2,
+  ChevronRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CartLocationSelector from "./CartLocationSelector";
@@ -25,114 +29,163 @@ import type { CheckoutDeliveryOption } from "@/lib/api";
 interface DeliveryDetailsProps {
   onLocationChange: (location: string) => void;
   selectedLocation: string;
-  selectedDeliveryService?: 'standard' | 'premium' | 'priority';
-  onDeliveryServiceChange?: (service: 'standard' | 'premium' | 'priority') => void;
+  selectedDeliveryService?: "standard" | "premium" | "priority";
+  onDeliveryServiceChange?: (service: "standard" | "premium" | "priority") => void;
   selectedDeliveryOption: CheckoutDeliveryOption;
   onDeliveryOptionChange: (option: CheckoutDeliveryOption) => void;
   loading?: boolean;
 }
 
+const handoffOptions: {
+  value: CheckoutDeliveryOption;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  iconClassName: string;
+}[] = [
+  {
+    value: "leave_at_door",
+    label: "Leave at door",
+    icon: DoorOpen,
+    iconClassName: "text-amber-600",
+  },
+  {
+    value: "meet_outside",
+    label: "Meet outside",
+    icon: UserRound,
+    iconClassName: "text-sky-600",
+  },
+  {
+    value: "at_reception",
+    label: "At reception",
+    icon: Building2,
+    iconClassName: "text-slate-600",
+  },
+];
+
+function OrderTypeCapsule({
+  value,
+  onChange,
+}: {
+  value: "delivery" | "pickup";
+  onChange: (value: "delivery" | "pickup") => void;
+}) {
+  const options = [
+    { id: "delivery" as const, label: "Delivery", icon: Truck },
+    { id: "pickup" as const, label: "Pickup", icon: ShoppingBag },
+  ];
+
+  return (
+    <div
+      role="radiogroup"
+      aria-label="Order type"
+      className="inline-flex w-full rounded-full bg-neutral-100 p-1 lg:w-auto"
+    >
+      {options.map((option) => {
+        const selected = value === option.id;
+        const Icon = option.icon;
+        return (
+          <button
+            key={option.id}
+            type="button"
+            role="radio"
+            aria-checked={selected}
+            onClick={() => onChange(option.id)}
+            className={cn(
+              "flex flex-1 items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-all lg:flex-none lg:px-3.5",
+              selected
+                ? "bg-neutral-900 text-white shadow-sm"
+                : "text-neutral-600 hover:text-neutral-900"
+            )}
+          >
+            <Icon className="h-4 w-4" aria-hidden />
+            {option.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SelectionRow({
+  icon,
+  label,
+  onEdit,
+  empty,
+  editLabel,
+  title,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onEdit: () => void;
+  empty?: boolean;
+  editLabel: string;
+  title?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onEdit}
+      title={title}
+      className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-neutral-50"
+    >
+      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-700">
+        {icon}
+      </span>
+      <span
+        className={cn(
+          "min-w-0 flex-1 truncate text-sm font-medium",
+          empty ? "text-neutral-500" : "text-neutral-900"
+        )}
+      >
+        {label}
+      </span>
+      <span className="hidden shrink-0 text-sm font-semibold text-neutral-900 lg:inline">{editLabel}</span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-neutral-400 lg:hidden" aria-hidden />
+    </button>
+  );
+}
+
 const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
   onLocationChange,
   selectedLocation,
-  selectedDeliveryService = 'standard',
+  selectedDeliveryService = "standard",
   onDeliveryServiceChange,
   selectedDeliveryOption,
   onDeliveryOptionChange,
   loading = false,
 }) => {
-  // Use LocationContext for order type
   const { deliveryType: selectedOrderType, setDeliveryType } = useLocation();
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
 
-  const handleLocationSelect = (location: string) => {
-    onLocationChange(location);
-  };
-
-  const handleOrderTypeChange = (value: string) => {
-    setDeliveryType(value as 'delivery' | 'pickup');
+  const handleOrderTypeChange = (value: "delivery" | "pickup") => {
+    setDeliveryType(value);
   };
 
   const isLocationSelected = selectedLocation && selectedLocation !== "Location";
+  const selectedHandoff =
+    handoffOptions.find((option) => option.value === selectedDeliveryOption) ?? handoffOptions[1];
+  const HandoffIcon = selectedHandoff.icon;
+  const showDeliveryExtras = selectedOrderType === "delivery" && !!onDeliveryServiceChange;
 
   if (loading) {
-    const showDeliveryExtras = selectedOrderType === "delivery" && !!onDeliveryServiceChange;
-
     return (
       <Card className="h-fit">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
-            <MapPin className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
-            Delivery Details
-          </CardTitle>
+        <CardHeader className="hidden flex-row items-center justify-between space-y-0 lg:flex">
+          <div className="h-5 w-36 rounded-md bg-gray-200 animate-pulse" />
+          <div className="h-10 w-52 rounded-full bg-gray-100 animate-pulse" />
         </CardHeader>
-        <CardContent className="space-y-4 sm:space-y-5 md:space-y-6">
-          {/* Location */}
-          <div className="space-y-2 sm:space-y-3">
-            <div className="h-3.5 sm:h-4 w-32 rounded-md bg-gray-200 animate-pulse" />
-            <div className="flex items-center justify-between gap-2 rounded-lg border border-green-100 bg-green-50/60 p-2 sm:p-3">
-              <div className="flex min-w-0 flex-1 items-center gap-2">
-                <div className="h-3.5 w-3.5 shrink-0 rounded-full bg-green-200/80 animate-pulse sm:h-4 sm:w-4" />
-                <div className="h-3.5 sm:h-4 w-3/4 max-w-[220px] rounded-md bg-green-200/70 animate-pulse" />
-              </div>
-              <div className="h-7 w-14 shrink-0 rounded-md bg-gray-100 animate-pulse" />
-            </div>
-          </div>
-
-          {/* Order type */}
-          <div className="space-y-2 sm:space-y-3">
-            <div className="h-3.5 sm:h-4 w-24 rounded-md bg-gray-200 animate-pulse" />
-            <div className="grid grid-cols-2 gap-2 sm:gap-3">
-              {[0, 1].map((i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 sm:gap-3 rounded-lg border border-gray-100 bg-gray-50/50 p-2 sm:p-3"
-                >
-                  <div className="h-4 w-4 shrink-0 rounded-full bg-gray-200 animate-pulse" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 shrink-0 rounded-lg bg-gray-200 animate-pulse" />
-                      <div className="h-3.5 w-16 rounded-md bg-gray-200 animate-pulse" />
-                    </div>
-                    <div className="h-2.5 w-full rounded-md bg-gray-100 animate-pulse" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
+        <CardContent className="space-y-3 pt-6 sm:space-y-4 lg:pt-0">
+          <div className="h-10 w-full rounded-full bg-gray-100 animate-pulse lg:hidden" />
+          <div className="h-14 w-full rounded-xl bg-gray-100 animate-pulse" />
           {showDeliveryExtras && (
-            <div className="space-y-2 sm:space-y-3">
-              <div className="h-3.5 sm:h-4 w-28 rounded-md bg-gray-200 animate-pulse" />
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-3">
-                {[0, 1, 2].map((i) => (
-                  <div
-                    key={i}
-                    className="flex min-h-[64px] items-start gap-2.5 rounded-lg border border-gray-100 bg-gray-50/50 p-3 sm:min-h-[74px] sm:gap-3 sm:p-4"
-                  >
-                    <div className="h-8 w-8 shrink-0 rounded-lg bg-gray-200 animate-pulse" />
-                    <div className="min-w-0 flex-1 space-y-2 pt-0.5">
-                      <div className="h-3.5 w-20 rounded-md bg-gray-200 animate-pulse" />
-                      <div className="h-2.5 w-full rounded-md bg-gray-100 animate-pulse" />
-                    </div>
-                  </div>
-                ))}
+            <>
+              <div className="h-14 w-full rounded-xl bg-gray-100 animate-pulse" />
+              <div className="space-y-2">
+                <div className="h-4 w-32 rounded-md bg-gray-200 animate-pulse" />
+                <div className="h-[4.75rem] w-full rounded-2xl bg-gray-100 animate-pulse" />
               </div>
-
-              <div className="space-y-1.5 pt-1">
-                <div className="h-3.5 w-36 rounded-md bg-gray-300 animate-pulse" />
-                <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                  {[0, 1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="flex items-center gap-1.5 rounded-md border border-gray-100 bg-gray-50/50 px-2 py-2 sm:gap-2 sm:px-2.5"
-                    >
-                      <div className="h-3.5 w-3.5 shrink-0 rounded-full bg-gray-200 animate-pulse" />
-                      <div className="h-2.5 flex-1 rounded bg-gray-100 animate-pulse" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -141,312 +194,128 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
 
   return (
     <Card className="h-fit">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm sm:text-base md:text-lg">
-          <MapPin className="h-4 w-4 sm:h-4.5 sm:w-4.5 md:h-5 md:w-5" />
-          Delivery Details
-        </CardTitle>
+      <CardHeader className="hidden flex-row items-center justify-between space-y-0 pb-2 lg:flex">
+        <CardTitle className="text-sm sm:text-base md:text-lg">Delivery Details</CardTitle>
+        <OrderTypeCapsule value={selectedOrderType} onChange={handleOrderTypeChange} />
       </CardHeader>
-      <CardContent className="space-y-4 sm:space-y-5 md:space-y-6">
-        {/* Location Selection */}
-        <div className="space-y-2 sm:space-y-3">
-          <Label className="text-xs sm:text-sm font-medium">Delivery Location</Label>
-          {!isLocationSelected ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 p-2 sm:p-3 border border-amber-200 bg-amber-50 rounded-lg">
-                <AlertCircle className="h-3 w-3 sm:h-4 sm:w-4 text-amber-600" />
-                <span className="text-xs sm:text-sm text-amber-700">Please select a delivery location</span>
-              </div>
-              <CartLocationSelector onLocationSelect={handleLocationSelect} />
-            </div>
-          ) : (
-            <div className="space-y-2 sm:space-y-3">
-              <div className="flex items-center justify-between p-2 sm:p-3 border border-green-200 bg-green-50 rounded-lg">
-                <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-1">
-                  <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-green-600 flex-shrink-0" />
-                  <span className="text-xs sm:text-sm font-medium text-green-700 truncate">{selectedLocation}</span>
-                </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => {
-                    // Reset location to show the selector again
-                    onLocationChange("Location");
-                  }}
-                  className="text-blue-600 hover:text-blue-800 hover:bg-blue-50 text-xs sm:text-sm px-2 py-1"
-                >
-                  Change
-                </Button>
-              </div>
-            </div>
-          )}
+      <CardContent className="space-y-3 pt-6 sm:space-y-4 lg:pt-0">
+        <div className="lg:hidden">
+          <OrderTypeCapsule value={selectedOrderType} onChange={handleOrderTypeChange} />
         </div>
 
-        {/* Order Type Selection */}
-        <div className="space-y-2 sm:space-y-3">
-          <Label className="text-xs sm:text-sm font-medium">Order Type</Label>
-          <RadioGroup
-            value={selectedOrderType}
-            onValueChange={handleOrderTypeChange}
-            className="grid grid-cols-2 gap-2 sm:gap-3"
-          >
-            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-              <RadioGroupItem value="delivery" id="delivery" />
-              <Label htmlFor="delivery" className="flex items-center gap-2 sm:gap-3 cursor-pointer flex-1">
-                <Truck className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600" />
-                <div>
-                  <div className="font-medium text-xs sm:text-sm">Delivery</div>
-                  <div className="text-[10px] sm:text-xs text-gray-500">We'll deliver to your location</div>
-                </div>
-              </Label>
-            </div>
-            
-            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-3 border rounded-lg hover:bg-gray-50 cursor-pointer">
-              <RadioGroupItem value="pickup" id="pickup" />
-              <Label htmlFor="pickup" className="flex items-center gap-2 sm:gap-3 cursor-pointer flex-1">
-                <ShoppingBag className="h-4 w-4 sm:h-5 sm:w-5 text-green-600" />
-                <div>
-                  <div className="font-medium text-xs sm:text-sm">Pickup</div>
-                  <div className="text-[10px] sm:text-xs text-gray-500">Pick up from our store</div>
-                </div>
-              </Label>
-            </div>
-          </RadioGroup>
-        </div>
+        <SelectionRow
+          icon={<MapPin className="h-4 w-4" />}
+          label={isLocationSelected ? selectedLocation : "Select a location"}
+          title={isLocationSelected ? selectedLocation : undefined}
+          empty={!isLocationSelected}
+          editLabel="Edit"
+          onEdit={() => setLocationOpen(true)}
+        />
+        <CartLocationSelector
+          hideTrigger
+          open={locationOpen}
+          onOpenChange={setLocationOpen}
+          onLocationSelect={onLocationChange}
+        />
 
-        {/* Delivery Service Level Selector */}
-        {selectedOrderType === 'delivery' && onDeliveryServiceChange && (
-          <div className="space-y-2 sm:space-y-3">
-            <Label className="text-xs sm:text-sm font-medium">Delivery Service</Label>
-            {/* <p className="text-[10px] sm:text-xs text-gray-500 -mt-1">Choose your delivery speed</p> */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
-              <Button
-                variant={selectedDeliveryService === 'premium' ? 'default' : 'outline'}
-                onClick={() => onDeliveryServiceChange('premium')}
-                className={`h-auto min-h-[64px] sm:min-h-[74px] w-full justify-start px-3 py-2.5 sm:px-4 sm:py-3 transition-all duration-200 ${
-                  selectedDeliveryService === 'premium'
-                    ? 'bg-black text-white hover:bg-gray-800 shadow-md border-2 border-black'
-                    : 'bg-white text-gray-800 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                }`}
-              >
-                <div className="flex w-full items-start gap-2.5 sm:gap-3">
-                  <div
-                    className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
-                      selectedDeliveryService === 'premium'
-                        ? 'border-white/15 bg-white/10'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}
-                  >
-                    <Sparkles
-                      className={`h-4 w-4 ${
-                        selectedDeliveryService === 'premium' ? 'text-white' : 'text-amber-600'
-                      }`}
-                    />
-                  </div>
-                  <div className="min-w-0 text-left">
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`text-xs sm:text-sm font-semibold ${
-                          selectedDeliveryService === 'premium' ? 'text-white' : 'text-gray-900'
-                        }`}
+        {showDeliveryExtras && (
+          <>
+            <SelectionRow
+              icon={<HandoffIcon className={cn("h-4 w-4", selectedHandoff.iconClassName)} />}
+              label={selectedHandoff.label}
+              editLabel="Edit"
+              onEdit={() => setHandoffOpen(true)}
+            />
+
+            <Dialog open={handoffOpen} onOpenChange={setHandoffOpen}>
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle>How should we deliver?</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-2">
+                  {handoffOptions.map((option) => {
+                    const selected = selectedDeliveryOption === option.value;
+                    const Icon = option.icon;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          onDeliveryOptionChange(option.value);
+                          setHandoffOpen(false);
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors",
+                          selected
+                            ? "border-neutral-900 bg-neutral-50"
+                            : "border-neutral-200 hover:bg-neutral-50"
+                        )}
                       >
-                        Premium
-                      </div>
-                      {selectedDeliveryService === 'premium' && (
-                        <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] sm:text-xs font-medium text-white/90">
-                          Recommended
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white">
+                          <Icon className={cn("h-4 w-4", option.iconClassName)} />
                         </span>
+                        <span className="text-sm font-medium text-neutral-900">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </DialogContent>
+            </Dialog>
+
+            <div className="space-y-2.5">
+              <Label className="text-xs font-medium sm:text-sm">Delivery Options</Label>
+              <div
+                role="radiogroup"
+                aria-label="Delivery Options"
+                className="relative grid grid-cols-3 gap-1 rounded-2xl bg-neutral-100 p-1.5"
+              >
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute bottom-1.5 left-1.5 top-1.5 w-[calc((100%-0.75rem-0.5rem)/3)] rounded-xl bg-neutral-900 shadow-sm transition-transform duration-300 ease-out"
+                  style={{
+                    transform: `translateX(calc(${Math.max(
+                      0,
+                      ["premium", "standard", "priority"].indexOf(selectedDeliveryService)
+                    )} * (100% + 0.25rem)))`,
+                  }}
+                />
+                {(
+                  [
+                    { id: "premium" as const, label: "Premium", icon: Sparkles },
+                    { id: "standard" as const, label: "Standard", icon: Clock },
+                    { id: "priority" as const, label: "Priority", icon: Zap },
+                  ]
+                ).map((option) => {
+                  const selected = selectedDeliveryService === option.id;
+                  const Icon = option.icon;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => onDeliveryServiceChange?.(option.id)}
+                      className={cn(
+                        "relative z-10 flex min-h-[4.25rem] flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-3 text-sm transition-colors duration-300",
+                        selected ? "font-bold text-white" : "font-medium text-neutral-500 hover:text-neutral-800"
                       )}
-                    </div>
-                    <div
-                      className={`mt-0.5 text-[10px] sm:text-xs leading-snug ${
-                        selectedDeliveryService === 'premium' ? 'text-gray-200' : 'text-gray-500'
-                      }`}
                     >
-                      Faster delivery
-                    </div>
-                  </div>
-                </div>
-              </Button>
-              
-              <Button
-                variant={selectedDeliveryService === 'standard' ? 'default' : 'outline'}
-                onClick={() => onDeliveryServiceChange('standard')}
-                className={`h-auto min-h-[64px] sm:min-h-[74px] w-full justify-start px-3 py-2.5 sm:px-4 sm:py-3 transition-all duration-200 ${
-                  selectedDeliveryService === 'standard'
-                    ? 'bg-black text-white hover:bg-gray-800 shadow-md border-2 border-black'
-                    : 'bg-white text-gray-800 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                }`}
-              >
-                <div className="flex w-full items-start gap-2.5 sm:gap-3">
-                  <div
-                    className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
-                      selectedDeliveryService === 'standard'
-                        ? 'border-white/15 bg-white/10'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}
-                  >
-                    <Clock
-                      className={`h-4 w-4 ${
-                        selectedDeliveryService === 'standard' ? 'text-white' : 'text-slate-600'
-                      }`}
-                    />
-                  </div>
-                  <div className="min-w-0 text-left">
-                    <div
-                      className={`text-xs sm:text-sm font-semibold ${
-                        selectedDeliveryService === 'standard' ? 'text-white' : 'text-gray-900'
-                      }`}
-                    >
-                      Standard
-                    </div>
-                    <div
-                      className={`mt-0.5 text-[10px] sm:text-xs leading-snug ${
-                        selectedDeliveryService === 'standard' ? 'text-gray-200' : 'text-gray-500'
-                      }`}
-                    >
-                      Regular delivery
-                    </div>
-                  </div>
-                </div>
-              </Button>
-              
-              <Button
-                variant={selectedDeliveryService === 'priority' ? 'default' : 'outline'}
-                onClick={() => onDeliveryServiceChange('priority')}
-                className={`h-auto min-h-[64px] sm:min-h-[74px] w-full justify-start px-3 py-2.5 sm:px-4 sm:py-3 transition-all duration-200 ${
-                  selectedDeliveryService === 'priority'
-                    ? 'bg-black text-white hover:bg-gray-800 shadow-md border-2 border-black'
-                    : 'bg-white text-gray-800 hover:bg-gray-50 border-2 border-gray-200 hover:border-gray-300 hover:shadow-sm'
-                }`}
-              >
-                <div className="flex w-full items-start gap-2.5 sm:gap-3">
-                  <div
-                    className={`mt-0.5 inline-flex h-8 w-8 items-center justify-center rounded-lg border ${
-                      selectedDeliveryService === 'priority'
-                        ? 'border-white/15 bg-white/10'
-                        : 'border-gray-200 bg-gray-50'
-                    }`}
-                  >
-                    <Zap
-                      className={`h-4 w-4 ${
-                        selectedDeliveryService === 'priority' ? 'text-white' : 'text-fuchsia-600'
-                      }`}
-                    />
-                  </div>
-                  <div className="min-w-0 text-left">
-                    <div
-                      className={`text-xs sm:text-sm font-semibold ${
-                        selectedDeliveryService === 'priority' ? 'text-white' : 'text-gray-900'
-                      }`}
-                    >
-                      Priority
-                    </div>
-                    <div
-                      className={`mt-0.5 text-[10px] sm:text-xs leading-snug ${
-                        selectedDeliveryService === 'priority' ? 'text-gray-200' : 'text-gray-500'
-                      }`}
-                    >
-                      Fastest delivery
-                    </div>
-                  </div>
-                </div>
-              </Button>
+                      <Icon
+                        className={cn(
+                          "h-5 w-5 transition-all duration-300",
+                          selected ? "scale-110 text-white" : "scale-100 text-neutral-400"
+                        )}
+                        aria-hidden
+                      />
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-
-            <div className="space-y-1.5 pt-1">
-              <Label className="text-xs font-bold sm:text-sm">How should we deliver?</Label>
-              <RadioGroup
-                value={selectedDeliveryOption}
-                onValueChange={(v) => onDeliveryOptionChange(v as CheckoutDeliveryOption)}
-                className="grid grid-cols-3 gap-1.5 sm:gap-2"
-              >
-                <div
-                  className={cn(
-                    "flex min-w-0 items-center gap-1 rounded-md border border-gray-200 px-1.5 py-1 sm:gap-1.5 sm:px-2 sm:py-1.5",
-                    selectedDeliveryOption === "leave_at_door" ? "bg-gray-100" : "hover:bg-gray-50"
-                  )}
-                >
-                  <RadioGroupItem
-                    value="leave_at_door"
-                    id="delivery_option_leave_at_door"
-                    className="h-3.5 w-3.5 shrink-0 border-gray-400 text-gray-900 [&_svg]:h-2 [&_svg]:w-2"
-                  />
-                  <Label
-                    htmlFor="delivery_option_leave_at_door"
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 font-bold sm:gap-1.5"
-                  >
-                    <DoorOpen className="h-3.5 w-3.5 shrink-0 text-amber-600 sm:h-4 sm:w-4" aria-hidden />
-                    <span className="truncate text-[10px] font-bold leading-tight sm:text-xs">Leave at door</span>
-                  </Label>
-                </div>
-                <div
-                  className={cn(
-                    "flex min-w-0 items-center gap-1 rounded-md border border-gray-200 px-1.5 py-1 sm:gap-1.5 sm:px-2 sm:py-1.5",
-                    selectedDeliveryOption === "meet_outside" ? "bg-gray-100" : "hover:bg-gray-50"
-                  )}
-                >
-                  <RadioGroupItem
-                    value="meet_outside"
-                    id="delivery_option_meet_outside"
-                    className="h-3.5 w-3.5 shrink-0 border-gray-400 text-gray-900 [&_svg]:h-2 [&_svg]:w-2"
-                  />
-                  <Label
-                    htmlFor="delivery_option_meet_outside"
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 font-bold sm:gap-1.5"
-                  >
-                    <UserRound className="h-3.5 w-3.5 shrink-0 text-blue-600 sm:h-4 sm:w-4" aria-hidden />
-                    <span className="truncate text-[10px] font-bold leading-tight sm:text-xs">Meet outside</span>
-                  </Label>
-                </div>
-                <div
-                  className={cn(
-                    "flex min-w-0 items-center gap-1 rounded-md border border-gray-200 px-1.5 py-1 sm:gap-1.5 sm:px-2 sm:py-1.5",
-                    selectedDeliveryOption === "at_reception" ? "bg-gray-100" : "hover:bg-gray-50"
-                  )}
-                >
-                  <RadioGroupItem
-                    value="at_reception"
-                    id="delivery_option_at_reception"
-                    className="h-3.5 w-3.5 shrink-0 border-gray-400 text-gray-900 [&_svg]:h-2 [&_svg]:w-2"
-                  />
-                  <Label
-                    htmlFor="delivery_option_at_reception"
-                    className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 font-bold sm:gap-1.5"
-                  >
-                    <Building2 className="h-3.5 w-3.5 shrink-0 text-slate-600 sm:h-4 sm:w-4" aria-hidden />
-                    <span className="truncate text-[10px] font-bold leading-tight sm:text-xs">At reception</span>
-                  </Label>
-                </div>
-              </RadioGroup>
-            </div>
-          </div>
+          </>
         )}
-
-        {/* Delivery Information */}
-        {/* {selectedOrderType === 'delivery' && isLocationSelected && (
-          <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-            <div className="text-sm text-blue-700">
-              <div className="font-medium mb-1">Delivery Information</div>
-              <div>• Estimated delivery time: 30-45 minutes</div>
-              <div>• Free delivery on orders over $25</div>
-              <div>• Delivery fee: $2.99</div>
-            </div>
-          </div>
-        )}
-
-        {selectedOrderType === 'pickup' && (
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="text-sm text-green-700">
-              <div className="font-medium mb-1">Pickup Information</div>
-              <div>• Ready in 15-20 minutes</div>
-              <div>• No delivery fee</div>
-              <div>• Store location: 123 Main Street, Colombo</div>
-            </div>
-          </div>
-        )} */}
       </CardContent>
-
     </Card>
   );
 };

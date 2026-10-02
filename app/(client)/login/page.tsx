@@ -2,16 +2,20 @@
 
 import React, { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Link from "next/link";
 import { updateProfile } from "firebase/auth";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import Title from "@/components/Title";
 import Loader from "@/components/Loader";
 import PhoneAuth from "@/components/PhoneAuth";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { getCurrentUserWithToken, registerUser } from "@/lib/api";
 import toast from "react-hot-toast";
+
+function displayNameFromProfile(profile: unknown): string {
+  if (!profile || typeof profile !== "object") return "";
+  const record = profile as { name?: unknown };
+  return typeof record.name === "string" ? record.name.trim() : "";
+}
 
 export default function LoginPage() {
   const [step, setStep] = useState<"phone" | "name">("phone");
@@ -65,7 +69,8 @@ export default function LoginPage() {
     try {
       const result = await getCurrentUserWithToken(token);
       if (result.registered) {
-        toast.success("Welcome back!");
+        const name = displayNameFromProfile(result.profile);
+        toast.success(name ? `Welcome back ${name} 👋🏻` : "Welcome back 👋🏻");
         router.push(returnUrl);
         return;
       }
@@ -118,41 +123,46 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[calc(100vh-200px)] px-4">
-      <Title className="!text-3xl">Login</Title>
-
-      {step === "phone" ? (
-        <div className="w-full max-w-md mt-8">
+    <div className="flex min-h-[calc(100vh-200px)] items-center justify-center px-4 py-10">
+      <div className="w-full max-w-sm rounded-2xl border border-black/5 bg-white px-6 py-8 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.12),0_4px_12px_-2px_rgba(0,0,0,0.05)]">
+        {step === "phone" ? (
           <PhoneAuth onSuccess={handlePhoneSuccess} onError={handlePhoneError} />
-        </div>
-      ) : (
-        <form onSubmit={handleNameSubmit} className="w-full max-w-md mt-8 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              Full Name
-            </label>
+        ) : (
+          <form onSubmit={handleNameSubmit} className="space-y-6">
+            <div>
+              <h1 className="text-xl font-semibold tracking-tight text-neutral-900">Your name</h1>
+              <p className="mt-1 text-sm text-neutral-500">{phoneNumber}</p>
+            </div>
             <Input
               type="text"
-              placeholder="Enter your full name"
+              placeholder="Full name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
+              autoFocus
+              aria-label="Full name"
+              className="h-11 rounded-xl border-neutral-200 bg-neutral-50 px-3 text-sm font-medium shadow-none focus-visible:border-black focus-visible:bg-white focus-visible:ring-2 focus-visible:ring-black/10"
             />
-            <p className="text-xs text-gray-500 mt-1">Phone verified: {phoneNumber}</p>
-          </div>
-          <Button type="submit" className="w-full" disabled={registering}>
-            {registering ? "Creating account..." : "Continue"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setStep("phone")}
-            className="w-full"
-          >
-            Change Phone Number
-          </Button>
-        </form>
-      )}
+            <Button
+              type="submit"
+              className="h-11 w-full rounded-full bg-black text-sm font-semibold text-white shadow-sm hover:bg-neutral-800"
+              disabled={registering}
+            >
+              {registering ? "Creating…" : "Continue"}
+            </Button>
+            <div className="flex justify-center">
+              <button
+                type="button"
+                onClick={() => setStep("phone")}
+                disabled={registering}
+                className="text-sm font-medium text-neutral-500 transition-colors hover:text-black disabled:opacity-50"
+              >
+                Change number
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }

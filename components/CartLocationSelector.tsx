@@ -20,6 +20,9 @@ import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/li
 interface CartLocationSelectorProps {
   onLocationSelect: (location: string) => void;
   autoOpen?: boolean;
+  hideTrigger?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface CartLocationSelectorDialogProps {
@@ -207,7 +210,6 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
     
     // Select the new address
     await handleSelectLocation(addressData.fullAddress, addressData.city);
-    toast.success("Address saved successfully!");
   };
 
   const fetchPredictions = React.useCallback(
@@ -567,9 +569,21 @@ const CartLocationSelectorDialog: React.FC<CartLocationSelectorDialogProps> = ({
   );
 };
 
-const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationSelect, autoOpen = false }) => {
-  const [isOpen, setIsOpen] = useState(autoOpen);
-  const [isPickerMounted, setIsPickerMounted] = useState(autoOpen);
+const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({
+  onLocationSelect,
+  autoOpen = false,
+  hideTrigger = false,
+  open,
+  onOpenChange,
+}) => {
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(autoOpen);
+  const isControlled = open !== undefined;
+  const isOpen = isControlled ? open : uncontrolledOpen;
+  const setIsOpen = (next: boolean) => {
+    if (!isControlled) setUncontrolledOpen(next);
+    onOpenChange?.(next);
+  };
+  const [isPickerMounted, setIsPickerMounted] = useState(isOpen);
   const { selectedLocation, defaultAddress, selectedStore, deliveryType } = useLocation();
   const displayLabel = formatLocationLabel(selectedLocation, {
     defaultAddress,
@@ -592,18 +606,20 @@ const CartLocationSelector: React.FC<CartLocationSelectorProps> = ({ onLocationS
 
   return (
     <>
-      <Button
-        type="button"
-        variant="outline"
-        title={selectedLocation !== "Location" ? selectedLocation : undefined}
-        className="w-full h-12 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2 text-gray-600 hover:text-blue-600"
-        onClick={() => setIsOpen(true)}
-      >
-        <MapPin className="h-5 w-5 flex-shrink-0" />
-        <span className="font-medium truncate">
-          {selectedLocation === "Location" ? "Choose your location" : displayLabel}
-        </span>
-      </Button>
+      {!hideTrigger && (
+        <Button
+          type="button"
+          variant="outline"
+          title={selectedLocation !== "Location" ? selectedLocation : undefined}
+          className="w-full h-12 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2 text-gray-600 hover:text-blue-600"
+          onClick={() => setIsOpen(true)}
+        >
+          <MapPin className="h-5 w-5 flex-shrink-0" />
+          <span className="font-medium truncate">
+            {selectedLocation === "Location" ? "Choose your location" : displayLabel}
+          </span>
+        </Button>
+      )}
 
       {isPickerMounted && (
         <GoogleMapsProvider>

@@ -3,6 +3,7 @@ import React, { useState } from "react";
 import { TableBody, TableCell, TableRow } from "./ui/table";
 import PriceFormatter from "./PriceFormatter";
 import { Order } from "@/store";
+import { getCustomerOrderStatus } from "@/lib/order-status";
 import OrderDetailsDialog from "./OrderDetailsDialog";
 import {
   Tooltip,
@@ -21,7 +22,24 @@ const OrdersComponent = ({ orders }: { orders: Order[] }) => {
     <>
       <TableBody>
         <TooltipProvider>
-          {orders.map((order) => (
+          {orders.map((order) => {
+            const { label, tone } = getCustomerOrderStatus(
+              order.status,
+              order.fulfillmentMode,
+            );
+            const toneClass =
+              tone === "completed"
+                ? "bg-green-100 text-green-800"
+                : tone === "pending"
+                ? "bg-yellow-100 text-yellow-800"
+                : tone === "confirmed"
+                ? "bg-blue-100 text-blue-800"
+                : tone === "preparing"
+                ? "bg-purple-100 text-purple-800"
+                : tone === "ready" || tone === "on_the_way"
+                ? "bg-orange-100 text-orange-800"
+                : "bg-red-100 text-red-800";
+            return (
             <Tooltip key={order.id}>
               <TooltipTrigger asChild>
                 <TableRow
@@ -47,22 +65,9 @@ const OrdersComponent = ({ orders }: { orders: Order[] }) => {
                   </TableCell>
                   <TableCell>
                     <span
-                      className={`px-2 py-1 rounded-full text-xs font-semibold ${
-                        order.status === "delivered"
-                          ? "bg-green-100 text-green-800"
-                          : order.status === "pending"
-                          ? "bg-yellow-100 text-yellow-800"
-                          : order.status === "confirmed"
-                          ? "bg-blue-100 text-blue-800"
-                          : order.status === "preparing"
-                          ? "bg-purple-100 text-purple-800"
-                          : order.status === "ready"
-                          ? "bg-orange-100 text-orange-800"
-                          : "bg-red-100 text-red-800"
-                      }`}
+                      className={`px-2 py-1 rounded-full text-xs font-semibold ${toneClass}`}
                     >
-                      {order.status.charAt(0).toUpperCase() +
-                        order.status.slice(1).toLowerCase()}
+                      {label}
                     </span>
                   </TableCell>
                 </TableRow>
@@ -71,7 +76,8 @@ const OrdersComponent = ({ orders }: { orders: Order[] }) => {
                 <p>Click to see order details</p>
               </TooltipContent>
             </Tooltip>
-          ))}
+            );
+          })}
         </TooltipProvider>
       </TableBody>
       <OrderDetailsDialog

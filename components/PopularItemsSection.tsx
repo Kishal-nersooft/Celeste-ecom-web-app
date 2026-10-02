@@ -28,7 +28,7 @@ const PopularItemsSection = () => {
 
   const scrollLeft = () => {
     if (scrollContainerRef.current) {
-      const cardWidth = 200; // Match ProductRow: card width + gap
+      const cardWidth = 180; // Match ProductRow: card width + gap
       scrollContainerRef.current.scrollBy({
         left: -cardWidth * 3,
         behavior: "smooth",
@@ -39,7 +39,7 @@ const PopularItemsSection = () => {
 
   const scrollRight = () => {
     if (scrollContainerRef.current) {
-      const cardWidth = 200; // Match ProductRow: card width + gap
+      const cardWidth = 180; // Match ProductRow: card width + gap
       scrollContainerRef.current.scrollBy({
         left: cardWidth * 3,
         behavior: "smooth",
@@ -121,11 +121,11 @@ const PopularItemsSection = () => {
   if (loading) {
     return (
       <div className="w-full py-8">
-        <div className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4">
+        <div className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide px-1.5 pt-1.5 -mx-1.5 -mt-1.5 pb-4">
           {Array.from({ length: 6 }).map((_, idx) => (
             <div
               key={idx}
-              className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px] flex justify-center"
+              className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px] flex justify-center"
             >
               <ProductCardSkeleton />
             </div>
@@ -184,7 +184,7 @@ const PopularItemsSection = () => {
             setScrollRoot(node);
           }}
           onScroll={checkScrollButtons}
-          className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide pb-4 scroll-smooth"
+          className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-x-auto scrollbar-hide px-1.5 pt-1.5 -mx-1.5 -mt-1.5 pb-4 scroll-smooth"
           style={{
             scrollbarWidth: "none",
             msOverflowStyle: "none",
@@ -197,7 +197,7 @@ const PopularItemsSection = () => {
               initial={{ opacity: 0.2 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
+              className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px]"
             >
               <ProductCard product={product} scrollRoot={scrollRoot} />
             </motion.div>

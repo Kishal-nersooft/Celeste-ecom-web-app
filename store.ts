@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { getProductImageUrl } from "@/lib/product-image";
+import { getMaxAvailableQuantity } from "@/lib/stock-utils";
 
 export interface Product {
   id: number;
@@ -107,12 +108,12 @@ export interface Order {
   items: OrderItem[];
   total: number;
   totalAmount?: number; // For compatibility with backend
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+  status: string;
   customerName?: string;
   email?: string;
   deliveryLocation?: string;
   orderType: 'delivery' | 'pickup';
-  fulfillmentMode?: 'delivery' | 'pickup'; // For compatibility with backend
+  fulfillmentMode?: 'delivery' | 'far_delivery' | 'pickup'; // For compatibility with backend
   deliveryCharge?: number; // For compatibility with backend
   orderNumber?: string; // For compatibility with backend
   /** True when the order is for a scheduled delivery/pickup window */
@@ -179,6 +180,8 @@ interface CartState {
   getTotalPrice: () => number;
   getSubTotalPrice: () => number;
   getItemCount: (productId: number) => number;
+  /** Copy a fresher `inventory.max_available` onto the cart line for this product. */
+  mergeProductInventory: (product: Product) => void;
   getGroupedItems: () => CartItem[];
   placeOrder: (userId: string, customerName?: string, email?: string, deliveryLocation?: string, orderType?: 'delivery' | 'pickup') => Order;
   getOrders: () => Order[];
@@ -223,6 +226,25 @@ function pickProductImages(
   };
 }
 
+function quantityWithinMax(product: Product | undefined, quantity: number): number {
+  const max = getMaxAvailableQuantity(product);
+  if (max == null) return quantity;
+  return Math.min(quantity, max);
+}
+
+function withMergedInventory(items: CartItem[], product: Product): CartItem[] {
+  const max = getMaxAvailableQuantity(product);
+  if (max == null || !product?.id) return items;
+  let changed = false;
+  const next = items.map((item) => {
+    if (!item?.product || item.product.id !== product.id) return item;
+    if (getMaxAvailableQuantity(item.product) === max) return item;
+    changed = true;
+    return { ...item, product: { ...item.product, inventory: product.inventory } };
+  });
+  return changed ? next : items;
+}
+
 // Debounce utility
 let debounceTimeouts: { [key: string]: NodeJS.Timeout } = {};
 
@@ -250,16 +272,33 @@ const useCartStore = create<CartState>()(
 
       addItem: async (product: Product, opts?: { immediateSync?: boolean }) => {
         const state = get();
+        const maxAvailable = getMaxAvailableQuantity(product);
         
         // Check if item already exists in active cart
         const existingItem = state.items.find(item => item && item.product && item.product.id === product.id);
+        const currentQuantity = existingItem?.quantity ?? 0;
+        if (maxAvailable != null && currentQuantity >= maxAvailable) {
+          return;
+        }
         
         let updatedItems;
         if (existingItem) {
-          // Update quantity locally
+          const nextQuantity = quantityWithinMax(
+            { ...existingItem.product, inventory: product.inventory ?? existingItem.product.inventory },
+            existingItem.quantity + 1
+          );
+          if (nextQuantity === existingItem.quantity) return;
+          // Update quantity locally and keep the latest inventory cap
           updatedItems = state.items.map(item =>
             item && item.product && item.product.id === product.id
-              ? { ...item, quantity: item.quantity + 1 }
+              ? {
+                  ...item,
+                  quantity: nextQuantity,
+                  product: {
+                    ...item.product,
+                    inventory: product.inventory ?? item.product.inventory,
+                  },
+                }
               : item
           );
           set({ items: updatedItems });
@@ -402,7 +441,11 @@ const useCartStore = create<CartState>()(
       },
 
       updateItemQuantity: async (productId: number, newQuantity: number, opts?: { immediateSync?: boolean }) => {
-        if (newQuantity <= 0) {
+        const existing = get().items.find(
+          (item) => item && item.product && item.product.id === productId
+        );
+        const cappedQuantity = quantityWithinMax(existing?.product, newQuantity);
+        if (cappedQuantity <= 0) {
           await get().removeItem(productId, opts);
           return;
         }
@@ -410,7 +453,7 @@ const useCartStore = create<CartState>()(
         // Update quantity locally
         const newItems = get().items.map(item =>
           item && item.product && item.product.id === productId
-            ? { ...item, quantity: newQuantity }
+            ? { ...item, quantity: cappedQuantity }
             : item
         );
         set({ items: newItems });
@@ -441,7 +484,14 @@ const useCartStore = create<CartState>()(
           try {
             set({ isSyncing: true });
             const { updateCartItemQuantityByProductId } = await import("./lib/api");
-            await updateCartItemQuantityByProductId(currentState.activeCartId, productId, newQuantity);
+            const syncedQuantity =
+              currentState.items.find((item) => item?.product?.id === productId)?.quantity ??
+              cappedQuantity;
+            await updateCartItemQuantityByProductId(
+              currentState.activeCartId,
+              productId,
+              syncedQuantity
+            );
           } catch (error) {
             console.error("❌ Failed to sync quantity update:", error);
           } finally {
@@ -559,6 +609,18 @@ const useCartStore = create<CartState>()(
         const items = get().items || [];
         const item = items.find(item => item && item.product && item.product.id === productId);
         return item ? item.quantity : 0;
+      },
+
+      mergeProductInventory: (product: Product) => {
+        const current = get().items;
+        const merged = withMergedInventory(current, product);
+        if (merged === current) return;
+        set((state) => ({
+          items: merged,
+          carts: state.carts.map((cart) =>
+            cart.id === state.activeCartId ? { ...cart, items: merged } : cart
+          ),
+        }));
       },
 
       getGroupedItems: () => {

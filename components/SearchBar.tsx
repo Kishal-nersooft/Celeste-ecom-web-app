@@ -5,7 +5,7 @@ import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Image from 'next/image';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Search } from 'lucide-react';
-import { searchProducts, trackSearchClick, getSearchHistory, invalidateSearchHistoryCache, getParentCategories, getCategories } from '@/lib/api';
+import { searchProducts, trackSearchClick, getSearchHistory, invalidateSearchHistoryCache, getParentCategories, getCategories, getProductById } from '@/lib/api';
 import { getProductPath } from '@/lib/product-slug';
 import { getProductImageUrl } from '@/lib/product-image';
 import { stripCategoryEmojis } from '@/lib/category-display-name';
@@ -379,15 +379,56 @@ const SearchBar: React.FC<SearchBarProps> = ({
         return;
       }
 
+      const mappedProducts = (searchResults.products || [])
+        .slice(0, DROPDOWN_RESULT_LIMIT)
+        .map((product: Record<string, unknown>) => mapSearchProductToProduct(product));
+
       setResults({
         ...searchResults,
-        products: (searchResults.products || [])
-          .slice(0, DROPDOWN_RESULT_LIMIT)
-          .map((product: Record<string, unknown>) => mapSearchProductToProduct(product)),
+        products: mappedProducts,
       });
       lastCompletedSearchQueryRef.current = searchQuery;
       setIsOpen(true);
       setSelectedIndex(-1);
+
+      // Dropdown search returns a short product. Inventory, including max_available, is on the full product.
+      const missingInventory = mappedProducts.filter(
+        (product) => product.inventory?.max_available == null
+      );
+      if (missingInventory.length > 0) {
+        void Promise.all(
+          missingInventory.map(async (product) => {
+            try {
+              const full = await getProductById(
+                String(product.id),
+                searchOptions.storeIds,
+                searchOptions.latitude,
+                searchOptions.longitude,
+                true
+              );
+              return full?.inventory ? { ...product, inventory: full.inventory } : product;
+            } catch {
+              return product;
+            }
+          })
+        ).then((enriched) => {
+          if (
+            signal.aborted ||
+            requestId !== searchRequestIdRef.current ||
+            activeSearchQueryRef.current !== searchQuery
+          ) {
+            return;
+          }
+          const byId = new Map(enriched.map((product) => [product.id, product]));
+          setResults((current) => {
+            if (!current) return current;
+            return {
+              ...current,
+              products: current.products.map((product) => byId.get(product.id) ?? product),
+            };
+          });
+        });
+      }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') {
         return;

@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { GoogleMap, Marker } from "@react-google-maps/api";
-import { ArrowLeft, LocateIcon, MapPinIcon, SearchIcon } from "lucide-react";
+import { LocateIcon, SearchIcon, X } from "lucide-react";
 import toast from "react-hot-toast";
 import { GoogleMapsProvider, useGoogleMaps } from "@/components/GoogleMapsProvider";
 import { SRI_LANKA_MAP_CENTER, SRI_LANKA_MAP_ZOOM, fitMapToSriLanka } from "@/lib/google-maps-config";
@@ -37,41 +37,22 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
   editingAddress = null
 }) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [mapCenter, setMapCenter] = useState(SRI_LANKA_MAP_CENTER);
-  const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(null);
-  const [selectedAddress, setSelectedAddress] = useState<string>("");
-  const [addressName, setAddressName] = useState("");
+  const [mapCenter, setMapCenter] = useState(
+    editingAddress
+      ? { lat: editingAddress.latitude, lng: editingAddress.longitude }
+      : SRI_LANKA_MAP_CENTER
+  );
+  const [markerPosition, setMarkerPosition] = useState<{ lat: number; lng: number } | null>(
+    editingAddress ? { lat: editingAddress.latitude, lng: editingAddress.longitude } : null
+  );
+  const [selectedAddress, setSelectedAddress] = useState<string>(editingAddress?.address ?? "");
+  const [addressName, setAddressName] = useState(editingAddress?.name ?? "");
   const [geocoderService, setGeocoderService] = useState<google.maps.Geocoder | null>(null);
   const [autocompleteService, setAutocompleteService] = useState<any>(null);
   const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [currentView, setCurrentView] = useState<'search' | 'map'>('search');
-  
-  // Debug: Log when predictions change
-  useEffect(() => {
-  }, [predictions]);
 
-  // Pre-fill form when editing an address
-  useEffect(() => {
-    if (editingAddress && isOpen) {
-      setAddressName(editingAddress.name || "");
-      setSelectedAddress(editingAddress.address);
-      setMarkerPosition({ lat: editingAddress.latitude, lng: editingAddress.longitude });
-      setMapCenter({ lat: editingAddress.latitude, lng: editingAddress.longitude });
-      setCurrentView('map');
-    } else if (!editingAddress && isOpen) {
-      // Reset form when opening for new address
-      setSearchQuery("");
-      setAddressName("");
-      setSelectedAddress("");
-      setMarkerPosition(null);
-      setMapCenter(SRI_LANKA_MAP_CENTER);
-      setCurrentView('search');
-    }
-  }, [editingAddress, isOpen]);
-  
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
+  const mapRef = useRef<google.maps.Map | null>(null);
 
   const { isLoaded, loadError } = useGoogleMaps();
 
@@ -170,8 +151,15 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
     fetchPredictions(input);
   };
 
+  const focusMap = (coordinates: { lat: number; lng: number }) => {
+    setMapCenter(coordinates);
+    setMarkerPosition(coordinates);
+    mapRef.current?.panTo(coordinates);
+    mapRef.current?.setZoom(16);
+  };
+
   const handlePredictionClick = (prediction: google.maps.places.AutocompletePrediction) => {
-    setSearchQuery(prediction.description);
+    setSearchQuery("");
     setPredictions([]);
 
     if (!geocoderService) return;
@@ -179,11 +167,8 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
     geocoderService.geocode({ address: prediction.description }, (results, status) => {
       if (status === "OK" && results && results[0]) {
         const { lat, lng } = results[0].geometry.location;
-        const coordinates = { lat: lat(), lng: lng() };
-        setMapCenter(coordinates);
-        setMarkerPosition(coordinates);
+        focusMap({ lat: lat(), lng: lng() });
         setSelectedAddress(results[0].formatted_address);
-        setCurrentView('map');
       } else {
         console.error("Geocode was not successful for the following reason: " + status);
         toast.error("Could not find the selected address");
@@ -198,11 +183,8 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
     geocoderService.geocode({ address: searchQuery }, (results, status) => {
       if (status === "OK" && results && results[0]) {
         const { lat, lng } = results[0].geometry.location;
-        const coordinates = { lat: lat(), lng: lng() };
-        setMapCenter(coordinates);
-        setMarkerPosition(coordinates);
+        focusMap({ lat: lat(), lng: lng() });
         setSelectedAddress(results[0].formatted_address);
-        setCurrentView('map');
       } else {
         console.error("Geocode was not successful for the following reason: " + status);
         toast.error("Could not find the address");
@@ -216,8 +198,7 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
         (position) => {
           const { latitude, longitude } = position.coords;
           const latLng = { lat: latitude, lng: longitude };
-          setMapCenter(latLng);
-          setMarkerPosition(latLng);
+          focusMap(latLng);
           if (geocoderService) {
             geocoderService.geocode({ location: latLng }, (results, status) => {
               if (status === "OK" && results && results[0]) {
@@ -230,7 +211,6 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
           } else {
             setSelectedAddress(`Lat: ${latitude}, Lng: ${longitude}`);
           }
-          setCurrentView('map');
         },
         (error) => {
           console.error("Error getting current location:", error);
@@ -247,8 +227,8 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
       const lat = e.latLng.lat();
       const lng = e.latLng.lng();
       const coordinates = { lat, lng };
-      setMarkerPosition(coordinates);
-      
+      focusMap(coordinates);
+
       if (geocoderService) {
         geocoderService.geocode({ location: coordinates }, (results, status) => {
           if (status === "OK" && results && results[0]) {
@@ -286,35 +266,29 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
 
     // Reset form
     setSearchQuery("");
-    setAddressName("");
-    setSelectedAddress("");
-    setMarkerPosition(null);
-    setCurrentView('search');
+    setPredictions([]);
     onClose();
   };
 
   const handleClose = () => {
     setSearchQuery("");
-    setAddressName("");
-    setSelectedAddress("");
-    setMarkerPosition(null);
-    setCurrentView('search');
+    setPredictions([]);
     onClose();
   };
+
+  const dialogClassName =
+    "w-[calc(100%-1.5rem)] max-w-md gap-0 p-0 max-h-[90dvh] overflow-y-auto";
 
   if (!isLoaded) {
     return (
       <Dialog open={isOpen} onOpenChange={handleClose}>
-        <DialogContent
-          mobileAsSheet
-          onDismiss={handleClose}
-          className="lg:max-w-4xl lg:h-[600px]"
-        >
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-          <div className="space-y-3 py-4">
-            <div className="h-10 w-full rounded-md bg-gray-200 animate-pulse" />
-            <div className="h-64 w-full rounded-md bg-gray-200 animate-pulse" />
+        <DialogContent hideCloseButton className={dialogClassName}>
+          <div className="p-4">
+            <AddressDialogHeader title={title} />
+            <DialogDescription className="sr-only">{description}</DialogDescription>
+            <div className="h-56 w-full rounded-md bg-gray-200 animate-pulse mb-3" />
+            <div className="h-4 w-3/4 rounded bg-gray-200 animate-pulse mb-4" />
+            <div className="h-10 w-full rounded-md bg-gray-200 animate-pulse mb-3" />
             <div className="h-10 w-full rounded-md bg-gray-200 animate-pulse" />
           </div>
         </DialogContent>
@@ -325,155 +299,147 @@ const AddressSelectorContent: React.FC<AddressSelectorProps> = ({
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
       <DialogContent
-        mobileAsSheet
-        onDismiss={handleClose}
-        className="lg:max-w-4xl lg:h-[600px] p-0 max-lg:overflow-hidden lg:overflow-visible"
+        hideCloseButton
+        className={dialogClassName}
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <DialogHeader className="p-6 pb-4">
-          <DialogTitle className="text-xl font-bold">{title}</DialogTitle>
-          <DialogDescription>{description}</DialogDescription>
-        </DialogHeader>
+        <div className="p-4">
+          <AddressDialogHeader title={title} />
+          <DialogDescription className="sr-only">{description}</DialogDescription>
 
-        <div className="flex-1 flex flex-col px-6 pb-6 overflow-visible">
-          {/* Search Section */}
-          <div className="mb-4 overflow-visible">
-            <div className="flex gap-2 mb-2">
-              <div className="relative flex-1 z-[101]">
-                <SearchIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 z-10" />
-                <Input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Search for an address..."
-                  value={searchQuery}
-                  onChange={handleSearchInputChange}
-                  className="pl-10 relative z-10"
+          <div className="w-full h-56 bg-gray-200 rounded-md overflow-hidden mb-3">
+            <GoogleMap
+              mapContainerStyle={{ width: "100%", height: "100%" }}
+              center={mapCenter}
+              zoom={markerPosition ? 16 : SRI_LANKA_MAP_ZOOM}
+              onClick={handleMapClick}
+              onLoad={(map) => {
+                mapRef.current = map;
+                if (!markerPosition) fitMapToSriLanka(map);
+              }}
+              options={{
+                fullscreenControl: false,
+                mapTypeControl: false,
+                streetViewControl: false,
+              }}
+            >
+              {markerPosition && (
+                <Marker
+                  position={markerPosition}
+                  draggable
+                  onDragEnd={(e) => {
+                    if (!e.latLng) return;
+                    const coordinates = { lat: e.latLng.lat(), lng: e.latLng.lng() };
+                    setMarkerPosition(coordinates);
+                    setMapCenter(coordinates);
+                    if (!geocoderService) {
+                      setSelectedAddress(`Lat: ${coordinates.lat}, Lng: ${coordinates.lng}`);
+                      return;
+                    }
+                    geocoderService.geocode({ location: coordinates }, (results, status) => {
+                      if (status === "OK" && results?.[0]) {
+                        setSelectedAddress(results[0].formatted_address);
+                      } else {
+                        setSelectedAddress(`Lat: ${coordinates.lat}, Lng: ${coordinates.lng}`);
+                      }
+                    });
+                  }}
                 />
-                {predictions.length > 0 && (
-                  <ul className="absolute top-full left-0 right-0 bg-white border border-gray-200 rounded-md shadow-lg z-[200] mt-1 max-h-48 sm:max-h-60 overflow-y-auto">
-                    {predictions.map((prediction) => (
-                      <li
-                        key={prediction.place_id || `prediction-${prediction.description}`}
-                        className="px-3 sm:px-4 py-2 cursor-pointer hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
-                        onClick={() => handlePredictionClick(prediction)}
-                      >
-                        <div className="font-medium text-xs sm:text-sm">{prediction.structured_formatting.main_text}</div>
-                        <div className="text-[10px] sm:text-xs text-gray-500">{prediction.structured_formatting.secondary_text}</div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-              <Button onClick={handleSearch} variant="outline">
-                Search
-              </Button>
-              <Button onClick={handleGetCurrentLocation} variant="outline">
-                <LocateIcon className="h-4 w-4 mr-2" />
-                Current Location
-              </Button>
-            </div>
+              )}
+            </GoogleMap>
+          </div>
+          <p className="text-xs text-gray-500 mb-3">Drag the pin or tap the map to adjust.</p>
 
-            {/* Address Name Input */}
-            <div className="mb-4">
-              <Input
+          <p className="text-sm text-gray-800 mb-4 break-words min-h-5">
+            {selectedAddress || "Search or choose a point on the map."}
+          </p>
+
+          <div className="relative mb-2">
+            <div className="flex items-center border rounded-lg px-3 py-2">
+              <SearchIcon className="mr-2 h-4 w-4 text-gray-400 shrink-0" />
+              <input
+                ref={searchInputRef}
                 type="text"
-                placeholder="Enter a name for this address (e.g., Home, Office)"
-                value={addressName}
-                onChange={(e) => setAddressName(e.target.value)}
+                placeholder="Search for an address"
+                className="flex-grow min-w-0 border-none focus:ring-0 outline-none text-sm bg-transparent"
+                value={searchQuery}
+                onChange={handleSearchInputChange}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSearch();
+                  }
+                }}
               />
             </div>
-
-            {/* View Toggle */}
-            <div className="flex gap-2 mb-4">
-              <Button
-                variant={currentView === 'search' ? 'default' : 'outline'}
-                onClick={() => setCurrentView('search')}
-                className="flex-1"
-              >
-                Search
-              </Button>
-              <Button
-                variant={currentView === 'map' ? 'default' : 'outline'}
-                onClick={() => {
-                  if (!markerPosition) {
-                    setMapCenter(SRI_LANKA_MAP_CENTER);
-                  }
-                  setCurrentView('map');
-                }}
-                className="flex-1"
-              >
-                Map
-              </Button>
-            </div>
+            {predictions.length > 0 && (
+              <ul className="mt-2 bg-white border border-gray-200 rounded-md shadow-sm max-h-48 overflow-y-auto">
+                {predictions.map((prediction) => (
+                  <li
+                    key={prediction.place_id || `prediction-${prediction.description}`}
+                    className="px-3 py-2 cursor-pointer hover:bg-gray-100 border-b border-gray-100 last:border-b-0"
+                    onClick={() => handlePredictionClick(prediction)}
+                  >
+                    <div className="font-medium text-sm">
+                      {prediction.structured_formatting?.main_text || prediction.description}
+                    </div>
+                    {prediction.structured_formatting?.secondary_text && (
+                      <div className="text-xs text-gray-500">
+                        {prediction.structured_formatting.secondary_text}
+                      </div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
-          {/* Map Section */}
-          {currentView === 'map' && (
-            <div className="flex-1 relative">
-              <GoogleMap
-                mapContainerStyle={{ width: '100%', height: '100%' }}
-                center={mapCenter}
-                zoom={markerPosition ? 15 : SRI_LANKA_MAP_ZOOM}
-                onClick={handleMapClick}
-                onLoad={(map) => {
-                  setIsMapLoaded(true);
-                  if (!markerPosition) {
-                    fitMapToSriLanka(map);
-                  }
-                }}
-              >
-                {markerPosition && (
-                  <Marker
-                    position={markerPosition}
-                    draggable={true}
-                    onDragEnd={(e) => {
-                      if (e.latLng) {
-                        const lat = e.latLng.lat();
-                        const lng = e.latLng.lng();
-                        const coordinates = { lat, lng };
-                        setMarkerPosition(coordinates);
-                        
-                        if (geocoderService) {
-                          geocoderService.geocode({ location: coordinates }, (results, status) => {
-                            if (status === "OK" && results && results[0]) {
-                              setSelectedAddress(results[0].formatted_address);
-                            }
-                          });
-                        }
-                      }
-                    }}
-                  />
-                )}
-              </GoogleMap>
-            </div>
-          )}
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 py-2.5 px-1 mb-4 hover:bg-gray-50 rounded-md"
+            onClick={handleGetCurrentLocation}
+          >
+            <LocateIcon className="h-4 w-4 text-gray-600 shrink-0" />
+            <span className="text-sm">Current location</span>
+          </button>
 
-          {/* Selected Address Display */}
-          {selectedAddress && (
-            <div className="mt-4 p-3 bg-gray-50 rounded-md">
-              <div className="flex items-start space-x-2">
-                <MapPinIcon className="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-gray-900">Selected Address:</p>
-                  <p className="text-sm text-gray-600">{selectedAddress}</p>
-                </div>
-              </div>
-            </div>
-          )}
+          <label className="block text-sm text-gray-500 mb-1">Saved address as (name)</label>
+          <Input
+            value={addressName}
+            onChange={(e) => setAddressName(e.target.value)}
+            placeholder="Home, Work, or a name"
+            className="mb-4"
+          />
 
-          {/* Action Buttons */}
-          <div className="flex justify-end gap-3 mt-4">
-            <Button variant="outline" onClick={handleClose}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirmAddress} disabled={!markerPosition || !addressName.trim()}>
-              Confirm Address
-            </Button>
-          </div>
+          <Button
+            className="w-full"
+            onClick={handleConfirmAddress}
+            disabled={!markerPosition || !selectedAddress || !addressName.trim()}
+          >
+            {editingAddress ? "Update" : "Save"}
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
   );
 };
+
+function AddressDialogHeader({ title }: { title: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 mb-4">
+      <DialogTitle className="text-lg font-bold truncate">{title}</DialogTitle>
+      <DialogClose asChild>
+        <button
+          type="button"
+          aria-label="Close"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 hover:bg-gray-100"
+        >
+          <X className="h-4 w-4" strokeWidth={2} />
+        </button>
+      </DialogClose>
+    </div>
+  );
+}
 
 const AddressSelector: React.FC<AddressSelectorProps> = (props) => {
   if (!props.isOpen) {

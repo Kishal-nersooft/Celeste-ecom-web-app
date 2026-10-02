@@ -12,6 +12,7 @@ import React, {
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { addToFavorites, getFavorites, removeFromFavorites } from "@/lib/api";
 import { Product } from "@/store";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface FavoritesContextType {
   favorites: Product[];
@@ -28,6 +29,7 @@ const FavoritesContext = createContext<FavoritesContextType | undefined>(undefin
 
 export function FavoritesProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
+  const { deliveryType, selectedStore, defaultAddress } = useLocation();
   const [favorites, setFavorites] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +42,18 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     try {
       setLoading(true);
       setError(null);
-      const data = await getFavorites({ include_products: true });
+      const storeId =
+        deliveryType === "pickup" && selectedStore?.id
+          ? parseInt(String(selectedStore.id), 10)
+          : NaN;
+      const data = await getFavorites({
+        include_products: true,
+        latitude:
+          deliveryType === "delivery" ? defaultAddress?.latitude : undefined,
+        longitude:
+          deliveryType === "delivery" ? defaultAddress?.longitude : undefined,
+        store_ids: Number.isFinite(storeId) ? [storeId] : undefined,
+      });
       const list = Array.isArray(data)
         ? (data as Product[]).filter((p) => p && typeof p.id === "number")
         : [];
@@ -51,7 +64,7 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, deliveryType, selectedStore, defaultAddress]);
 
   useEffect(() => {
     refetch();

@@ -11,22 +11,28 @@ import { LocationSelectorProvider } from "@/components/LocationSelector";
 import { useLocation } from "@/contexts/LocationContext";
 import { useCategory } from "@/contexts/CategoryContext";
 import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 
 function CheckoutBreadcrumb() {
   const { setSelectedCategory } = useCategory();
+  const pathname = usePathname();
+  const showCheckoutTitle = pathname === "/checkout";
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8">
+    <div className="relative flex h-11 items-center px-4 sm:px-6 lg:px-8">
       <Link
         href="/"
-        className="inline-flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+        aria-label="Back to home"
+        className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-900 shadow-sm transition-colors hover:bg-neutral-50"
         onClick={() => setSelectedCategory(null)}
       >
-        <span aria-hidden className="text-base leading-none">
-          ←
-        </span>
-        <span className="underline underline-offset-4">Back to Home</span>
+        <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
       </Link>
+      {showCheckoutTitle && (
+        <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base font-semibold tracking-tight text-neutral-900 sm:text-lg">
+          Checkout
+        </h1>
+      )}
     </div>
   );
 }

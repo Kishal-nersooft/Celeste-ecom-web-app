@@ -48,11 +48,11 @@ const LazyMount: React.FC<LazyMountProps> = ({
 
   return (
     <div ref={ref} className="mb-4 sm:mb-6 md:mb-8">
-      <div className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-hidden pb-4">
+      <div className="flex gap-2 sm:gap-2.5 md:gap-3 overflow-hidden px-1.5 pt-1.5 -mx-1.5 -mt-1.5 pb-4">
         {Array.from({ length: skeletonCount }).map((_, i) => (
           <div
             key={i}
-            className="flex-shrink-0 w-[140px] sm:w-[160px] md:w-[180px] lg:w-[200px]"
+            className="flex-shrink-0 w-[120px] sm:w-[140px] md:w-[160px] lg:w-[180px]"
           >
             <ProductCardSkeleton />
           </div>

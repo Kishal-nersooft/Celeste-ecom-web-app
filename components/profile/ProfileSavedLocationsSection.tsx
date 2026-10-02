@@ -17,6 +17,7 @@ import {
   SectionBlock,
   SettingsRow,
 } from "@/components/profile/profile-ui";
+import { classifyAddressName } from "@/lib/named-addresses";
 
 export interface SavedLocationItem {
   id: number;
@@ -34,19 +35,15 @@ interface ProfileSavedLocationsSectionProps {
   onSetDefault: (id: number) => void;
 }
 
-function getAddressIcon(address: string) {
-  const lower = address.toLowerCase();
-  if (lower.includes("home") || lower.includes("house")) {
-    return HomeIcon;
-  }
-  if (lower.includes("office") || lower.includes("work")) {
-    return BriefcaseBusiness;
-  }
+function getAddressIcon(name?: string) {
+  const slot = classifyAddressName(name);
+  if (slot === "home") return HomeIcon;
+  if (slot === "work") return BriefcaseBusiness;
   return MapPin;
 }
 
 function getDisplayLabel(addr: SavedLocationItem, index: number) {
-  return addr.name || (addr.is_default ? "Default address" : `Address #${index + 1}`);
+  return addr.name || `Address #${index + 1}`;
 }
 
 export default function ProfileSavedLocationsSection({
@@ -68,7 +65,7 @@ export default function ProfileSavedLocationsSection({
 
       <SectionBlock
         title="Your addresses"
-        description="Tap an address to edit or manage delivery defaults."
+        description="Tap an address to edit it, or choose the one used for delivery."
       >
         <SettingsRow
           icon={Plus}
@@ -104,19 +101,26 @@ export default function ProfileSavedLocationsSection({
           </div>
         ) : (
           locations.map((location, index) => {
-            const Icon = getAddressIcon(location.address);
+            const Icon = getAddressIcon(location.name);
             return (
               <div key={location.id} className="relative">
                 <SettingsRow
                   icon={Icon}
                   title={getDisplayLabel(location, index)}
                   description={location.address}
+                  badge={
+                    location.is_default ? (
+                      <Badge variant="secondary" className="text-xs">
+                        Delivery
+                      </Badge>
+                    ) : undefined
+                  }
                   onClick={() => setManageLocation(location)}
                 />
                 {location.is_default && (
-                  <div className="absolute right-10 top-5">
+                  <div className="absolute right-10 top-5 hidden lg:block">
                     <Badge variant="secondary" className="text-xs">
-                      Default
+                      Delivery
                     </Badge>
                   </div>
                 )}
@@ -141,19 +145,43 @@ export default function ProfileSavedLocationsSection({
               {manageLocation?.address}
             </DialogDescription>
           </DialogHeader>
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            {!manageLocation?.is_default && (
-              <Button
-                variant="outline"
-                className="w-full sm:w-auto"
-                onClick={() => {
-                  if (manageLocation) onSetDefault(manageLocation.id);
-                  setManageLocation(null);
-                }}
+          {manageLocation?.is_default ? (
+            <div className="flex w-full items-start gap-3 rounded-xl border border-gray-900 bg-gray-50 px-3 py-3 text-left">
+              <span
+                aria-hidden
+                className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 border-gray-900"
               >
-                Set as default
-              </Button>
-            )}
+                <span className="h-2 w-2 rounded-full bg-gray-900" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-gray-900">Delivery address</span>
+                <span className="mt-0.5 block text-sm text-gray-500">
+                  We use this address when you order.
+                </span>
+              </span>
+            </div>
+          ) : manageLocation ? (
+            <button
+              type="button"
+              onClick={() => {
+                onSetDefault(manageLocation.id);
+                setManageLocation(null);
+              }}
+              className="flex w-full items-start gap-3 rounded-xl border border-gray-200 px-3 py-3 text-left hover:bg-gray-50"
+            >
+              <span
+                aria-hidden
+                className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 border-gray-300"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-medium text-gray-900">Use for delivery</span>
+                <span className="mt-0.5 block text-sm text-gray-500">
+                  Switch the address we use when you order.
+                </span>
+              </span>
+            </button>
+          ) : null}
+          <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button
               variant="outline"
               className="w-full sm:w-auto"

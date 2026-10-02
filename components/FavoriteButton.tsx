@@ -39,10 +39,8 @@ export default function FavoriteButton({ productId, className = "" }: FavoriteBu
     try {
       if (favorited) {
         await removeFavorite(productId);
-        toast.success("Removed from favorites");
       } else {
         await addFavorite(productId);
-        toast.success("Added to favorites");
       }
     } catch (err) {
       toast.error(favorited ? "Failed to remove from favorites" : "Failed to add to favorites");

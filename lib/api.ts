@@ -154,9 +154,17 @@ export async function updateUserProfile(profileData: {
 const USER_ADDRESSES_TTL_MS = 5 * 60 * 1000;
 let userAddressesCache: { data: any[]; at: number } | null = null;
 let userAddressesInflight: Promise<any[]> | null = null;
+let userAddressesEpoch = 0;
 
 export function invalidateUserAddressesCache() {
+  userAddressesEpoch += 1;
   userAddressesCache = null;
+  userAddressesInflight = null;
+}
+
+export function writeUserAddressesCache(data: any[]) {
+  userAddressesEpoch += 1;
+  userAddressesCache = { data, at: Date.now() };
   userAddressesInflight = null;
 }
 
@@ -187,7 +195,8 @@ export async function getUserAddresses() {
     return userAddressesInflight;
   }
 
-  userAddressesInflight = (async () => {
+  const epoch = userAddressesEpoch;
+  const request = (async () => {
     const authHeaders = await getAuthHeaders();
     const response = await fetch(apiUrl('/users/me/addresses'), {
       method: 'GET',
@@ -203,13 +212,20 @@ export async function getUserAddresses() {
 
     const responseData = await response.json();
     const data = parseUserAddressesResponse(responseData);
-    userAddressesCache = { data, at: Date.now() };
+    // A save/delete can invalidate while this request is in flight. Keep the
+    // caller's result, but do not let the stale payload replace a newer cache.
+    if (epoch === userAddressesEpoch) {
+      userAddressesCache = { data, at: Date.now() };
+    }
     return data;
   })().finally(() => {
-    userAddressesInflight = null;
+    if (userAddressesInflight === request) {
+      userAddressesInflight = null;
+    }
   });
 
-  return userAddressesInflight;
+  userAddressesInflight = request;
+  return request;
 }
 
 export async function createUserAddress(addressData: {
