@@ -13,6 +13,7 @@ import { useAuth } from "@/components/FirebaseAuthProvider";
 import { addToFavorites, getFavorites, removeFromFavorites } from "@/lib/api";
 import { Product } from "@/store";
 import { useLocation } from "@/contexts/LocationContext";
+import { excludeUnavailableProducts } from "@/lib/stock-utils";
 
 interface FavoritesContextType {
   favorites: Product[];
@@ -55,7 +56,9 @@ export function FavoritesProvider({ children }: { children: ReactNode }) {
         store_ids: Number.isFinite(storeId) ? [storeId] : undefined,
       });
       const list = Array.isArray(data)
-        ? (data as Product[]).filter((p) => p && typeof p.id === "number")
+        ? excludeUnavailableProducts(data).filter(
+            (p: Product) => p && typeof p.id === "number"
+          )
         : [];
       setFavorites(list);
     } catch (e) {

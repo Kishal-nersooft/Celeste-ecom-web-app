@@ -66,7 +66,15 @@ const AddToCartButton = ({ product, className, variant = "icon" }: Props) => {
   const isLabelVariant = variant === "label";
 
   const handleAdd = async () => {
-    if (isAdding || atMax) return;
+    if (atMax) {
+      if (maxAvailable != null) {
+        toast.error(`Stock limit reached. Only ${maxAvailable} available.`, {
+          id: `stock-limit-${product?.id}`,
+        });
+      }
+      return;
+    }
+    if (isAdding) return;
 
     if (!user && !authLoading) {
       if (unresolved) {
@@ -84,6 +92,11 @@ const AddToCartButton = ({ product, className, variant = "icon" }: Props) => {
     try {
       if (product) {
         await addItem(product);
+        if (maxAvailable != null && getItemCount(product.id) >= maxAvailable) {
+          toast.error(`Stock limit reached. Only ${maxAvailable} available.`, {
+            id: `stock-limit-${product.id}`,
+          });
+        }
       }
     } catch (error) {
       console.error("Failed to add item to cart:", error);
@@ -135,7 +148,7 @@ const AddToCartButton = ({ product, className, variant = "icon" }: Props) => {
               event.stopPropagation();
               void handleAdd();
             }}
-            disabled={isAdding || authLoading || atMax}
+            disabled={isAdding || authLoading}
             title="Add to cart"
             whileTap={{ scale: isLabelVariant ? 0.97 : 0.88 }}
             initial={

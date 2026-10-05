@@ -28,7 +28,8 @@ import {
   type OrderStatusTone,
 } from "@/lib/order-status";
 import { mapOrderItems, orderPatchFromPayload, payloadOmitsAmendment, readOrderAmendment, readOrderItemChanges, unwrapOrderPayload } from "@/lib/order-amendment";
-import { subscribeOrderLive } from "@/lib/order-live";
+import { readOrderHold } from "@/lib/order-hold";
+import { ORDER_LIVE_POLL_MS, subscribeOrderLive } from "@/lib/order-live";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
 import OrderAmendmentApproval from "@/components/OrderAmendmentApproval";
@@ -179,6 +180,7 @@ const OrdersPageContent = () => {
 
           const itemsWithDetails = mapOrderItems(order.items);
           const itemChanges = readOrderItemChanges(order);
+          const hold = readOrderHold(order, itemsWithDetails);
 
           return {
             id: order.id?.toString() || 'unknown',
@@ -212,6 +214,8 @@ const OrdersPageContent = () => {
             originalTotalAmount: amendment.originalTotalAmount,
             cancelReasonCode: amendment.cancelReasonCode,
             itemChanges,
+            awaitingCustomerChoice: hold.awaitingCustomerChoice,
+            heldItemCount: hold.heldItemCount,
           };
         });
         
@@ -366,11 +370,18 @@ const OrdersPageContent = () => {
       })();
     };
 
-    const stops = ongoingOrderKey.split(",").map((orderId) =>
+    const orderIds = ongoingOrderKey.split(",");
+    const stops = orderIds.map((orderId) =>
       subscribeOrderLive(orderId, () => refreshOrder(orderId)),
     );
+    // No web push. While this page is open, re-read each ongoing order so a
+    // shortage shows up for someone who is already waiting on the order.
+    const poll = window.setInterval(() => {
+      orderIds.forEach((orderId) => refreshOrder(orderId));
+    }, ORDER_LIVE_POLL_MS);
 
     return () => {
+      window.clearInterval(poll);
       stops.forEach((stop) => stop());
     };
   }, [user, ongoingOrderKey]);
@@ -570,17 +581,26 @@ const OrdersPageContent = () => {
                       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                         {/* Order Info */}
                         <div className="flex-1">
-                          <div className="flex items-center justify-between mb-2 sm:mb-3">
+                          <div className="mb-2 flex flex-wrap items-start justify-between gap-2 sm:mb-3">
                             <h3 className="text-sm sm:text-base md:text-lg font-semibold">
                               Order #{order.orderNumber}
                               <span className="text-xs sm:text-sm text-gray-500 font-normal ml-1">
                                 ({order.items?.length || 0} items)
                               </span>
                             </h3>
-                            <Badge className={`${statusInfo.color} text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1`}>
-                              <StatusIcon className="w-3 h-3 mr-1" />
-                              {statusInfo.label}
-                            </Badge>
+                            <div className="flex shrink-0 items-center gap-1.5">
+                              {order.awaitingCustomerChoice && (
+                                <Badge className="bg-amber-100 text-amber-900 hover:bg-amber-100 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1">
+                                  {order.heldItemCount && order.heldItemCount > 1
+                                    ? `${order.heldItemCount} items need your choice`
+                                    : "Needs your choice"}
+                                </Badge>
+                              )}
+                              <Badge className={`${statusInfo.color} text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1`}>
+                                <StatusIcon className="w-3 h-3 mr-1" />
+                                {statusInfo.label}
+                              </Badge>
+                            </div>
                           </div>
                           
                           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4 text-xs sm:text-sm text-gray-600 mb-3 sm:mb-4">
@@ -693,6 +713,18 @@ const OrdersPageContent = () => {
                             items={order.items ?? []}
                             paid={order.originalTotalAmount}
                             totalNow={order.totalAmount}
+                            orderId={order.id}
+                            onChoiceApplied={() => {
+                              const responsePromise = getOrderById(order.id);
+                              void responsePromise.then((response) => {
+                                const raw = unwrapOrderPayload(response);
+                                if (raw) {
+                                  handleOrderUpdated(order.id, orderPatchFromPayload(raw) as Partial<Order>);
+                                }
+                              }).catch((error) => {
+                                console.error(`Failed to refresh order ${order.id} after a choice`, error);
+                              });
+                            }}
                           />
                         </div>
 

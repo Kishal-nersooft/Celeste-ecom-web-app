@@ -26,6 +26,8 @@ import { ArrowLeft } from "lucide-react";
 import Loader from "@/components/Loader";
 import Image from "next/image";
 import { useCategory } from "@/contexts/CategoryContext";
+import { useLocation } from "@/contexts/LocationContext";
+import { excludeUnavailableProducts } from "@/lib/stock-utils";
 
 interface Props {
   categoryId: string;
@@ -35,9 +37,27 @@ const SIMILAR_PRODUCTS_SLUG = "similar-products";
 const SIMILAR_PRODUCTS_STORAGE_KEY = "similar";
 const SIMILAR_PRODUCTS_TITLE = "Similar Products";
 
+function coordinate(value: unknown): number | undefined {
+  if (value == null || value === "") return undefined;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 const CategoriesPageClient = ({ categoryId }: Props) => {
   const router = useRouter();
   const { categories: parentCategoriesFromContext } = useCategory();
+  const { defaultAddress, deliveryType, selectedStore, isLocationLoading } = useLocation();
+  const pickupStoreId =
+    deliveryType === "pickup" && selectedStore?.id != null
+      ? coordinate(selectedStore.id)
+      : undefined;
+  const storeIds = pickupStoreId != null ? [pickupStoreId] : undefined;
+  const latitude =
+    deliveryType === "delivery" ? coordinate(defaultAddress?.latitude) : undefined;
+  const longitude =
+    deliveryType === "delivery" ? coordinate(defaultAddress?.longitude) : undefined;
+  const waitingForLocation =
+    isLocationLoading && latitude == null && longitude == null && pickupStoreId == null;
   const [numericCategoryId, setNumericCategoryId] = useState<number | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [displayCategoryName, setDisplayCategoryName] = useState<string>("");
@@ -69,7 +89,10 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
       const result = await getProductsByParentCategoryWithPagination(
         numericCategoryId!,
         12, // Load 12 more products
-        nextCursor
+        nextCursor,
+        storeIds,
+        latitude,
+        longitude
       );
       
       setProducts(prev => [...prev, ...result.products]);
@@ -80,7 +103,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
     } finally {
       setLoadingMore(false);
     }
-  }, [isParentCategory, loadingMore, hasMore, nextCursor, numericCategoryId]);
+  }, [isParentCategory, loadingMore, hasMore, nextCursor, numericCategoryId, pickupStoreId, latitude, longitude]);
 
   // Scroll detection for infinite loading
   const handleScroll = useCallback(() => {
@@ -154,7 +177,9 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
       );
       const displayName = storedCategoryName || SIMILAR_PRODUCTS_TITLE;
       const parsedProducts = storedProducts ? JSON.parse(storedProducts) : [];
-      const nextProducts = Array.isArray(parsedProducts) ? parsedProducts : [];
+      const nextProducts = excludeUnavailableProducts(
+        Array.isArray(parsedProducts) ? parsedProducts : []
+      );
 
       setProducts(nextProducts);
       setDisplayCategoryName(displayName);
@@ -186,6 +211,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
   useEffect(() => {
     if (isStoredProductList || numericCategoryId === null) return;
     if (parentCategoriesFromContext.length === 0) return;
+    if (waitingForLocation) return;
 
     const categoryKey = numericCategoryId.toString();
     const parentCategories = parentCategoriesFromContext;
@@ -211,7 +237,13 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
           setIsLoadingProducts(true);
           try {
             const subcategoryProducts =
-              await getProductsBySubcategoryWithPricing(numericCategoryId);
+              await getProductsBySubcategoryWithPricing(
+                numericCategoryId,
+                100,
+                storeIds,
+                latitude,
+                longitude
+              );
             if (cancelled) return;
             setProducts(subcategoryProducts);
             const currentSubcategoryName = currentSub?.name || "";
@@ -254,7 +286,10 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
           const result = await getProductsByParentCategoryWithPagination(
             numericCategoryId,
             18, // Initial load: 18 products
-            null // No cursor for first load
+            null, // No cursor for first load
+            storeIds,
+            latitude,
+            longitude
           );
           if (cancelled) return;
 
@@ -273,11 +308,18 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
             `subcategory_${categoryKey}_name`
           );
 
+          let usedStoredProducts = false;
           if (storedProducts) {
             try {
               const parsedProducts = JSON.parse(storedProducts);
-              setProducts(parsedProducts);
-              setDisplayCategoryName(storedCategoryName || "");
+              const list = Array.isArray(parsedProducts) ? parsedProducts : [];
+              const scoped =
+                list.length > 0 && list.every((product) => product?.inventory);
+              if (scoped) {
+                setProducts(excludeUnavailableProducts(list));
+                setDisplayCategoryName(storedCategoryName || "");
+                usedStoredProducts = true;
+              }
 
               // Clear the stored data after using it
               sessionStorage.removeItem(`subcategory_${categoryKey}_products`);
@@ -312,10 +354,16 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
             );
           }
 
-          if (!storedProducts) {
+          if (!usedStoredProducts) {
             try {
               const subcategoryProducts =
-                await getProductsBySubcategoryWithPricing(numericCategoryId);
+                await getProductsBySubcategoryWithPricing(
+                  numericCategoryId,
+                  100,
+                  storeIds,
+                  latitude,
+                  longitude
+                );
               if (cancelled) return;
               setProducts(subcategoryProducts);
               const currentSubcategoryName =
@@ -358,6 +406,10 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
     router,
     isStoredProductList,
     parentCategoriesFromContext,
+    waitingForLocation,
+    pickupStoreId,
+    latitude,
+    longitude,
   ]);
 
   const handleSubcategorySelect = (subcategoryId: number | null) => {
@@ -432,6 +484,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
     return <Loader />;
   }
 
+  const visibleProducts = excludeUnavailableProducts(products) as Product[];
   const selectedSubcategory = selectedSubcategoryId
     ? subcategories.find((s) => s.id === selectedSubcategoryId) ?? null
     : null;
@@ -475,7 +528,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
                     </div>
                   ))
                 ) : (
-                  products.map((product) => (
+                  visibleProducts.map((product) => (
                     <div key={product.id} className="w-full">
                       <ProductCard product={product} />
                     </div>
@@ -515,7 +568,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
                   ))
                 ) : (
                   // Show actual products when loaded
-                  products.map((product) => (
+                  visibleProducts.map((product) => (
                     <div key={product.id} className="w-full">
                       <ProductCard product={product} />
                     </div>
@@ -595,7 +648,7 @@ const CategoriesPageClient = ({ categoryId }: Props) => {
                     ))
                   ) : (
                     // Show actual products when loaded
-                    products.map((product) => (
+                    visibleProducts.map((product) => (
                       <div key={product.id} className="w-full">
                         <ProductCard product={product} />
                       </div>

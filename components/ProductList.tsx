@@ -147,6 +147,8 @@ const ProductList = ({
     pageSize: HOME_PAGE_SIZE,
     latitude: shouldUseLocation ? defaultAddress?.latitude : undefined,
     longitude: shouldUseLocation ? defaultAddress?.longitude : undefined,
+    pauseForLocation:
+      shouldUseLocation && isLocationLoading && !isLocationReady,
     initialProducts: products,
     initialParentCategoryNames,
     initialParentProducts,

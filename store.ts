@@ -74,6 +74,14 @@ export interface OrderItem {
   agreementNote?: string;
   /** Warehouse removed this line. The row stays on the card, marked unavailable. */
   unavailable?: boolean;
+  /** Order line id. Required to load substitutes and submit a choice. */
+  lineId?: string;
+  /** `awaiting_customer` means this line is waiting on a replacement or a removal. */
+  holdStatus?: "awaiting_customer" | "resolved" | null;
+  /** Units the warehouse cannot supply. The rest of `quantity` is still coming. */
+  heldQuantity?: number;
+  /** When the warehouse reported the shortage. */
+  heldAt?: string;
 }
 
 /** One product whose quantity changed because the warehouse amended the order. */
@@ -136,6 +144,10 @@ export interface Order {
   cancelReasonCode?: string;
   /** Products whose quantity changed in a warehouse amendment. */
   itemChanges?: OrderItemChange[];
+  /** True when at least one line is waiting for the customer to choose or remove. */
+  awaitingCustomerChoice?: boolean;
+  /** How many lines are waiting. Used to badge the orders list. */
+  heldItemCount?: number;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -191,7 +203,10 @@ interface CartState {
   
   // New multi-cart functions
   createNewCart: (name?: string, description?: string) => Promise<Cart>;
-  switchCart: (cartId: number) => Promise<void>;
+  switchCart: (
+    cartId: number,
+    stock?: { storeIds?: number[]; latitude?: number; longitude?: number }
+  ) => Promise<void>;
   loadUserCarts: () => Promise<void>;
   deleteCart: (cartId: number) => Promise<void>;
   getActiveCart: () => Cart | null;
@@ -224,6 +239,27 @@ function pickProductImages(
     image_urls: fromProduct.length ? fromProduct : fromFallback.length ? fromFallback : resolved ? [resolved] : [],
     imageUrl: resolved,
   };
+}
+
+function inventoryHasMax(inventory: unknown): boolean {
+  const record = Array.isArray(inventory)
+    ? inventory.find(
+        (entry) =>
+          entry &&
+          typeof entry === "object" &&
+          (entry as { max_available?: unknown }).max_available != null
+      ) ?? inventory[0]
+    : inventory;
+  if (!record || typeof record !== "object") return false;
+  const max = Number((record as { max_available?: unknown }).max_available);
+  return Number.isFinite(max);
+}
+
+/** Keep a known stock cap when a cart refresh comes back without inventory. */
+function preferInventory<T>(incoming: T, existing: T): T {
+  if (inventoryHasMax(incoming)) return incoming;
+  if (inventoryHasMax(existing)) return existing;
+  return (incoming ?? existing) as T;
 }
 
 function quantityWithinMax(product: Product | undefined, quantity: number): number {
@@ -723,7 +759,7 @@ const useCartStore = create<CartState>()(
         }
       },
 
-      switchCart: async (cartId: number) => {
+      switchCart: async (cartId: number, stock?: { storeIds?: number[]; latitude?: number; longitude?: number }) => {
         try {
           const { getCartDetails, getProductById } = await import('./lib/api');
           
@@ -743,7 +779,12 @@ const useCartStore = create<CartState>()(
             
             try {
               // Always fetch complete product data to ensure we have everything
-              const fullProduct = await getProductById(productId.toString());
+              const fullProduct = await getProductById(
+                productId.toString(),
+                stock?.storeIds,
+                stock?.latitude,
+                stock?.longitude
+              );
               
               if (!fullProduct) {
                 console.warn(`⚠️ Product ${productId} not found`);
@@ -774,7 +815,11 @@ const useCartStore = create<CartState>()(
                   updated_at: fullProduct.updated_at,
                   categories: fullProduct.categories,
                   product_tags: fullProduct.product_tags,
-                  inventory: fullProduct.inventory,
+                  inventory: preferInventory(
+                    fullProduct.inventory,
+                    get().items.find((entry) => entry?.product?.id === fullProduct.id)?.product?.inventory ??
+                      item.product?.inventory
+                  ),
                   price: fullProduct.price,
                   unit: fullProduct.unit,
                   categoryId: fullProduct.categoryId
@@ -867,7 +912,7 @@ const useCartStore = create<CartState>()(
                 updated_at: item.product?.updated_at,
                 categories: item.product?.categories,
                 product_tags: item.product?.product_tags,
-                inventory: item.product?.inventory,
+                inventory: preferInventory(item.product?.inventory, existingProduct?.inventory),
                 // Legacy fields
                 price: item.product?.price,
                 unit: item.product?.unit,
@@ -1020,7 +1065,7 @@ const useCartStore = create<CartState>()(
               updated_at: item.product?.updated_at,
               categories: item.product?.categories,
               product_tags: item.product?.product_tags,
-              inventory: item.product?.inventory,
+              inventory: preferInventory(item.product?.inventory, existingProduct?.inventory),
               // Legacy fields
               price: item.product?.price,
               unit: item.product?.unit,

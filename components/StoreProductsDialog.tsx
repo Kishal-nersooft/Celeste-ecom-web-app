@@ -89,7 +89,7 @@ const StoreProductsDialog: React.FC<StoreProductsDialogProps> = ({
                 </div>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-neutral-900">{line.productName}</p>
-                  <p className="mt-0.5 text-xs text-neutral-500">
+                  <p className="mt-0.5 text-sm text-neutral-800">
                     Qty {line.qty} · LKR {line.unitPrice.toFixed(2)} each
                   </p>
                   <p className="mt-1 text-sm font-semibold tabular-nums text-neutral-900">

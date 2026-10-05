@@ -1,3 +1,4 @@
+import { readOrderHold } from "@/lib/order-hold";
 import { getOrderStatusFromPayload } from "@/lib/order-status";
 import type { DriverInfo, OrderItem, OrderItemChange, OrderReplacement, RiderInfo } from "@/store";
 
@@ -300,6 +301,13 @@ export function mapOrderItems(rawItems: unknown): OrderItem[] {
     }
     if (suppliedQuantity == null) suppliedQuantity = orderedQuantity;
 
+    const holdRaw = (textField(record, ["hold_status", "holdStatus"]) ?? "").toLowerCase();
+    const holdStatus =
+      holdRaw === "awaiting_customer" || holdRaw === "resolved" ? holdRaw : undefined;
+    const heldQuantity = parseQuantity(record.held_quantity ?? record.heldQuantity);
+    const heldAt = textField(record, ["held_at", "heldAt"]);
+    const awaitingChoice = holdStatus === "awaiting_customer";
+
     const item: OrderItem = {
       productId: safeProductId,
       name: productName(record, product, safeProductId),
@@ -311,7 +319,13 @@ export function mapOrderItems(rawItems: unknown): OrderItem[] {
       imageUrl: productImage(product) ?? productImage(record),
       replacement,
       agreementNote: readAgreementNote(record),
-      unavailable: isUnavailableLine(record, quantity, suppliedQuantity, Boolean(replacement)),
+      unavailable: awaitingChoice
+        ? false
+        : isUnavailableLine(record, quantity, suppliedQuantity, Boolean(replacement)),
+      lineId: recordKey(record),
+      holdStatus,
+      heldQuantity: heldQuantity != null ? heldQuantity : undefined,
+      heldAt,
     };
 
     return { item, key: recordKey(record), parent: parentKey(record), child: isSubstituteRow(record) };
@@ -463,16 +477,17 @@ export function orderPatchFromPayload(raw: Record<string, unknown>) {
     raw.fulfillmentStatus != null;
 
   const hasItems = Array.isArray(raw.items);
+  const items = hasItems ? mapOrderItems(raw.items) : undefined;
   const rider = readRiderFromPayload(raw);
   const driver = readDriverFromPayload(raw);
+  const hold = readOrderHold(raw, items);
 
   return {
     ...amendment,
+    ...hold,
     ...(hasStatus ? { status: getOrderStatusFromPayload(raw) } : {}),
     ...(totalAmount !== undefined ? { totalAmount, total: totalAmount } : {}),
-    ...(hasItems
-      ? { items: mapOrderItems(raw.items), itemChanges: readOrderItemChanges(raw) }
-      : {}),
+    ...(items ? { items, itemChanges: readOrderItemChanges(raw) } : {}),
     ...(rider ? { rider } : {}),
     ...(driver ? { driver } : {}),
   };

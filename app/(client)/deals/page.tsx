@@ -6,6 +6,8 @@ import ProductList from "@/components/ProductList";
 import { getProductsWithPricing } from "@/lib/api";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useCategory } from "@/contexts/CategoryContext";
+import { useLocation } from "@/contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
 import { Product } from "@/store";
 import Link from "next/link";
 import ProductCardSkeleton from "@/components/ProductCardSkeleton";
@@ -13,15 +15,32 @@ import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 export default function DealsPage() {
   const { user, loading: authLoading, isGuest } = useAuth();
   const { categories } = useCategory();
+  const { deliveryType, defaultAddress, selectedStore, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
+      if (!stockQuery.ready) return;
       try {
-        // Fetch all products with pricing data first
-        const allProductsResponse = await getProductsWithPricing(null, 1, 100, false, true, true, [1, 2, 3, 4]); // Get all products first
+        const allProductsResponse = await getProductsWithPricing(
+          null,
+          1,
+          100,
+          false,
+          true,
+          true,
+          stockQuery.storeIds,
+          stockQuery.latitude,
+          stockQuery.longitude
+        );
         
         // Filter to only products with discount_applied > 0
         const productsResponse = allProductsResponse.filter((product: Product) => 
@@ -41,7 +60,7 @@ export default function DealsPage() {
     };
 
     fetchData();
-  }, [user]);
+  }, [user, stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   return (
     <Container className="pb-10">

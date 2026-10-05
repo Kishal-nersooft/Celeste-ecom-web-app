@@ -7,13 +7,20 @@ import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { getPopularProducts } from "@/lib/api";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
 import { Product } from "@/store";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 export default function PopularItemsPage() {
   const { user } = useAuth();
-  const { deliveryType, defaultAddress, selectedStore } = useLocation();
+  const { deliveryType, defaultAddress, selectedStore, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
   const router = useRouter();
   const [popularProducts, setPopularProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,27 +28,14 @@ export default function PopularItemsPage() {
 
   useEffect(() => {
     const fetchProducts = async () => {
+      if (!stockQuery.ready) {
+        setLoading(true);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
-        
-        // Determine storeIds and location based on delivery type
-        let storeIds: number[] | undefined;
-        let latitude: number | undefined;
-        let longitude: number | undefined;
-
-        if (deliveryType === 'pickup') {
-          if (selectedStore?.id) {
-            storeIds = [parseInt(selectedStore.id.toString())];
-          } else {
-            storeIds = [1, 2, 3, 4];
-          }
-        } else if (defaultAddress?.latitude && defaultAddress?.longitude) {
-          latitude = parseFloat(defaultAddress.latitude);
-          longitude = parseFloat(defaultAddress.longitude);
-        } else {
-          storeIds = [1, 2, 3, 4];
-        }
 
         const products = await getPopularProducts(
           'trending',
@@ -54,9 +48,9 @@ export default function PopularItemsPage() {
           false,
           true,
           true,
-          storeIds,
-          latitude,
-          longitude
+          stockQuery.storeIds,
+          stockQuery.latitude,
+          stockQuery.longitude
         );
         
         if (Array.isArray(products) && products.length > 0) {
@@ -74,7 +68,7 @@ export default function PopularItemsPage() {
     };
 
     fetchProducts();
-  }, [user, deliveryType, defaultAddress, selectedStore]);
+  }, [user, stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   return (
     <div className="bg-gray-100 min-h-screen">

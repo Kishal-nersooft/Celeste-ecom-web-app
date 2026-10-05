@@ -4,44 +4,32 @@ import ProductRow from "./ProductRow";
 import { Product } from "../store";
 import { getSimilarProducts } from "../lib/api";
 import { useLocation } from "../contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
 
 interface SimilarProductsSectionProps {
   productId: number | string;
 }
 
 const SimilarProductsSection: React.FC<SimilarProductsSectionProps> = ({ productId }) => {
-  const { deliveryType, defaultAddress, selectedStore } = useLocation();
+  const { deliveryType, defaultAddress, selectedStore, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
   const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchProducts = async () => {
+      if (!stockQuery.ready) {
+        setLoading(true);
+        return;
+      }
+
       try {
         setLoading(true);
-        
-        // Determine location based on delivery type
-        let latitude: number | undefined;
-        let longitude: number | undefined;
-        let storeIds: number[] | undefined;
-
-        if (deliveryType === 'pickup') {
-          // For pickup mode, use selected store if available
-          if (selectedStore?.id) {
-            storeIds = [parseInt(selectedStore.id.toString(), 10)];
-          }
-          latitude = undefined;
-          longitude = undefined;
-        } else {
-          // For delivery mode, use location coordinates
-          if (defaultAddress?.latitude && defaultAddress?.longitude) {
-            latitude = parseFloat(defaultAddress.latitude);
-            longitude = parseFloat(defaultAddress.longitude);
-          } else {
-            // Still fetch without location - API will handle it
-            latitude = undefined;
-            longitude = undefined;
-          }
-        }
 
         // Fetch similar products (using default limit of 10)
         const products = await getSimilarProducts(
@@ -52,9 +40,9 @@ const SimilarProductsSection: React.FC<SimilarProductsSectionProps> = ({ product
           true, // includeCategories
           true, // includeTags
           true, // includeInventory
-          storeIds, // storeIds (for pickup mode)
-          latitude, // latitude (for delivery)
-          longitude // longitude (for delivery)
+          stockQuery.storeIds,
+          stockQuery.latitude,
+          stockQuery.longitude
         );
         
         
@@ -75,7 +63,7 @@ const SimilarProductsSection: React.FC<SimilarProductsSectionProps> = ({ product
     if (productId) {
       fetchProducts();
     }
-  }, [productId, deliveryType, defaultAddress, selectedStore]);
+  }, [productId, stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   // Hide section if no products and not loading
   if (!loading && similarProducts.length === 0) {

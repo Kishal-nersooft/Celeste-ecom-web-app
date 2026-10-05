@@ -4,6 +4,8 @@ import ProductCard from "./ProductCard";
 import { Product } from "../store";
 import { getPopularProducts } from "../lib/api";
 import { useLocation } from "../contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
+import { excludeUnavailableProducts } from "@/lib/stock-utils";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { motion } from "framer-motion";
@@ -16,7 +18,13 @@ const PopularItemsSection = () => {
   const [popularProducts, setPopularProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
-  const { deliveryType, defaultAddress, selectedStore } = useLocation();
+  const { deliveryType, defaultAddress, selectedStore, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
 
   const checkScrollButtons = () => {
     if (scrollContainerRef.current) {
@@ -50,33 +58,13 @@ const PopularItemsSection = () => {
 
   useEffect(() => {
     const fetchProducts = async () => {
+      if (!stockQuery.ready) {
+        setLoading(true);
+        return;
+      }
+
       try {
         setLoading(true);
-        
-        // Determine storeIds and location based on delivery type
-        let storeIds: number[] | undefined;
-        let latitude: number | undefined;
-        let longitude: number | undefined;
-
-        if (deliveryType === 'pickup') {
-          // For pickup mode, use selected store ID
-          if (selectedStore?.id) {
-            storeIds = [parseInt(selectedStore.id.toString())];
-          } else {
-            // Fallback to default stores if no store selected
-            storeIds = [1, 2, 3, 4];
-          }
-        } else {
-          // For delivery mode, use location coordinates
-          if (defaultAddress?.latitude && defaultAddress?.longitude) {
-            latitude = parseFloat(defaultAddress.latitude);
-            longitude = parseFloat(defaultAddress.longitude);
-          } else {
-            // Try without location as fallback
-            latitude = undefined;
-            longitude = undefined;
-          }
-        }
 
         // Fetch first 15 trending products for the popular items row
         
@@ -91,9 +79,9 @@ const PopularItemsSection = () => {
           false, // includeTags
           true, // includeInventory
           true, // includePopularityMetrics
-          storeIds, // storeIds (for pickup) or undefined (for delivery)
-          latitude, // latitude (for delivery)
-          longitude // longitude (for delivery)
+          stockQuery.storeIds,
+          stockQuery.latitude,
+          stockQuery.longitude
         );
         
         
@@ -112,7 +100,7 @@ const PopularItemsSection = () => {
     };
 
     fetchProducts();
-  }, [deliveryType, defaultAddress, selectedStore]);
+  }, [stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   useEffect(() => {
     checkScrollButtons();
@@ -190,7 +178,7 @@ const PopularItemsSection = () => {
             msOverflowStyle: "none",
           }}
         >
-          {popularProducts.map((product) => (
+          {excludeUnavailableProducts(popularProducts).map((product) => (
             <motion.div
               key={product?.id}
               layout

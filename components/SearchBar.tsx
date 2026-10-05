@@ -10,10 +10,12 @@ import { getProductPath } from '@/lib/product-slug';
 import { getProductImageUrl } from '@/lib/product-image';
 import { stripCategoryEmojis } from '@/lib/category-display-name';
 import { useLocation } from '@/contexts/LocationContext';
+import { catalogueStockQuery } from '@/lib/catalogue-location';
 import { Product } from '@/store';
 import { Category } from './Categories';
 import AddToCartButton from './AddToCartButton';
 import useCartStore from '@/store';
+import { excludeUnavailableProducts } from '@/lib/stock-utils';
 
 interface SearchResponse {
   suggestions: Array<{
@@ -243,7 +245,13 @@ const SearchBar: React.FC<SearchBarProps> = ({
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isSearchPage = pathname === '/search';
-  const { selectedStore, deliveryType, defaultAddress } = useLocation();
+  const { selectedStore, deliveryType, defaultAddress, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
   // Subscribe to cart items to force re-render when cart changes
   const cartItems = useCartStore((state) => state.items);
   
@@ -342,27 +350,22 @@ const SearchBar: React.FC<SearchBarProps> = ({
     try {
       const searchOptions: {
         includePricing: boolean;
+        includeInventory: boolean;
         storeIds?: number[];
         latitude?: number;
         longitude?: number;
         signal: AbortSignal;
       } = {
         includePricing: true,
+        includeInventory: true,
         signal,
       };
 
-      if (deliveryType === 'pickup' && selectedStore?.id) {
-        const storeId = parseInt(String(selectedStore.id), 10);
-        if (!Number.isNaN(storeId)) {
-          searchOptions.storeIds = [storeId];
-        }
-      } else if (
-        deliveryType === 'delivery' &&
-        defaultAddress?.latitude &&
-        defaultAddress?.longitude
-      ) {
-        searchOptions.latitude = defaultAddress.latitude;
-        searchOptions.longitude = defaultAddress.longitude;
+      if (stockQuery.storeIds?.[0] != null) {
+        searchOptions.storeIds = [stockQuery.storeIds[0]];
+      } else if (stockQuery.latitude != null && stockQuery.longitude != null) {
+        searchOptions.latitude = stockQuery.latitude;
+        searchOptions.longitude = stockQuery.longitude;
       }
 
       const searchResults = await searchProducts(
@@ -379,9 +382,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
         return;
       }
 
-      const mappedProducts = (searchResults.products || [])
-        .slice(0, DROPDOWN_RESULT_LIMIT)
-        .map((product: Record<string, unknown>) => mapSearchProductToProduct(product));
+      const mappedProducts = excludeUnavailableProducts(
+        (searchResults.products || [])
+          .slice(0, DROPDOWN_RESULT_LIMIT)
+          .map((product: Record<string, unknown>) => mapSearchProductToProduct(product))
+      );
 
       setResults({
         ...searchResults,
@@ -424,7 +429,9 @@ const SearchBar: React.FC<SearchBarProps> = ({
             if (!current) return current;
             return {
               ...current,
-              products: current.products.map((product) => byId.get(product.id) ?? product),
+              products: excludeUnavailableProducts(
+                current.products.map((product) => byId.get(product.id) ?? product)
+              ),
             };
           });
         });
@@ -449,7 +456,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         setIsLoading(false);
       }
     }
-  }, [selectedStore, deliveryType, defaultAddress]);
+  }, [stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   // Load subcategory names for the rotating placeholder (hits the shared categories cache).
   useEffect(() => {
@@ -534,6 +541,11 @@ const SearchBar: React.FC<SearchBarProps> = ({
       return;
     }
 
+    if (!stockQuery.ready) {
+      setIsLoading(true);
+      return;
+    }
+
     const trimmedQuery = query.trim();
 
     // Show dropdown skeleton immediately while debouncing / fetching.
@@ -559,7 +571,7 @@ const SearchBar: React.FC<SearchBarProps> = ({
         searchAbortRef.current = null;
       }
     };
-  }, [query, performSearch, isSearchPage]);
+  }, [query, performSearch, isSearchPage, stockQuery.ready]);
 
   // Handle input change
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {

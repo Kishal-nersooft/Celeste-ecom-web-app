@@ -14,9 +14,18 @@ interface UsePaginatedProductsOptions {
   pageSize?: number;
   latitude?: number;
   longitude?: number;
+  /** Hold the catalogue until delivery coordinates exist, so rows are not shown without stock. */
+  pauseForLocation?: boolean;
   initialProducts?: Product[];
   initialParentCategoryNames?: { [key: number]: string };
   initialParentProducts?: { [key: number]: Product[] };
+}
+
+function rowsHaveStock(rows?: { [key: number]: Product[] }): boolean {
+  if (!rows) return false;
+  return Object.values(rows).some(
+    (list) => Array.isArray(list) && list.some((product) => product?.inventory)
+  );
 }
 
 interface CategoryViewCache {
@@ -90,27 +99,29 @@ export const usePaginatedProducts = ({
   pageSize = 20,
   latitude,
   longitude,
+  pauseForLocation = false,
   initialProducts,
   initialParentCategoryNames,
   initialParentProducts
 }: UsePaginatedProductsOptions) => {
-  const hasServerRows =
-    !!initialParentProducts && Object.keys(initialParentProducts).length > 0;
+  // Server rows are fetched without a delivery location, so inventory is empty and
+  // out-of-stock items cannot be removed. Keep them off screen until a scoped fetch lands.
+  const hasServerRows = rowsHaveStock(initialParentProducts);
 
   const [data, setData] = useState<PaginatedData>({
-    products: initialProducts ?? [],
+    products: hasServerRows ? (initialProducts ?? []) : [],
     subcategories: [],
-    parentCategoryNames: initialParentCategoryNames ?? {},
-    parentProducts: initialParentProducts ?? {},
+    parentCategoryNames: hasServerRows ? (initialParentCategoryNames ?? {}) : {},
+    parentProducts: hasServerRows ? (initialParentProducts ?? {}) : {},
     subcategoryProducts: {},
     loadedSubcategories: {},
     loadingSubcategories: {},
     loadingParentCategories: {},
-    loading: false,
+    loading: !hasServerRows,
     loadingMore: false,
     hasMore: true,
     currentPage: 1,
-    totalProducts: initialProducts?.length ?? 0
+    totalProducts: hasServerRows ? (initialProducts?.length ?? 0) : 0
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -324,7 +335,10 @@ export const usePaginatedProducts = ({
       const discountedProducts = await executeWithLimit(() =>
         getDiscountedProductsOptimized(
           pageSize,
-          storeId ? [storeId] : undefined
+          storeId ? [storeId] : undefined,
+          null,
+          latitude,
+          longitude
         )
       );
       if (!isCurrentRequest(request) || !isDealsRef.current) {
@@ -352,7 +366,7 @@ export const usePaginatedProducts = ({
         hasMore: false
       }));
     }
-  }, [isDeals, storeId, pageSize]);
+  }, [isDeals, storeId, pageSize, latitude, longitude]);
 
   // Fetch subcategory products with pagination
   const fetchSubcategoryProducts = useCallback(async (page: number = 1, append: boolean = false) => {
@@ -593,6 +607,10 @@ export const usePaginatedProducts = ({
   // Main effect to handle data fetching with debouncing.
   // Do not wait for auth — catalogue fetch starts as soon as categories/location are known.
   useEffect(() => {
+    if (pauseForLocation) {
+      return;
+    }
+
     if (!isDeals && selectedCategory === null && !parentCategoryKey) {
       return;
     }
@@ -735,7 +753,7 @@ export const usePaginatedProducts = ({
         abortControllerRef.current.abort();
       }
     };
-  }, [selectedCategory, isDeals, parentCategoryKey, latitude, longitude, storeId, categories]);
+  }, [selectedCategory, isDeals, parentCategoryKey, latitude, longitude, storeId, categories, pauseForLocation]);
 
   return {
     ...data,

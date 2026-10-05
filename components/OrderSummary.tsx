@@ -258,6 +258,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                   and authorize secure payment processing.
                 </span>
               </label>
+              <p className="mt-2 text-[10px] leading-snug text-gray-600 sm:text-xs">
+                Your card will be saved for future orders and order changes.
+              </p>
             </div>
             <button
               onClick={onCheckout}
@@ -517,7 +520,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                           cartProduct?.image_urls?.[0] ||
                           cartProduct?.imageUrl;
                         const hasValidImage = imageUrl && typeof imageUrl === 'string' && imageUrl.trim() !== "" && imageUrl.startsWith("http");
-                        const { unitPrice, lineTotal } = getOptimisticLine(it);
+                        const { unitPrice, lineTotal, qty } = getOptimisticLine(it);
                         // Find the full product from cart store for QuantityButtons
                         const fullProduct = cartProduct;
                         return (
@@ -531,7 +534,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                             </div>
                             <div className="flex-1 min-w-0">
                               <div className="truncate font-medium">{productName}</div>
-                              <div className="text-[10px] sm:text-xs text-gray-500">Unit: LKR {unitPrice.toFixed(2)}</div>
+                              <div className="text-xs text-gray-700 sm:text-sm">
+                                Qty {qty} · LKR {unitPrice.toFixed(2)} each
+                              </div>
                               <div className="text-xs sm:text-sm font-medium mt-1">LKR {lineTotal.toFixed(2)}</div>
                             </div>
                             {fullProduct && (
@@ -609,7 +614,7 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                       const isDiscounted =
                         (product.pricing?.discount_applied ?? 0) > 0 ||
                         (backendItem?.discount_percentage || 0) > 0;
-                      const { unitPrice, lineTotal, lineBaseTotal } = getLineFromCart(cartItem);
+                      const { unitPrice, lineTotal, lineBaseTotal, qty } = getLineFromCart(cartItem);
                       return (
                         <div
                           key={`${product.id ?? index}`}
@@ -630,8 +635,8 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
                           </div>
                           <div className="flex-1 min-w-0">
                             <h5 className="font-medium text-xs sm:text-sm truncate">{productName}</h5>
-                            <p className="text-[10px] sm:text-xs text-gray-500">
-                              Unit: LKR {unitPrice.toFixed(2)}
+                            <p className="text-xs text-gray-700 sm:text-sm">
+                              Qty {qty} · LKR {unitPrice.toFixed(2)} each
                             </p>
                             <div className="flex items-center gap-2">
                               {isDiscounted ? (
@@ -777,6 +782,9 @@ const OrderSummary: React.FC<OrderSummaryProps> = ({
               and authorize secure payment processing.
             </span>
           </label>
+          <p className="mt-2 text-[10px] leading-snug text-gray-600 sm:text-xs">
+            Your card will be saved for future orders and order changes.
+          </p>
         </div>
         <button
           onClick={onCheckout}

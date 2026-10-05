@@ -114,8 +114,15 @@ const QuantityButtons = ({
   alwaysExpanded = false,
 }: Props) => {
   const { addItem, removeItem, updateItemQuantity, getItemCount, mergeProductInventory } = useCartStore();
+  const liveCartProduct = useCartStore((state) =>
+    product?.id
+      ? state.items.find((item) => item?.product?.id === product.id)?.product
+      : undefined
+  );
+  const stockProduct =
+    getMaxAvailableQuantity(product) != null ? product : liveCartProduct ?? product;
   const itemCount = getItemCount(product?.id);
-  const maxAvailable = getMaxAvailableQuantity(product);
+  const maxAvailable = getMaxAvailableQuantity(stockProduct);
   const [isProcessing, setIsProcessing] = useState(false);
   const [localItemCount, setLocalItemCount] = useState(itemCount);
   const [expanded, setExpanded] = useState(alwaysExpanded);
@@ -123,13 +130,20 @@ const QuantityButtons = ({
   const styles = sizeStyles[size];
   const atMax = maxAvailable != null && localItemCount >= maxAvailable;
 
+  const notifyStockLimit = () => {
+    if (maxAvailable == null || !product?.id) return;
+    toast.error(`Stock limit reached. Only ${maxAvailable} available.`, {
+      id: `stock-limit-${product.id}`,
+    });
+  };
+
   useEffect(() => {
     setLocalItemCount(itemCount);
   }, [itemCount]);
 
   useEffect(() => {
     if (!product?.id || maxAvailable == null) return;
-    mergeProductInventory(product);
+    mergeProductInventory(stockProduct);
     if (itemCount <= maxAvailable) {
       if (capRequested.get(product.id) === maxAvailable) {
         capRequested.delete(product.id);
@@ -202,12 +216,18 @@ const QuantityButtons = ({
   const handleAddProduct = async (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
+    if (maxAvailable != null && (localItemCount >= maxAvailable || itemCount >= maxAvailable)) {
+      notifyStockLimit();
+      return;
+    }
     if (isProcessing) return;
-    if (maxAvailable != null && itemCount >= maxAvailable) return;
 
     setIsProcessing(true);
     const newQuantity = itemCount + 1;
     setLocalItemCount(newQuantity);
+    if (maxAvailable != null && newQuantity >= maxAvailable) {
+      notifyStockLimit();
+    }
 
     try {
       if (itemCount === 0) {
@@ -295,17 +315,22 @@ const QuantityButtons = ({
           <button
             type="button"
             onClick={handleAddProduct}
-            disabled={!expanded || isProcessing || atMax}
+            disabled={!expanded || (isProcessing && !atMax)}
+            aria-disabled={atMax || undefined}
             aria-hidden={!expanded}
             tabIndex={expanded ? 0 : -1}
             aria-label="Increase quantity"
-            title={atMax ? undefined : "Increase quantity"}
-            className="group/step flex h-full items-center justify-center text-black focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-300"
+            title={atMax ? "Stock limit reached" : "Increase quantity"}
+            className={twMerge(
+              "group/step flex h-full items-center justify-center text-black focus-visible:outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:text-gray-300",
+              atMax && "cursor-not-allowed text-gray-300"
+            )}
             style={{ width: styles.side }}
           >
             <span
               className={twMerge(
-                "flex items-center justify-center rounded-full bg-transparent transition-colors group-hover/step:bg-gray-200 group-active/step:bg-gray-300",
+                "flex items-center justify-center rounded-full bg-transparent transition-colors",
+                !atMax && "group-hover/step:bg-gray-200 group-active/step:bg-gray-300",
                 styles.circle
               )}
             >

@@ -4,11 +4,18 @@ import ProductRow from "./ProductRow";
 import { Product } from "../store";
 import { getRecentProducts } from "../lib/api";
 import { useLocation } from "../contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
 import { useAuth } from "./FirebaseAuthProvider";
 import Link from "next/link";
 
 const RecentItemsSection = () => {
-  const { deliveryType, defaultAddress, selectedStore } = useLocation();
+  const { deliveryType, defaultAddress, selectedStore, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
   const { user, loading: authLoading } = useAuth();
   const [recentProducts, setRecentProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,28 +28,22 @@ const RecentItemsSection = () => {
         return;
       }
 
+      if (!stockQuery.ready) {
+        setLoading(true);
+        return;
+      }
+
+      if (
+        deliveryType === "delivery" &&
+        stockQuery.latitude == null &&
+        stockQuery.longitude == null
+      ) {
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
-        
-        // Determine location based on delivery type
-        let latitude: number | undefined;
-        let longitude: number | undefined;
-
-        if (deliveryType === 'pickup') {
-          // For pickup mode, we don't send location (store_id is handled by backend based on auth)
-          latitude = undefined;
-          longitude = undefined;
-        } else {
-          // For delivery mode, use location coordinates
-          if (defaultAddress?.latitude && defaultAddress?.longitude) {
-            latitude = parseFloat(defaultAddress.latitude);
-            longitude = parseFloat(defaultAddress.longitude);
-          } else {
-            // Don't fetch if we don't have location for delivery mode
-            setLoading(false);
-            return;
-          }
-        }
 
         // Fetch recent products (limit 20 for the section)
         const products = await getRecentProducts(
@@ -51,8 +52,9 @@ const RecentItemsSection = () => {
           true, // includeCategories
           false, // includeTags
           true, // includeInventory
-          latitude, // latitude (for delivery)
-          longitude // longitude (for delivery)
+          stockQuery.latitude,
+          stockQuery.longitude,
+          stockQuery.storeIds
         );
         
         
@@ -71,7 +73,7 @@ const RecentItemsSection = () => {
     };
 
     fetchProducts();
-  }, [user, authLoading, deliveryType, defaultAddress, selectedStore]);
+  }, [user, authLoading, deliveryType, stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   // Don't show section if user is not authenticated
   if (!user) {

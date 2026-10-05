@@ -7,6 +7,7 @@ import Container from "@/components/Container";
 import ProductGrid from "@/components/ProductGrid";
 import { searchProducts } from "@/lib/api";
 import { useLocation } from "@/contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
 import Loader from "@/components/Loader";
 import { Product } from "@/store";
 
@@ -16,7 +17,13 @@ const SearchPageContent = () => {
   const searchParams = useSearchParams();
   const rawQuery = searchParams.get("q") || "";
   const query = rawQuery.trim();
-  const { selectedStore, deliveryType, defaultAddress } = useLocation();
+  const { selectedStore, deliveryType, defaultAddress, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -53,23 +60,16 @@ const SearchPageContent = () => {
         options.cursor = cursor;
       }
 
-      if (deliveryType === "pickup" && selectedStore?.id) {
-        const storeId = parseInt(String(selectedStore.id), 10);
-        if (!Number.isNaN(storeId)) {
-          options.storeIds = [storeId];
-        }
-      } else if (
-        deliveryType === "delivery" &&
-        defaultAddress?.latitude &&
-        defaultAddress?.longitude
-      ) {
-        options.latitude = defaultAddress.latitude;
-        options.longitude = defaultAddress.longitude;
+      if (stockQuery.storeIds?.[0] != null) {
+        options.storeIds = [stockQuery.storeIds[0]];
+      } else if (stockQuery.latitude != null && stockQuery.longitude != null) {
+        options.latitude = stockQuery.latitude;
+        options.longitude = stockQuery.longitude;
       }
 
       return options;
     },
-    [selectedStore, deliveryType, defaultAddress]
+    [stockQuery.storeIds?.[0], stockQuery.latitude, stockQuery.longitude]
   );
 
   useLayoutEffect(() => {
@@ -101,7 +101,7 @@ const SearchPageContent = () => {
       fetchAbortRef.current.abort();
     }
 
-    if (!query || query.length < 2) {
+    if (!query || query.length < 2 || !stockQuery.ready) {
       return;
     }
 
@@ -150,7 +150,7 @@ const SearchPageContent = () => {
     return () => {
       fetchAbortRef.current?.abort();
     };
-  }, [query, buildSearchOptions]);
+  }, [query, buildSearchOptions, stockQuery.ready]);
 
   const loadMore = useCallback(async () => {
     if (!query || query.length < 2 || loading || loadingMore || !hasMore) {

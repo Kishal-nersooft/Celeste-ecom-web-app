@@ -6,6 +6,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { toCategorySlug } from "@/lib/category-slug";
 import { stripCategoryEmojis } from "@/lib/category-display-name";
+import { excludeUnavailableProducts } from "@/lib/stock-utils";
 
 interface Props {
   products: Product[];
@@ -26,7 +27,7 @@ const ProductRowServer = ({
   hasMore = false,
 }: Props) => {
   // Show all products in the scrollable view, filtering out invalid products
-  const visibleProducts = products.filter(
+  const visibleProducts = excludeUnavailableProducts(products).filter(
     (product) =>
       product &&
       product.id &&

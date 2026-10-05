@@ -1,6 +1,10 @@
+"use client";
+
 import React from "react";
 import { ArrowDown, Phone, Plus } from "lucide-react";
 import PriceFormatter from "@/components/PriceFormatter";
+import OrderItemChoice from "@/components/OrderItemChoice";
+import { heldLineCopy } from "@/lib/order-hold";
 import type { OrderItem, OrderReplacement } from "@/store";
 
 function lineTotal(item: OrderItem): number {
@@ -16,7 +20,10 @@ function withRemovedLines(items: OrderItem[], paid?: number, totalNow?: number):
   if (items.some((item) => item.unavailable)) return items;
 
   const matches = items.filter(
-    (item) => !item.replacement && Math.abs(lineTotal(item) - refund) < 0.05,
+    (item) =>
+      item.holdStatus !== "awaiting_customer" &&
+      !item.replacement &&
+      Math.abs(lineTotal(item) - refund) < 0.05,
   );
   if (matches.length !== 1) return items;
 
@@ -213,10 +220,39 @@ function ReplacementGroup({
   );
 }
 
-function ItemRow({ item }: { item: OrderItem }) {
+function ItemRow({
+  item,
+  orderId,
+  onChoiceApplied,
+}: {
+  item: OrderItem;
+  orderId?: string;
+  onChoiceApplied?: () => void;
+}) {
   const ordered = item.orderedQuantity ?? item.quantity;
   const supplied = item.suppliedQuantity ?? ordered;
   const amount = lineTotal(item);
+
+  if (item.holdStatus === "awaiting_customer") {
+    const held = item.heldQuantity ?? 0;
+    return (
+      <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-1">
+        <ProductCard
+          name={item.name}
+          imageUrl={item.imageUrl}
+          amount={amount}
+          detail={
+            <span className="font-medium text-amber-900">{heldLineCopy(item.quantity, held)}</span>
+          }
+        />
+        {orderId && item.lineId && onChoiceApplied && (
+          <div className="px-2 pb-2">
+            <OrderItemChoice orderId={orderId} item={item} onApplied={onChoiceApplied} />
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (item.unavailable) {
     return (
@@ -286,17 +322,26 @@ const OrderLines = ({
   items,
   paid,
   totalNow,
+  orderId,
+  onChoiceApplied,
 }: {
   items: OrderItem[];
   paid?: number;
   totalNow?: number;
+  orderId?: string;
+  onChoiceApplied?: () => void;
 }) => {
   const rows = withRemovedLines(items, paid, totalNow);
 
   return (
     <div className="space-y-2 sm:space-y-3">
       {rows.map((item, index) => (
-        <ItemRow key={`${item.productId}-${index}`} item={item} />
+        <ItemRow
+          key={`${item.lineId ?? item.productId}-${index}`}
+          item={item}
+          orderId={orderId}
+          onChoiceApplied={onChoiceApplied}
+        />
       ))}
     </div>
   );

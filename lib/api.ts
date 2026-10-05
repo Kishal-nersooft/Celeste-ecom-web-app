@@ -1334,7 +1334,8 @@ export async function getRecentProducts(
   includeTags: boolean = false,
   includeInventory: boolean = true,
   latitude?: number,
-  longitude?: number
+  longitude?: number,
+  storeIds?: number[]
 ) {
   
   const params = new URLSearchParams();
@@ -1343,8 +1344,10 @@ export async function getRecentProducts(
   params.append('include_categories', includeCategories.toString());
   params.append('include_tags', includeTags.toString());
   params.append('include_inventory', includeInventory.toString());
-  
-  if (latitude !== undefined && longitude !== undefined) {
+
+  if (storeIds && storeIds.length > 0) {
+    storeIds.forEach((id) => params.append('store_id', id.toString()));
+  } else if (latitude !== undefined && longitude !== undefined) {
     params.append('latitude', latitude.toString());
     params.append('longitude', longitude.toString());
   }
@@ -1514,7 +1517,9 @@ export async function getSimilarProducts(
 export async function getDiscountedProductsOptimized(
   pageSize: number = 50, // Smaller page size for deals
   storeIds?: number[],
-  cursor?: string | null
+  cursor?: string | null,
+  latitude?: number,
+  longitude?: number
 ) {
   
   // Use backend's only_discounted=true parameter for fast filtering
@@ -1526,7 +1531,9 @@ export async function getDiscountedProductsOptimized(
     true, // includeCategories
     true, // include_pricing=true - backend returns pricing data
     true, // includeInventory
-    storeIds
+    storeIds,
+    latitude,
+    longitude
   );
 
   
@@ -1551,7 +1558,9 @@ export async function getProductsWithCursorPagination(
   pageSize: number = 20,
   cursor?: string | null,
   onlyDiscounted: boolean = false,
-  storeIds?: number[]
+  storeIds?: number[],
+  latitude?: number,
+  longitude?: number
 ) {
   const params = new URLSearchParams();
   params.append('limit', pageSize.toString());
@@ -1565,6 +1574,11 @@ export async function getProductsWithCursorPagination(
   
   if (storeIds && storeIds.length > 0) {
     storeIds.forEach(id => params.append('store_id', id.toString()));
+  }
+
+  if (latitude !== undefined && longitude !== undefined && (!storeIds || storeIds.length === 0)) {
+    params.append('latitude', latitude.toString());
+    params.append('longitude', longitude.toString());
   }
   
   if (categoryIds && categoryIds.length > 0) {
@@ -1626,7 +1640,9 @@ export async function getProductsByParentCategoryWithPagination(
   parentCategoryId: number,
   pageSize: number = 18,
   cursor?: string | null,
-  storeIds?: number[]
+  storeIds?: number[],
+  latitude?: number,
+  longitude?: number
 ) {
   // First get all subcategories of the parent category
   const subcategories = await getSubcategories(parentCategoryId);
@@ -1648,8 +1664,10 @@ export async function getProductsByParentCategoryWithPagination(
     subcategoryIds,
     pageSize,
     cursor,
-    false, // not only discounted
-    storeIds
+    false,
+    storeIds,
+    latitude,
+    longitude
   );
 }
 
@@ -2608,6 +2626,109 @@ export function rejectOrderAmendment(orderId: string) {
   return postOrderAmendment(orderId, "reject");
 }
 
+export class ApiError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+async function throwApiError(response: Response, fallback: string): Promise<never> {
+  let message = fallback;
+  try {
+    const body = await response.json();
+    const raw = body?.message ?? body?.detail;
+    if (typeof raw === "string" && raw.trim()) message = raw.trim();
+  } catch {
+    // The body was not JSON. Keep the fallback.
+  }
+  throw new ApiError(response.status, message);
+}
+
+export async function getItemSubstitutes(orderId: string, itemId: string) {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(apiUrl(`/orders/${orderId}/items/${itemId}/substitutes`), {
+    method: "GET",
+    headers: authHeaders,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    await throwApiError(response, "Could not load replacement options.");
+  }
+
+  return response.json();
+}
+
+export async function submitItemChoice(
+  orderId: string,
+  itemId: string,
+  body: { action: "remove" } | { action: "replace"; product_id: number; quantity: number },
+) {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(apiUrl(`/orders/${orderId}/items/${itemId}/choice`), {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    await throwApiError(response, "Could not save your choice.");
+  }
+
+  return response.json();
+}
+
+export async function confirmItemChoice(
+  orderId: string,
+  itemId: string,
+  paymentReference: string,
+) {
+  const authHeaders = await getAuthHeaders();
+  const response = await fetch(apiUrl(`/orders/${orderId}/items/${itemId}/choice/confirm`), {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ payment_reference: paymentReference }),
+  });
+
+  if (!response.ok) {
+    await throwApiError(response, "Payment was received, but the change was not applied. Please try again.");
+  }
+
+  return response.json();
+}
+
+/** Start the same hosted payment used at checkout, for a price difference on a held line. */
+export async function initiateOutstandingPayment(input: {
+  amount: number;
+  orderId: string;
+  sourceTokenId?: number;
+}) {
+  const authHeaders = await getAuthHeaders();
+  const body: Record<string, unknown> = {
+    amount: input.amount,
+    currency: "LKR",
+    order_id: Number(input.orderId),
+    save_card: true,
+  };
+  if (input.sourceTokenId != null) body.source_token_id = input.sourceTokenId;
+
+  const response = await fetch(apiUrl("/payments/initiate"), {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    await throwApiError(response, "Could not start payment.");
+  }
+
+  return response.json();
+}
+
 // ==================== ORDERS API FUNCTIONS ====================
 
 // Get all orders for the current user
@@ -2804,6 +2925,8 @@ export async function searchProducts(
     includeCategories?: boolean;
     includeTags?: boolean;
     includeInventory?: boolean;
+    /** When true with a store id, the server returns only what that store can sell. */
+    hasInventory?: boolean;
     categoryIds?: number[];
     minPrice?: number;
     maxPrice?: number;
@@ -2852,6 +2975,9 @@ export async function searchProducts(
   }
   if (options.includeInventory !== undefined) {
     params.append('include_inventory', options.includeInventory.toString());
+  }
+  if (options.hasInventory !== undefined) {
+    params.append('has_inventory', options.hasInventory.toString());
   }
   if (options.categoryIds && options.categoryIds.length > 0) {
     options.categoryIds.forEach(id => params.append('category_ids', id.toString()));

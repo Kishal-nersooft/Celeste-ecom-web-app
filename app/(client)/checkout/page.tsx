@@ -17,8 +17,10 @@ import {
   getAuthHeaders,
   removeFromCart,
   checkPaymentStatus,
+  getProductById,
   type CheckoutDeliveryOption,
 } from "@/lib/api";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
 import { clearStaleAddressData, validateAddressOwnership, handleAddressValidationError } from "@/lib/address-utils";
 import QuantityMismatchAlert from "@/components/QuantityMismatchAlert";
 import OrderSummary from "@/components/OrderSummary";
@@ -70,8 +72,13 @@ const CheckoutPage = () => {
   const [processingQuantityMismatch, setProcessingQuantityMismatch] = useState(false);
   const [showMultiStoreDialog, setShowMultiStoreDialog] = useState(false);
   const [splitDecisionMade, setSplitDecisionMade] = useState(false);
-  const [splitOrderSelected, setSplitOrderSelected] = useState<boolean>(false);
   const [editorMode, setEditorMode] = useState(false);
+  const [editDirty, setEditDirty] = useState(false);
+  const [showSaveConfirm, setShowSaveConfirm] = useState(false);
+  const [showUnsavedNavConfirm, setShowUnsavedNavConfirm] = useState(false);
+  const editBaselineRef = React.useRef<Map<number, number>>(new Map());
+  const bypassUnsavedNavRef = React.useRef(false);
+  const pendingUnsavedNavRef = React.useRef<string | "back" | null>(null);
   const editItemsByStoreRef = React.useRef<HTMLDivElement>(null);
   const scrollToEditItemsRef = React.useRef(false);
   const [confirmStoreId, setConfirmStoreId] = useState<number | null>(null);
@@ -94,9 +101,30 @@ const CheckoutPage = () => {
   const pollingControlRef = React.useRef<{
     stop: (opts?: { switchToCancelled?: boolean }) => void;
   } | null>(null);
-  const { selectedLocation, setSelectedLocation, addressId: contextAddressId, defaultAddress, deliveryType, setDeliveryType, selectedStore, canPlaceOrder } = useLocation();
+  const { selectedLocation, setSelectedLocation, addressId: contextAddressId, defaultAddress, deliveryType, setDeliveryType, selectedStore, canPlaceOrder, isLocationLoading } = useLocation();
   
   const cartStore = useCartStore();
+  const stockQuery = catalogueStockQuery({
+    deliveryType: selectedOrderType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
+  const stockQueryRef = React.useRef(stockQuery);
+  stockQueryRef.current = stockQuery;
+  const cartProductKey = cartStore.items
+    .map((item) => item?.product?.id)
+    .filter((id) => id != null)
+    .join(",");
+
+  const switchCartWithStock = React.useCallback(async (cartId: number) => {
+    const stock = stockQueryRef.current;
+    await useCartStore.getState().switchCart(cartId, {
+      storeIds: stock.storeIds,
+      latitude: stock.latitude,
+      longitude: stock.longitude,
+    });
+  }, []);
   
   const { user, loading, unresolved, isGuest } = useAuth();
   const router = useRouter();
@@ -131,9 +159,9 @@ const CheckoutPage = () => {
         return !hasName || !hasImages || !hasPricing;
       });
 
-      if (itemsNeedingData.length > 0) {
+      if (itemsNeedingData.length > 0 && cartStore.cartId) {
         try {
-          await cartStore.switchCart(cartStore.cartId);
+          await switchCartWithStock(cartStore.cartId);
         } catch (error) {
           console.error('❌ Failed to sync cart:', error);
         }
@@ -141,7 +169,42 @@ const CheckoutPage = () => {
     };
 
     ensureCartItemsData();
-  }, [user, cartStore.cartId, cartStore.items.length]);
+  }, [user, cartStore.cartId, cartStore.items.length, switchCartWithStock]);
+
+  // Quantity controls use inventory.max_available. Checkout must load that cap for the
+  // selected address or pickup store, because a cart refresh often returns inventory: null.
+  useEffect(() => {
+    if (!stockQuery.ready || !cartProductKey) return;
+    let cancelled = false;
+    const { storeIds, latitude, longitude } = stockQuery;
+
+    void Promise.all(
+      useCartStore.getState().items.map(async (item) => {
+        const product = item?.product;
+        if (!product?.id) return;
+        try {
+          const full = await getProductById(
+            String(product.id),
+            storeIds,
+            latitude,
+            longitude,
+            true
+          );
+          if (cancelled || full?.inventory == null) return;
+          useCartStore.getState().mergeProductInventory({
+            ...product,
+            inventory: full.inventory,
+          });
+        } catch (error) {
+          console.error("Failed to load checkout stock limit:", error);
+        }
+      })
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0], cartProductKey]);
 
   // Read latest preview for skeleton vs refresh without putting it in callback deps
   // (that previously recreated this function after every response and re-fetched in a loop).
@@ -254,6 +317,95 @@ const CheckoutPage = () => {
     }, 400);
   }, [fetchPreviewData]);
 
+  const captureEditBaseline = () => {
+    const next = new Map<number, number>();
+    for (const item of useCartStore.getState().items) {
+      if (item?.product?.id == null) continue;
+      next.set(item.product.id, item.quantity);
+    }
+    editBaselineRef.current = next;
+  };
+
+  React.useEffect(() => {
+    if (!editorMode) return;
+    const baseline = editBaselineRef.current;
+    const items = cartStore.items.filter((item) => item?.product?.id != null);
+    const dirty =
+      items.length !== baseline.size ||
+      items.some((item) => baseline.get(item.product.id) !== item.quantity);
+    setEditDirty(dirty);
+  }, [editorMode, cartStore.items]);
+
+  const hasUnsavedEdits = editorMode && editDirty;
+
+  React.useEffect(() => {
+    if (!hasUnsavedEdits) return;
+
+    const onBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0) return;
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      const anchor = (event.target as Element | null)?.closest("a");
+      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+      const href = anchor.getAttribute("href");
+      if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
+
+      let next: URL;
+      try {
+        next = new URL(anchor.href, window.location.href);
+      } catch {
+        return;
+      }
+      if (next.origin !== window.location.origin) return;
+      if (next.pathname === window.location.pathname && next.search === window.location.search) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      pendingUnsavedNavRef.current = `${next.pathname}${next.search}${next.hash}`;
+      setShowUnsavedNavConfirm(true);
+    };
+
+    const sentinel = { celesteCheckoutUnsaved: true };
+    if (!window.history.state?.celesteCheckoutUnsaved) {
+      window.history.pushState(sentinel, "", window.location.href);
+    }
+
+    const onPopState = () => {
+      if (bypassUnsavedNavRef.current) return;
+      window.history.pushState(sentinel, "", window.location.href);
+      pendingUnsavedNavRef.current = "back";
+      setShowUnsavedNavConfirm(true);
+    };
+
+    window.addEventListener("beforeunload", onBeforeUnload);
+    document.addEventListener("click", onClick, true);
+    window.addEventListener("popstate", onPopState);
+
+    let committed = false;
+    const commitTimer = window.setTimeout(() => {
+      committed = true;
+    }, 0);
+
+    return () => {
+      window.clearTimeout(commitTimer);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+      document.removeEventListener("click", onClick, true);
+      window.removeEventListener("popstate", onPopState);
+      if (!committed) return;
+      if (!bypassUnsavedNavRef.current && window.history.state?.celesteCheckoutUnsaved) {
+        bypassUnsavedNavRef.current = true;
+        window.history.back();
+        window.setTimeout(() => {
+          bypassUnsavedNavRef.current = false;
+        }, 0);
+      }
+    };
+  }, [hasUnsavedEdits]);
+
   React.useEffect(() => {
     return () => {
       if (previewRefreshTimeoutRef.current) {
@@ -280,7 +432,7 @@ const CheckoutPage = () => {
       // Pull the latest cart state from backend so preview reflects newly added items.
       const cartId = useCartStore.getState().cartId;
       if (cartId) {
-        await useCartStore.getState().switchCart(cartId);
+        await switchCartWithStock(cartId);
       }
 
       await fetchPreviewData();
@@ -288,7 +440,7 @@ const CheckoutPage = () => {
       console.error("Failed to refresh checkout after suggestions popup:", e);
       // Even if refresh fails, don't block checkout UX.
     }
-  }, [fetchPreviewData]);
+  }, [fetchPreviewData, switchCartWithStock]);
 
   // Fetch preview data when address is available
   useEffect(() => {
@@ -602,6 +754,13 @@ const CheckoutPage = () => {
       return;
     }
 
+    if (editorMode && editDirty) {
+      toast.error("Save your changes to continue.");
+      editItemsByStoreRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      editItemsByStoreRef.current?.focus({ preventScroll: true });
+      return;
+    }
+
     try {
       if (scheduleValidationError) {
         toast.error(scheduleValidationError);
@@ -615,14 +774,7 @@ const CheckoutPage = () => {
       const fulfillableStores = backendData?.fulfillable_stores || [];
       const primaryStore = fulfillableStores?.[0] || {};
 
-      // If user opted to adjust (multi-store "No, I'll adjust"), block checkout until only one store remains.
-      if (editorMode && fulfillableStores.length > 1 && splitOrderSelected === false) {
-        toast.error("Please delete items from other stores until only one store remains.");
-        return;
-      }
-
-      const shouldSplitOrders =
-        splitDecisionMade ? splitOrderSelected : fulfillableStores.length > 1;
+      const shouldSplitOrders = fulfillableStores.length > 1;
       
       // Check for quantity mismatches using new structure
       const mismatched = [];
@@ -762,14 +914,14 @@ const CheckoutPage = () => {
   };
 
   const handleConfirmSplitYes = () => {
-    setSplitOrderSelected(true);
     setSplitDecisionMade(true);
     setEditorMode(false);
     setShowMultiStoreDialog(false);
   };
 
   const handleConfirmSplitNo = () => {
-    setSplitOrderSelected(false);
+    captureEditBaseline();
+    setEditDirty(false);
     setSplitDecisionMade(true);
     setEditorMode(true);
     setShowMultiStoreDialog(false);
@@ -793,18 +945,43 @@ const CheckoutPage = () => {
 
   const handleEnterEditMode = () => {
     if ((fulfillableStores?.length || 0) < 2) return;
+    captureEditBaseline();
+    setEditDirty(false);
     setEditorMode(true);
+    setSplitDecisionMade(true);
     setShowMultiStoreDialog(false);
   };
 
-  const handleDiscardAdjustDecision = () => {
-    // This does not restore deleted items — it only discards the "I'll adjust" decision
-    // and brings back the multi-store choice popup.
+  const handleConfirmSaveEdits = () => {
+    setShowSaveConfirm(false);
     setEditorMode(false);
+    setEditDirty(false);
     setConfirmStoreId(null);
-    setSplitOrderSelected(false);
-    setSplitDecisionMade(false);
-    setShowMultiStoreDialog(true);
+    setShowMultiStoreDialog(false);
+    setSplitDecisionMade(true);
+  };
+
+  const handleCancelUnsavedNav = () => {
+    pendingUnsavedNavRef.current = null;
+    setShowUnsavedNavConfirm(false);
+  };
+
+  const handleSaveAndContinueNav = () => {
+    const dest = pendingUnsavedNavRef.current;
+    pendingUnsavedNavRef.current = null;
+    bypassUnsavedNavRef.current = true;
+    setShowUnsavedNavConfirm(false);
+    handleConfirmSaveEdits();
+
+    if (dest === "back") {
+      window.history.go(window.history.length > 2 ? -2 : -1);
+    } else if (dest) {
+      router.replace(dest);
+    }
+
+    window.setTimeout(() => {
+      bypassUnsavedNavRef.current = false;
+    }, 500);
   };
 
   const handlePromptDeleteStore = (storeId: number) => {
@@ -847,7 +1024,7 @@ const CheckoutPage = () => {
       setConfirmStoreId(null);
 
       // Re-sync cart from backend to avoid any divergence (shared carts, partial removals, etc.)
-      await cartStore.switchCart(cartStore.cartId);
+      await switchCartWithStock(cartStore.cartId);
 
       // Refresh preview with split_order: false (single-store intent) so the UI updates immediately.
       const refreshLocationData =
@@ -873,19 +1050,8 @@ const CheckoutPage = () => {
       });
 
       setPreviewData(refreshed);
-      const stores = (refreshed?.data || refreshed)?.fulfillable_stores || [];
-
-      // If the user deleted items down to a single store, exit edit mode.
-      if (stores.length === 1) {
-        setEditorMode(false);
-        toast.success("Ready to place single-store order");
-      } else if (stores.length > 1) {
-        // Keep edit mode so the user can delete from other stores too.
-        setEditorMode(true);
-        setShowMultiStoreDialog(false);
-      } else {
-        setEditorMode(false);
-      }
+      setShowMultiStoreDialog(false);
+      setSplitDecisionMade(true);
     } catch (e) {
       console.error(e);
       toast.error("Failed to delete items from this store.");
@@ -1054,18 +1220,15 @@ const CheckoutPage = () => {
               <CardHeader>
                 <CardTitle className="flex items-center justify-between gap-2 text-sm sm:text-base md:text-lg">
                   <span>Edit Items by Store</span>
-                  {fulfillableStores.length > 1 && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handleDiscardAdjustDecision}
-                      disabled={loadingPreview}
-                      className="text-xs sm:text-sm"
-                    >
-                      Discard changes
-                    </Button>
-                  )}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={() => setShowSaveConfirm(true)}
+                    disabled={loadingPreview}
+                    className="text-xs sm:text-sm"
+                  >
+                    Save
+                  </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -1318,6 +1481,56 @@ const CheckoutPage = () => {
         store={productsStore}
         onQuantityChange={schedulePreviewRefresh}
       />
+
+      <Dialog open={showSaveConfirm} onOpenChange={setShowSaveConfirm}>
+        <DialogContent className="w-[calc(100%-2rem)] rounded-lg sm:w-full">
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-lg">Are you sure?</DialogTitle>
+            <DialogDescription className="text-sm">
+              {editDirty
+                ? "Save these changes and continue to checkout?"
+                : "Continue to checkout?"}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-row justify-end gap-2 sm:space-x-0">
+            <Button
+              variant="outline"
+              onClick={() => setShowSaveConfirm(false)}
+            >
+              Cancel
+            </Button>
+            <Button onClick={handleConfirmSaveEdits}>
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={showUnsavedNavConfirm}
+        onOpenChange={(open) => {
+          if (!open) handleCancelUnsavedNav();
+        }}
+      >
+        <DialogContent
+          className="w-[calc(100%-2rem)] rounded-lg sm:w-full"
+          onInteractOutside={(event) => event.preventDefault()}
+          onEscapeKeyDown={(event) => event.preventDefault()}
+        >
+          <DialogHeader className="text-left">
+            <DialogTitle className="text-lg">Save your changes</DialogTitle>
+            <DialogDescription className="text-sm">
+              Save these changes to continue.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-row justify-end gap-2 sm:space-x-0">
+            <Button variant="outline" onClick={handleCancelUnsavedNav}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveAndContinueNav}>Save</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm delete store dialog */}
       <Dialog open={confirmStoreId != null} onOpenChange={(open) => { if (!open) setConfirmStoreId(null); }}>

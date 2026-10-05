@@ -98,7 +98,7 @@ export function isPickupFulfillment(fulfillmentMode: unknown): boolean {
 /**
  * Customer label for an order. Warehouse statuses `approved`, `processing`,
  * and `dispatched` collapse to "Preparing..." on a delivery. On a pickup,
- * `processing` means the order is packed and waiting, so it reads "Ready".
+ * `processing` means the order is packed and waiting, so it reads "Ready to collect".
  * An unrecognised status falls back to "Preparing..." so the badge is never blank.
  */
 export function getCustomerOrderStatus(
@@ -123,7 +123,7 @@ export function getCustomerOrderStatus(
     case "IN_PROGRESS":
     case "PACKED":
       return isPickup
-        ? { label: "Ready", tone: "ready" }
+        ? { label: "Ready to collect", tone: "ready" }
         : { label: "Preparing...", tone: "preparing" };
     case "READY":
       return { label: "Ready", tone: "ready" };

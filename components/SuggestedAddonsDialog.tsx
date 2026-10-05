@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { getPopularProducts } from "@/lib/api";
 import { useLocation } from "@/contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
+import { excludeUnavailableProducts } from "@/lib/stock-utils";
 import { Product } from "@/store";
 import ProductCard from "@/components/ProductCard";
 import ProductCardSkeleton from "@/components/ProductCardSkeleton";
@@ -26,33 +28,18 @@ export default function SuggestedAddonsDialog({
   description = "Add a few extras before checkout.",
   limit = 15,
 }: SuggestedAddonsDialogProps) {
-  const { deliveryType, defaultAddress, selectedStore } = useLocation();
+  const { deliveryType, defaultAddress, selectedStore, isLocationLoading } = useLocation();
   const [loading, setLoading] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
-
-  const locationParams = useMemo(() => {
-    let storeIds: number[] | undefined;
-    let latitude: number | undefined;
-    let longitude: number | undefined;
-
-    if (deliveryType === "pickup") {
-      if (selectedStore?.id) {
-        storeIds = [parseInt(selectedStore.id.toString())];
-      } else {
-        storeIds = [1, 2, 3, 4];
-      }
-    } else {
-      if (defaultAddress?.latitude && defaultAddress?.longitude) {
-        latitude = parseFloat(defaultAddress.latitude);
-        longitude = parseFloat(defaultAddress.longitude);
-      }
-    }
-
-    return { storeIds, latitude, longitude };
-  }, [deliveryType, defaultAddress?.latitude, defaultAddress?.longitude, selectedStore?.id]);
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !stockQuery.ready) return;
 
     const fetch = async () => {
       try {
@@ -68,11 +55,11 @@ export default function SuggestedAddonsDialog({
           false,
           true,
           true,
-          locationParams.storeIds,
-          locationParams.latitude,
-          locationParams.longitude
+          stockQuery.storeIds,
+          stockQuery.latitude,
+          stockQuery.longitude
         );
-        setProducts(Array.isArray(result) ? result : []);
+        setProducts(excludeUnavailableProducts(Array.isArray(result) ? result : []));
       } catch (e) {
         console.error("Failed to load popular items for suggestions:", e);
         setProducts([]);
@@ -82,7 +69,7 @@ export default function SuggestedAddonsDialog({
     };
 
     void fetch();
-  }, [open, limit, locationParams.latitude, locationParams.longitude, locationParams.storeIds]);
+  }, [open, limit, stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -7,6 +7,7 @@ import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { getRecentProducts } from "@/lib/api";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useLocation } from "@/contexts/LocationContext";
+import { catalogueStockQuery } from "@/lib/catalogue-location";
 import { Product } from "@/store";
 import Loader from "@/components/Loader";
 import AuthRetryScreen from "@/components/AuthRetryScreen";
@@ -15,7 +16,13 @@ import { ArrowLeft } from "lucide-react";
 
 export default function RecentItemsPage() {
   const { user, loading: authLoading, unresolved, isGuest } = useAuth();
-  const { deliveryType, defaultAddress, selectedStore } = useLocation();
+  const { deliveryType, defaultAddress, selectedStore, isLocationLoading } = useLocation();
+  const stockQuery = catalogueStockQuery({
+    deliveryType,
+    isLocationLoading,
+    defaultAddress,
+    selectedStore,
+  });
   const router = useRouter();
   const [recentProducts, setRecentProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,29 +43,24 @@ export default function RecentItemsPage() {
         return;
       }
 
+      if (!stockQuery.ready) {
+        setLoading(true);
+        return;
+      }
+
+      if (
+        deliveryType === "delivery" &&
+        stockQuery.latitude == null &&
+        stockQuery.longitude == null
+      ) {
+        setError("Please select a delivery location to view recent items");
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
-        
-        // Determine location based on delivery type
-        let latitude: number | undefined;
-        let longitude: number | undefined;
-
-        if (deliveryType === 'pickup') {
-          // For pickup mode, we don't send location (store_id is handled by backend based on auth)
-          latitude = undefined;
-          longitude = undefined;
-        } else {
-          // For delivery mode, use location coordinates
-          if (defaultAddress?.latitude && defaultAddress?.longitude) {
-            latitude = parseFloat(defaultAddress.latitude);
-            longitude = parseFloat(defaultAddress.longitude);
-          } else {
-            setError("Please select a delivery location to view recent items");
-            setLoading(false);
-            return;
-          }
-        }
 
         // Fetch all recent products (max 100)
         const products = await getRecentProducts(
@@ -67,8 +69,9 @@ export default function RecentItemsPage() {
           true, // includeCategories
           false, // includeTags
           true, // includeInventory
-          latitude, // latitude (for delivery)
-          longitude // longitude (for delivery)
+          stockQuery.latitude,
+          stockQuery.longitude,
+          stockQuery.storeIds
         );
         
         
@@ -90,7 +93,7 @@ export default function RecentItemsPage() {
     if (!authLoading && user) {
       fetchProducts();
     }
-  }, [user, authLoading, deliveryType, defaultAddress, selectedStore]);
+  }, [user, authLoading, deliveryType, stockQuery.ready, stockQuery.latitude, stockQuery.longitude, stockQuery.storeIds?.[0]]);
 
   if (authLoading && !unresolved) {
     return <Loader />;

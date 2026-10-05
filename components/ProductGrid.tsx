@@ -4,6 +4,7 @@ import React, { memo, useMemo } from "react";
 import ProductCard from "./ProductCard";
 import ProductCardSkeleton from "./ProductCardSkeleton";
 import { motion, AnimatePresence } from "framer-motion";
+import { excludeUnavailableProducts } from "@/lib/stock-utils";
 
 interface Props {
   products: Product[];
@@ -37,6 +38,7 @@ const ProductGrid = memo(
     itemClassName = CENTERED_ITEM_CLASS,
   }: Props) => {
     const layoutClassName = centered ? CENTERED_LAYOUT_CLASS : gridClassName;
+    const visibleProducts = excludeUnavailableProducts(products);
 
     const wrapItem = (node: React.ReactNode, key: React.Key) =>
       centered ? (
@@ -60,14 +62,14 @@ const ProductGrid = memo(
     );
 
     // Show skeleton loading for initial load
-    if (loading && products.length === 0) {
+    if (loading && visibleProducts.length === 0) {
       return skeletonGrid;
     }
 
     return (
       <div>
         <div className={layoutClassName}>
-          {products?.map((product) =>
+          {visibleProducts.map((product) =>
             wrapItem(
               <motion.div
                 layout
