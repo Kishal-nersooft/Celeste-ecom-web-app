@@ -9,6 +9,7 @@ import Loader from "@/components/Loader";
 import PhoneAuth from "@/components/PhoneAuth";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { getCurrentUserWithToken, registerUser } from "@/lib/api";
+import { queueIntroAfterLogin } from "@/lib/intro-splash";
 import toast from "react-hot-toast";
 
 function displayNameFromProfile(profile: unknown): string {
@@ -71,6 +72,7 @@ export default function LoginPage() {
       if (result.registered) {
         const name = displayNameFromProfile(result.profile);
         toast.success(name ? `Welcome back ${name} 👋🏻` : "Welcome back 👋🏻");
+        queueIntroAfterLogin();
         router.push(returnUrl);
         return;
       }
@@ -105,6 +107,7 @@ export default function LoginPage() {
         }
       }
       toast.success("Account created successfully!");
+      queueIntroAfterLogin();
       router.push(returnUrl);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "Registration failed. Please try again.";

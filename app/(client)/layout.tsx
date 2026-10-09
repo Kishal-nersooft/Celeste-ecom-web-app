@@ -1,13 +1,16 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
+import Script from "next/script";
 import "../globals.css";
 import { Poppins } from "next/font/google";
 import { ConditionalClientChrome } from "@/components/ConditionalClientChrome";
 import { AppToaster } from "@/components/AppToaster";
 import { FirebaseAuthProvider } from "@/components/FirebaseAuthProvider";
+import { IntroSplash } from "@/components/IntroSplash";
 import { LocationProvider } from "@/contexts/LocationContext";
 import { CategoryProvider } from "@/contexts/CategoryContext";
 import { FavoritesProvider } from "@/contexts/FavoritesContext";
+import { INTRO_BOOT_SCRIPT } from "@/lib/intro-splash";
 
 const poppins = localFont({
   src: "../fonts/Poppins.woff2",
@@ -34,11 +37,15 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className={`${poppins.variable} antialiased`}>
+        <Script id="celeste-intro-boot" strategy="beforeInteractive">
+          {INTRO_BOOT_SCRIPT}
+        </Script>
         <FirebaseAuthProvider>
           <LocationProvider>
             <CategoryProvider>
               <FavoritesProvider>
               <ConditionalClientChrome>{children}</ConditionalClientChrome>
+              <IntroSplash />
               <AppToaster />
               </FavoritesProvider>
             </CategoryProvider>

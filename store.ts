@@ -148,6 +148,10 @@ export interface Order {
   awaitingCustomerChoice?: boolean;
   /** How many lines are waiting. Used to badge the orders list. */
   heldItemCount?: number;
+  /** Firestore `orders_live.version`. Older writes must not replace a newer one. */
+  liveVersion?: number;
+  /** `pending` while a price difference is still being settled. `settled` when the money is done. */
+  settlementStatus?: string;
   createdAt: Date;
   updatedAt: Date;
 }

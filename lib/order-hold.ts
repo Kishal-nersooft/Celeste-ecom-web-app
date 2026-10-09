@@ -35,13 +35,6 @@ export interface ItemChoiceResult {
   paymentAction?: string;
 }
 
-export interface PaymentSession {
-  paymentReference: string;
-  sessionId?: string;
-  threeDsHtml?: string;
-  status?: string;
-}
-
 export function readOrderHold(
   raw: Record<string, unknown>,
   items?: OrderItem[],
@@ -67,9 +60,46 @@ export function heldLineCopy(quantity: number, heldQuantity: number): string {
 }
 
 export function choiceWindowCopy(timedOut: boolean, windowSeconds?: number): string {
-  if (timedOut) return "The shop may call you about this. You can still choose.";
+  if (timedOut) return "Time's up — the shop will call you to agree a replacement.";
   const label = formatDecisionWindow(windowSeconds);
   return `The shop is waiting — please choose within ${label}, or they'll call you.`;
+}
+
+/** Remaining time from the server's own clock. Never add the device clock on top. */
+export function serverWindowRemaining(waitingSeconds?: number, windowSeconds?: number): number | null {
+  if (waitingSeconds == null || windowSeconds == null) return null;
+  if (!Number.isFinite(waitingSeconds) || !Number.isFinite(windowSeconds)) return null;
+  return Math.max(0, Math.round(windowSeconds - waitingSeconds));
+}
+
+export function choiceResultCopy(
+  kind: "replace" | "remove",
+  result: { paymentAction?: string; amountDifference?: number },
+): string {
+  const verb = kind === "remove" ? "Removed" : "Added";
+  const action = (result.paymentAction || "none").toLowerCase();
+  const refund =
+    result.amountDifference != null && result.amountDifference < -0.009
+      ? formatLkr(Math.abs(result.amountDifference))
+      : null;
+
+  if (action === "refund_issued") {
+    return refund
+      ? `${verb}. ${refund} is on its way back to you.`
+      : `${verb}. The difference is on its way back to you.`;
+  }
+  if (action === "settles_when_packed") {
+    return `${verb}. We'll collect the small difference once the shop packs.`;
+  }
+  return `${verb}.`;
+}
+
+function formatLkr(amount: number): string {
+  return new Intl.NumberFormat("en-LK", {
+    style: "currency",
+    currency: "LKR",
+    minimumFractionDigits: 2,
+  }).format(amount);
 }
 
 export function formatDecisionWindow(windowSeconds?: number): string {
@@ -106,19 +136,6 @@ export function estimateChoiceDifference(
   heldValue: number,
 ): number {
   return unitPrice * quantity - heldValue;
-}
-
-export function isChoiceWindowOver(input: {
-  timedOut: boolean;
-  waitingSeconds?: number;
-  decisionWindowSeconds?: number;
-  fetchedAt: number;
-  now: number;
-}): boolean {
-  if (input.timedOut) return true;
-  if (input.waitingSeconds == null || input.decisionWindowSeconds == null) return false;
-  const elapsed = Math.max(0, (input.now - input.fetchedAt) / 1000);
-  return input.waitingSeconds + elapsed >= input.decisionWindowSeconds;
 }
 
 export function parseSubstitutes(payload: unknown): ItemSubstitutes | null {
@@ -191,23 +208,6 @@ export function parseChoiceResult(payload: unknown): ItemChoiceResult | null {
         : typeof record.paymentAction === "string"
           ? record.paymentAction
           : undefined,
-  };
-}
-
-export function parsePaymentSession(payload: unknown): PaymentSession | null {
-  const record = asRecord(unwrapData(payload));
-  if (!record) return null;
-  const nested = asRecord(record.payment_info) ?? record;
-  const paymentReference = nested.payment_reference ?? nested.paymentReference ?? nested.reference;
-  if (typeof paymentReference !== "string" || !paymentReference.trim()) return null;
-  const sessionId = nested.session_id ?? nested.sessionId;
-  const threeDs = nested.three_ds_html ?? nested.threeDsHtml;
-  const status = nested.status;
-  return {
-    paymentReference: paymentReference.trim(),
-    sessionId: typeof sessionId === "string" && sessionId.trim() ? sessionId.trim() : undefined,
-    threeDsHtml: typeof threeDs === "string" && threeDs.trim() ? threeDs : undefined,
-    status: typeof status === "string" ? status : undefined,
   };
 }
 

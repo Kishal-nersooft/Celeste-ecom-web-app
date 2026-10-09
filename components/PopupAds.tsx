@@ -14,6 +14,25 @@ interface PopupAdsProps {
   categoryId?: number | null; // Optional category ID for targeted promotions
 }
 
+const POPUP_SEEN_KEY = "celeste-popup-promotion-seen";
+
+function hasSeenPopup(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return localStorage.getItem(POPUP_SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markPopupSeen(): void {
+  try {
+    localStorage.setItem(POPUP_SEEN_KEY, "1");
+  } catch {
+    // Private mode or storage quota — skip persistence.
+  }
+}
+
 const PopupAds: React.FC<PopupAdsProps> = ({ 
   imageUrl, 
   delay = 5000, // Default 5 seconds
@@ -22,6 +41,8 @@ const PopupAds: React.FC<PopupAdsProps> = ({
 }) => {
   const { hasValidLocation } = useLocation();
   const [isOpen, setIsOpen] = useState(false);
+  // null until the client reads storage; true means this browser already saw the popup.
+  const [alreadySeen, setAlreadySeen] = useState<boolean | null>(null);
   const [imageError, setImageError] = useState(false);
   const [currentImageUrl, setCurrentImageUrl] = useState<string>("");
   const [retryCount, setRetryCount] = useState(0);
@@ -125,8 +146,14 @@ const PopupAds: React.FC<PopupAdsProps> = ({
     }
   };
 
-  // Fetch promotions from API - always fetch fresh data on mount
   useEffect(() => {
+    setAlreadySeen(hasSeenPopup());
+  }, []);
+
+  // Fetch promotions only on the first visit. Later home visits skip the popup entirely.
+  useEffect(() => {
+    if (alreadySeen !== false) return;
+
     const fetchPromotion = async () => {
       setIsLoading(true);
       setImageError(false);
@@ -205,29 +232,24 @@ const PopupAds: React.FC<PopupAdsProps> = ({
       }
     };
 
-    // Always fetch fresh random promotion from backend when component mounts
-    // Empty deps array ensures we fetch fresh data every time user visits homepage
-    // Backend sends random promotion, so each visit gets a different random image
     fetchPromotion();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Fetch fresh random promotion on every mount (homepage visit)
+  }, [alreadySeen]);
 
   useEffect(() => {
-    // Reset state when component mounts to ensure popup shows on every visit
-    setIsOpen(false);
-    setImageError(false);
-    setRetryCount(0);
-    
+    if (alreadySeen !== false) return;
+
     // Only set timer if we have an image URL (from API or fallback)
     if (currentImageUrl && !isLoading && hasValidLocation) {
       const timer = setTimeout(() => {
+        markPopupSeen();
+        setAlreadySeen(true);
         setIsOpen(true);
       }, delay);
 
-      // Cleanup timer on unmount
       return () => clearTimeout(timer);
     }
-  }, [delay, currentImageUrl, isLoading, hasValidLocation]);
+  }, [alreadySeen, delay, currentImageUrl, isLoading, hasValidLocation]);
 
   return (
     <DialogPrimitive.Root open={isOpen} onOpenChange={setIsOpen}>

@@ -1,5 +1,5 @@
 import { readOrderHold } from "@/lib/order-hold";
-import { getOrderStatusFromPayload } from "@/lib/order-status";
+import { getOrderStatusFromPayload, withProcessingField } from "@/lib/order-status";
 import type { DriverInfo, OrderItem, OrderItemChange, OrderReplacement, RiderInfo } from "@/store";
 
 export type OrderApprovalStatus = "pending" | "approved" | "rejected" | "expired";
@@ -467,25 +467,34 @@ function readDriverFromPayload(raw: Record<string, unknown>): DriverInfo | undef
 }
 
 export function orderPatchFromPayload(raw: Record<string, unknown>) {
-  const amendment = readOrderAmendment(raw);
-  const totalAmount = parseMoney(raw.total_amount ?? raw.totalAmount);
+  const view = withProcessingField(raw);
+  const amendment = readOrderAmendment(view);
+  const totalAmount = parseMoney(view.total_amount ?? view.totalAmount);
   const hasStatus =
-    raw.status != null ||
-    raw.order_status != null ||
-    raw.orderStatus != null ||
-    raw.fulfillment_status != null ||
-    raw.fulfillmentStatus != null;
+    view.status != null ||
+    view.order_status != null ||
+    view.orderStatus != null ||
+    view.fulfillment_status != null ||
+    view.fulfillmentStatus != null;
 
-  const hasItems = Array.isArray(raw.items);
-  const items = hasItems ? mapOrderItems(raw.items) : undefined;
-  const rider = readRiderFromPayload(raw);
-  const driver = readDriverFromPayload(raw);
-  const hold = readOrderHold(raw, items);
+  const hasItems = Array.isArray(view.items);
+  const items = hasItems ? mapOrderItems(view.items) : undefined;
+  const rider = readRiderFromPayload(view);
+  const driver = readDriverFromPayload(view);
+  const hold = readOrderHold(view, items);
+  const liveVersion = parseMoney(view.version);
+  const settlementRaw = view.settlement_status ?? view.settlementStatus;
+  const settlementStatus =
+    typeof settlementRaw === "string" && settlementRaw.trim()
+      ? settlementRaw.trim().toLowerCase()
+      : undefined;
 
   return {
     ...amendment,
     ...hold,
-    ...(hasStatus ? { status: getOrderStatusFromPayload(raw) } : {}),
+    ...(liveVersion != null ? { liveVersion } : {}),
+    ...(settlementStatus ? { settlementStatus } : {}),
+    ...(hasStatus ? { status: getOrderStatusFromPayload(view) } : {}),
     ...(totalAmount !== undefined ? { totalAmount, total: totalAmount } : {}),
     ...(items ? { items, itemChanges: readOrderItemChanges(raw) } : {}),
     ...(rider ? { rider } : {}),

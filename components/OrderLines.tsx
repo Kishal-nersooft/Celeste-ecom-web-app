@@ -223,10 +223,12 @@ function ReplacementGroup({
 function ItemRow({
   item,
   orderId,
+  liveVersion,
   onChoiceApplied,
 }: {
   item: OrderItem;
   orderId?: string;
+  liveVersion?: number;
   onChoiceApplied?: () => void;
 }) {
   const ordered = item.orderedQuantity ?? item.quantity;
@@ -247,7 +249,12 @@ function ItemRow({
         />
         {orderId && item.lineId && onChoiceApplied && (
           <div className="px-2 pb-2">
-            <OrderItemChoice orderId={orderId} item={item} onApplied={onChoiceApplied} />
+            <OrderItemChoice
+              orderId={orderId}
+              item={item}
+              liveVersion={liveVersion}
+              onApplied={onChoiceApplied}
+            />
           </div>
         )}
       </div>
@@ -323,12 +330,14 @@ const OrderLines = ({
   paid,
   totalNow,
   orderId,
+  liveVersion,
   onChoiceApplied,
 }: {
   items: OrderItem[];
   paid?: number;
   totalNow?: number;
   orderId?: string;
+  liveVersion?: number;
   onChoiceApplied?: () => void;
 }) => {
   const rows = withRemovedLines(items, paid, totalNow);
@@ -340,6 +349,7 @@ const OrderLines = ({
           key={`${item.lineId ?? item.productId}-${index}`}
           item={item}
           orderId={orderId}
+          liveVersion={liveVersion}
           onChoiceApplied={onChoiceApplied}
         />
       ))}

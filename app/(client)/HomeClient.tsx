@@ -47,8 +47,7 @@ const HomeClient: React.FC<HomeClientProps> = ({
 
   return (
     <>
-      {/* Popup Ads Component - Shows after 5 seconds */}
-      {/* Fetches promotions from API, with fallback to local image if no promotions available */}
+      {/* Popup ads — once per browser, then never again until a later display pattern is added */}
       <PopupAds 
         imageUrl="/popup-ads/popup-ad-image.png" // Fallback image if no API promotions
         delay={5000}

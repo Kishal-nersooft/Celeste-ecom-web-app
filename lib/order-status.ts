@@ -59,13 +59,99 @@ export function normalizeOrderStatus(raw: unknown): string {
   return s.toUpperCase().replace(/[\s-]+/g, "_");
 }
 
+/**
+ * Ready-state payload. After `pending`, the backend puts the packed order on `processing`:
+ * items, rider, and driver live there, and that state is what the customer should see as Ready.
+ */
+export function readProcessingRecord(
+  raw: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const value = raw.processing;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function processingHasReadyPayload(processing: Record<string, unknown>): boolean {
+  if (Array.isArray(processing.items) && processing.items.length > 0) return true;
+  if (processing.rider != null || processing.driver != null) return true;
+  if (processing.driver_info != null || processing.assigned_driver != null) return true;
+  const nested = processing.status ?? processing.order_status ?? processing.orderStatus;
+  if (nested == null) return false;
+  const normalized = normalizeOrderStatus(nested);
+  return normalized !== "" && normalized !== "PENDING" && normalized !== "PAYMENT_PENDING";
+}
+
+const BEFORE_READY = new Set([
+  "",
+  "PENDING",
+  "PAYMENT_PENDING",
+  "CONFIRMED",
+  "PAID",
+  "APPROVED",
+  "PREPARING",
+  "IN_PROGRESS",
+  "PACKED",
+  "DISPATCHED",
+  "PROCESSING",
+]);
+
+/**
+ * Copy the ready-state details off `processing` onto the order the UI reads.
+ * Items, rider, and driver on that field replace the top-level copies.
+ * A pending order stays pending. After pending, a filled `processing` field is the Ready status.
+ */
+export function withProcessingField(raw: Record<string, unknown>): Record<string, unknown> {
+  const processing = readProcessingRecord(raw);
+  if (!processing || !processingHasReadyPayload(processing)) return raw;
+
+  const items = Array.isArray(processing.items) ? processing.items : raw.items;
+  const rider = raw.rider ?? processing.rider;
+  const driver =
+    raw.driver ??
+    processing.driver ??
+    processing.driver_info ??
+    processing.assigned_driver ??
+    raw.driver_info ??
+    raw.assigned_driver;
+
+  const rawTop =
+    raw.status ??
+    raw.order_status ??
+    raw.orderStatus ??
+    raw.fulfillment_status ??
+    raw.fulfillmentStatus;
+  const top = rawTop == null || rawTop === "" ? "" : normalizeOrderStatus(rawTop);
+  const nested = processing.status ?? processing.order_status ?? processing.orderStatus;
+  const nestedNorm = nested == null ? "" : normalizeOrderStatus(nested);
+  const nestedIsReady =
+    nestedNorm !== "" && nestedNorm !== "PENDING" && nestedNorm !== "PAYMENT_PENDING";
+
+  let status = raw.status;
+  if (top === "PENDING" || top === "PAYMENT_PENDING") {
+    if (nestedIsReady) status = nested;
+  } else if (top === "") {
+    status = nestedIsReady ? nested : "processing";
+  } else if (BEFORE_READY.has(top)) {
+    status = nestedIsReady ? nested : "processing";
+  }
+
+  return {
+    ...raw,
+    ...(items !== undefined ? { items } : {}),
+    ...(rider ? { rider } : {}),
+    ...(driver ? { driver } : {}),
+    ...(status != null ? { status } : {}),
+  };
+}
+
 export function getOrderStatusFromPayload(order: Record<string, unknown>): string {
+  const view = withProcessingField(order);
   const raw =
-    order.status ??
-    order.order_status ??
-    order.orderStatus ??
-    order.fulfillment_status ??
-    order.fulfillmentStatus;
+    view.status ??
+    view.order_status ??
+    view.orderStatus ??
+    view.fulfillment_status ??
+    view.fulfillmentStatus;
   return normalizeOrderStatus(raw);
 }
 
@@ -96,10 +182,10 @@ export function isPickupFulfillment(fulfillmentMode: unknown): boolean {
 }
 
 /**
- * Customer label for an order. Warehouse statuses `approved`, `processing`,
- * and `dispatched` collapse to "Preparing..." on a delivery. On a pickup,
- * `processing` means the order is packed and waiting, so it reads "Ready to collect".
- * An unrecognised status falls back to "Preparing..." so the badge is never blank.
+ * Customer label for an order. After pending, `processing` is the ready state:
+ * "Ready" on a delivery and "Ready to collect" on a pickup. `approved` and
+ * `dispatched` stay "Preparing..." until that field is set. An unrecognised
+ * status falls back to "Preparing..." so the badge is never blank.
  */
 export function getCustomerOrderStatus(
   status: unknown,
@@ -119,6 +205,9 @@ export function getCustomerOrderStatus(
     case "DISPATCHED":
       return { label: "Preparing...", tone: "preparing" };
     case "PROCESSING":
+      return isPickup
+        ? { label: "Ready to collect", tone: "ready" }
+        : { label: "Ready", tone: "ready" };
     case "PREPARING":
     case "IN_PROGRESS":
     case "PACKED":

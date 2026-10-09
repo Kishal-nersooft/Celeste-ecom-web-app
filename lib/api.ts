@@ -2443,12 +2443,35 @@ export async function checkInventoryAvailability(productIds: number[], storeId?:
 
 // ==================== ORDER MANAGEMENT API FUNCTIONS ====================
 
-function extractOrdersFromResponse(data: any): any[] {
+function asOrderList(value: unknown): any[] | null {
+  return Array.isArray(value) ? value : null;
+}
+
+function tagBucketStatus(orders: any[], status: string): any[] {
+  return orders.map((order) => {
+    if (!order || typeof order !== "object") return order;
+    const current = String(order.status ?? "").trim().toLowerCase();
+    if (!current || current === "pending") return { ...order, status };
+    return order;
+  });
+}
+
+/** Orders list. After pending, ready orders are the `processing` array when `orders` is absent. */
+export function extractOrdersFromResponse(data: any): any[] {
   if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.orders)) return data.orders;
-  if (Array.isArray(data?.data?.orders)) return data.data.orders;
-  return [];
+  const root = data?.data && typeof data.data === "object" && !Array.isArray(data.data) ? data.data : data;
+  const listed =
+    asOrderList(root?.orders) ??
+    asOrderList(data?.orders) ??
+    asOrderList(data?.data);
+  if (listed && listed.length > 0) return listed;
+
+  const pending = asOrderList(root?.pending) ?? [];
+  const processing = asOrderList(root?.processing) ?? [];
+  if (pending.length > 0 || processing.length > 0) {
+    return [...tagBucketStatus(pending, "pending"), ...tagBucketStatus(processing, "processing")];
+  }
+  return listed ?? [];
 }
 
 // Verify payment for an order
@@ -2677,53 +2700,6 @@ export async function submitItemChoice(
 
   if (!response.ok) {
     await throwApiError(response, "Could not save your choice.");
-  }
-
-  return response.json();
-}
-
-export async function confirmItemChoice(
-  orderId: string,
-  itemId: string,
-  paymentReference: string,
-) {
-  const authHeaders = await getAuthHeaders();
-  const response = await fetch(apiUrl(`/orders/${orderId}/items/${itemId}/choice/confirm`), {
-    method: "POST",
-    headers: authHeaders,
-    body: JSON.stringify({ payment_reference: paymentReference }),
-  });
-
-  if (!response.ok) {
-    await throwApiError(response, "Payment was received, but the change was not applied. Please try again.");
-  }
-
-  return response.json();
-}
-
-/** Start the same hosted payment used at checkout, for a price difference on a held line. */
-export async function initiateOutstandingPayment(input: {
-  amount: number;
-  orderId: string;
-  sourceTokenId?: number;
-}) {
-  const authHeaders = await getAuthHeaders();
-  const body: Record<string, unknown> = {
-    amount: input.amount,
-    currency: "LKR",
-    order_id: Number(input.orderId),
-    save_card: true,
-  };
-  if (input.sourceTokenId != null) body.source_token_id = input.sourceTokenId;
-
-  const response = await fetch(apiUrl("/payments/initiate"), {
-    method: "POST",
-    headers: authHeaders,
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    await throwApiError(response, "Could not start payment.");
   }
 
   return response.json();

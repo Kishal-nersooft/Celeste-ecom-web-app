@@ -17,19 +17,20 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Order, DriverInfo, RiderInfo } from "@/store";
-import { getAuthHeaders, getOrderById, getUserOrders, apiUrl } from "@/lib/api";
+import { extractOrdersFromResponse, getAuthHeaders, getOrderById, getUserOrders, apiUrl } from "@/lib/api";
 import {
   canCancelOrderAsCustomer,
   getCustomerOrderStatus,
   getOrderStatusFromPayload,
   getOrderStatusesForTab,
   isPickupFulfillment,
+  withProcessingField,
   type OrderFilterTab,
   type OrderStatusTone,
 } from "@/lib/order-status";
 import { mapOrderItems, orderPatchFromPayload, payloadOmitsAmendment, readOrderAmendment, readOrderItemChanges, unwrapOrderPayload } from "@/lib/order-amendment";
 import { readOrderHold } from "@/lib/order-hold";
-import { ORDER_LIVE_POLL_MS, subscribeOrderLive } from "@/lib/order-live";
+import { subscribeOrderLive, type OrderLiveSnapshot } from "@/lib/order-live";
 import toast from "react-hot-toast";
 import PriceFormatter from "@/components/PriceFormatter";
 import OrderAmendmentApproval from "@/components/OrderAmendmentApproval";
@@ -88,26 +89,7 @@ const OrdersPageContent = () => {
       try {
         const statuses = getOrderStatusesForTab(filter);
         const response = await getUserOrders(1, 50, statuses, true, true, true, true);
-        
-        // Handle the new API response structure: { statusCode, message, data: { orders, pagination } }
-        let backendOrders = [];
-        
-        if (response.statusCode && response.data) {
-          // New structure with statusCode and data wrapper
-          backendOrders = response.data.orders || [];
-        } else if (Array.isArray(response)) {
-          // Direct array response (fallback)
-          backendOrders = response;
-        } else if (response.data && Array.isArray(response.data)) {
-          // Data wrapper with direct array
-          backendOrders = response.data;
-        } else if (response.orders && Array.isArray(response.orders)) {
-          // Old structure with orders key
-          backendOrders = response.orders;
-        } else if (response.data?.orders && Array.isArray(response.data.orders)) {
-          // Nested data.orders structure
-          backendOrders = response.data.orders;
-        }
+        let backendOrders = extractOrdersFromResponse(response);
 
         // Amendment fields are guaranteed on GET /orders/{id}. Hydrate when the list omits them.
         if ((filter === "ongoing" || filter === "cancelled") && backendOrders.length > 0) {
@@ -154,7 +136,10 @@ const OrdersPageContent = () => {
         };
 
         // Convert backend orders to local Order format based on API schema
-        const convertedOrders: Order[] = backendOrders.map((order: any) => {
+        const convertedOrders: Order[] = backendOrders.map((source: any) => {
+          const order = withProcessingField(
+            source && typeof source === "object" ? source : {},
+          ) as any;
           const scheduledAtRaw =
             order.scheduled_at ??
             order.scheduledAt ??
@@ -216,6 +201,11 @@ const OrdersPageContent = () => {
             itemChanges,
             awaitingCustomerChoice: hold.awaitingCustomerChoice,
             heldItemCount: hold.heldItemCount,
+            liveVersion: typeof order.version === "number" ? order.version : undefined,
+            settlementStatus:
+              typeof order.settlement_status === "string"
+                ? order.settlement_status.toLowerCase()
+                : undefined,
           };
         });
         
@@ -331,6 +321,7 @@ const OrdersPageContent = () => {
     running: new Set(),
     pending: new Set(),
   });
+  const liveVersionRef = useRef<Map<string, number>>(new Map());
 
   const ongoingOrderKey =
     activeFilter === "ongoing"
@@ -343,7 +334,35 @@ const OrdersPageContent = () => {
   useEffect(() => {
     if (!user || !ongoingOrderKey) return;
 
-    const refreshOrder = (orderId: string) => {
+    const acceptVersion = (orderId: string, version: number | undefined) => {
+      if (version == null) return true;
+      const seen = liveVersionRef.current.get(orderId);
+      if (seen != null && version < seen) return false;
+      liveVersionRef.current.set(orderId, version);
+      return true;
+    };
+
+    const refreshOrder = (orderId: string, live?: OrderLiveSnapshot) => {
+      if (live && !acceptVersion(orderId, live.version)) return;
+
+      if (live) {
+        const liveView = withProcessingField({
+          ...(live.status ? { status: live.status } : {}),
+          ...(live.processing ? { processing: live.processing } : {}),
+        });
+        const liveStatus = getOrderStatusFromPayload(liveView);
+        handleOrderUpdatedRef.current(orderId, {
+          ...(live.version != null ? { liveVersion: live.version } : {}),
+          ...(live.awaitingCustomerChoice != null
+            ? { awaitingCustomerChoice: live.awaitingCustomerChoice }
+            : {}),
+          ...(live.heldItemCount != null ? { heldItemCount: live.heldItemCount } : {}),
+          ...(live.status || live.processing ? { status: liveStatus } : {}),
+          ...(live.totalAmount != null ? { totalAmount: live.totalAmount, total: live.totalAmount } : {}),
+          ...(live.settlementStatus ? { settlementStatus: live.settlementStatus } : {}),
+        });
+      }
+
       const gate = liveRefreshRef.current;
       if (gate.running.has(orderId)) {
         gate.pending.add(orderId);
@@ -351,13 +370,20 @@ const OrdersPageContent = () => {
       }
       gate.running.add(orderId);
 
+      const requestedVersion = live?.version;
+
       void (async () => {
         try {
           const response = await getOrderById(orderId);
           const raw = unwrapOrderPayload(response);
-          if (raw) {
-            handleOrderUpdatedRef.current(orderId, orderPatchFromPayload(raw) as Partial<Order>);
-          }
+          if (!raw) return;
+          const patch = orderPatchFromPayload(raw) as Partial<Order>;
+          const responseVersion = patch.liveVersion;
+          const newest = liveVersionRef.current.get(orderId);
+          if (responseVersion != null && newest != null && responseVersion < newest) return;
+          if (requestedVersion != null && newest != null && requestedVersion < newest) return;
+          if (responseVersion != null) liveVersionRef.current.set(orderId, responseVersion);
+          handleOrderUpdatedRef.current(orderId, patch);
         } catch (error) {
           console.error(`Failed to refresh live order ${orderId}`, error);
         } finally {
@@ -372,16 +398,10 @@ const OrdersPageContent = () => {
 
     const orderIds = ongoingOrderKey.split(",");
     const stops = orderIds.map((orderId) =>
-      subscribeOrderLive(orderId, () => refreshOrder(orderId)),
+      subscribeOrderLive(orderId, (snapshot) => refreshOrder(orderId, snapshot)),
     );
-    // No web push. While this page is open, re-read each ongoing order so a
-    // shortage shows up for someone who is already waiting on the order.
-    const poll = window.setInterval(() => {
-      orderIds.forEach((orderId) => refreshOrder(orderId));
-    }, ORDER_LIVE_POLL_MS);
 
     return () => {
-      window.clearInterval(poll);
       stops.forEach((stop) => stop());
     };
   }, [user, ongoingOrderKey]);
@@ -636,7 +656,7 @@ const OrdersPageContent = () => {
                             )}
                           </div>
 
-                          {/* Rider/Driver details - shown when status is Shipped or Delivered */}
+                          {/* Rider/Driver details - from `processing` once the order is ready, and while it is out for delivery */}
                           {(() => {
                             const statusStr = String(order.status).toUpperCase();
                             const rider = order.rider;
@@ -645,7 +665,10 @@ const OrdersPageContent = () => {
                             const hasDriver = driver && (driver.name || driver.phone || driver.vehicle_number || driver.vehicle);
                             const showDetails =
                               !isPickupFulfillment(order.fulfillmentMode) &&
-                              (statusStr === "SHIPPED" || statusStr === "DELIVERED") &&
+                              (statusStr === "PROCESSING" ||
+                                statusStr === "READY" ||
+                                statusStr === "SHIPPED" ||
+                                statusStr === "DELIVERED") &&
                               (hasRider || hasDriver);
                             if (!showDetails) return null;
                             return (
@@ -714,6 +737,7 @@ const OrdersPageContent = () => {
                             paid={order.originalTotalAmount}
                             totalNow={order.totalAmount}
                             orderId={order.id}
+                            liveVersion={order.liveVersion}
                             onChoiceApplied={() => {
                               const responsePromise = getOrderById(order.id);
                               void responsePromise.then((response) => {
@@ -739,7 +763,13 @@ const OrdersPageContent = () => {
                                   className="text-base sm:text-xl font-bold text-green-600"
                                 />
                               </div>
-                              {order.originalTotalAmount != null &&
+                              {order.settlementStatus === "pending" && (
+                                <p className="mt-1 text-[10px] font-medium text-neutral-500 sm:text-xs">
+                                  The price difference will be settled when the shop finishes packing.
+                                </p>
+                              )}
+                              {order.settlementStatus !== "pending" &&
+                                order.originalTotalAmount != null &&
                                 order.totalAmount != null &&
                                 Math.abs(order.originalTotalAmount - order.totalAmount) > 0.009 && (
                                 <p className="mt-0.5 text-[10px] text-gray-400 sm:text-xs">
