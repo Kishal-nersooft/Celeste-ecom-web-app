@@ -166,13 +166,18 @@ const OrdersPageContent = () => {
           const itemsWithDetails = mapOrderItems(order.items);
           const itemChanges = readOrderItemChanges(order);
           const hold = readOrderHold(order, itemsWithDetails);
+          const fulfillmentMode = order.fulfillment_mode || 'delivery';
+          const orderType: 'delivery' | 'pickup' =
+            fulfillmentMode === 'pickup' ? 'pickup' : 'delivery';
+          const totalAmount = order.total_amount || 0;
 
           return {
             id: order.id?.toString() || 'unknown',
             orderNumber: order.id?.toString() || order.payment_reference || 'unknown',
             customerName: user.displayName || "Customer",
             email: user.email || "",
-            totalAmount: order.total_amount || 0,
+            total: totalAmount,
+            totalAmount,
             status: normalizedStatus,
             createdAt: order.created_at || new Date().toISOString(),
             userId: order.user_id || user.uid,
@@ -183,7 +188,8 @@ const OrdersPageContent = () => {
             storeId: order.store_id,
             updatedAt: order.updated_at,
             sourceCartId: order.items?.[0]?.source_cart_id,
-            fulfillmentMode: order.fulfillment_mode || 'delivery',
+            orderType,
+            fulfillmentMode,
             deliveryCharge: order.delivery_charge || 0,
             paymentReference: order.payment_reference,
             transactionId: order.transaction_id,
