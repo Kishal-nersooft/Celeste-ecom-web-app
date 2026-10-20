@@ -234,10 +234,14 @@ function readReplacement(record: Record<string, unknown>): OrderReplacement | un
     imageUrl: productImage(product) ?? productImage(nested),
     quantity,
     unitPrice,
+    totalPrice: parseMoney(nested.total_price ?? nested.totalPrice ?? product.total_price ?? product.totalPrice),
+    productId: Number.isFinite(productId) && productId > 0 ? productId : undefined,
   };
 }
 
 function isUnavailableLine(record: Record<string, unknown>, quantity: number, supplied: number, hasReplacement: boolean): boolean {
+  if (record.is_replaced === true || record.isReplaced === true || isSubstituteRow(record)) return false;
+  if (record.is_out_of_stock === true || record.isOutOfStock === true) return true;
   for (const key of ["removed", "is_removed", "unavailable", "is_unavailable", "deleted", "is_deleted"]) {
     if (record[key] === true) return true;
   }
@@ -277,7 +281,23 @@ function toReplacement(item: OrderItem): OrderReplacement {
     imageUrl: item.imageUrl,
     quantity: item.quantity || item.orderedQuantity || 1,
     unitPrice: item.price,
+    totalPrice: item.totalPrice,
+    productId: item.productId > 0 ? item.productId : undefined,
+    lineId: item.lineId,
   };
+}
+
+function flagTrue(record: Record<string, unknown>, keys: string[]): boolean {
+  return keys.some((key) => record[key] === true);
+}
+
+function idField(record: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (value == null || value === "" || value === 0 || value === "0") continue;
+    return String(value);
+  }
+  return undefined;
 }
 
 export function mapOrderItems(rawItems: unknown): OrderItem[] {
@@ -307,6 +327,15 @@ export function mapOrderItems(rawItems: unknown): OrderItem[] {
     const heldQuantity = parseQuantity(record.held_quantity ?? record.heldQuantity);
     const heldAt = textField(record, ["held_at", "heldAt"]);
     const awaitingChoice = holdStatus === "awaiting_customer";
+    const isReplaced = flagTrue(record, ["is_replaced", "isReplaced"]);
+    const isReplacement = isSubstituteRow(record);
+    const isRepriced = flagTrue(record, ["is_repriced", "isRepriced"]);
+    const isOutOfStock = flagTrue(record, ["is_out_of_stock", "isOutOfStock"]);
+    const replacedByItemId = idField(record, ["replaced_by_item_id", "replacedByItemId"]);
+    const replacesProductRaw = parseQuantity(record.replaces_product_id ?? record.replacesProductId);
+    const replacesProductId =
+      replacesProductRaw != null && replacesProductRaw > 0 ? replacesProductRaw : undefined;
+    if (isReplaced) suppliedQuantity = 0;
 
     const item: OrderItem = {
       productId: safeProductId,
@@ -316,9 +345,18 @@ export function mapOrderItems(rawItems: unknown): OrderItem[] {
       originalQuantity,
       orderedQuantity,
       suppliedQuantity,
+      totalPrice: parseMoney(record.total_price ?? record.totalPrice),
       imageUrl: productImage(product) ?? productImage(record),
       replacement,
       agreementNote: readAgreementNote(record),
+      isReplaced,
+      isReplacement,
+      isRepriced,
+      isOutOfStock,
+      replacedByItemId,
+      replacesProductId,
+      originalUnitPrice: parseMoney(record.original_unit_price ?? record.originalUnitPrice),
+      unitPriceDifference: parseMoney(record.unit_price_difference ?? record.unitPriceDifference),
       unavailable: awaitingChoice
         ? false
         : isUnavailableLine(record, quantity, suppliedQuantity, Boolean(replacement)),
@@ -328,7 +366,15 @@ export function mapOrderItems(rawItems: unknown): OrderItem[] {
       heldAt,
     };
 
-    return { item, key: recordKey(record), parent: parentKey(record), child: isSubstituteRow(record) };
+    return {
+      item,
+      key: recordKey(record),
+      parent: parentKey(record),
+      isReplaced,
+      isReplacement,
+      replacedByItemId,
+      replacesProductId,
+    };
   });
 
   const byKey = new Map<string, (typeof parsed)[number]>();
@@ -337,41 +383,49 @@ export function mapOrderItems(rawItems: unknown): OrderItem[] {
   }
 
   const consumed = new Set<(typeof parsed)[number]>();
+
+  const foldReplacement = (host: (typeof parsed)[number], child: (typeof parsed)[number]) => {
+    if (host === child || host.isReplacement) return;
+    if (host.item.holdStatus === "awaiting_customer") return;
+    if (child.item.holdStatus === "awaiting_customer") return;
+    const existingLineId = host.item.replacement?.lineId;
+    if (existingLineId && existingLineId !== child.item.lineId) return;
+    host.item.replacement = toReplacement(child.item);
+    host.item.agreementNote = host.item.agreementNote ?? child.item.agreementNote;
+    if (!host.item.isOutOfStock) host.item.unavailable = false;
+    consumed.add(child);
+  };
+
   for (const row of parsed) {
-    if (!row.child) continue;
-    const parent = row.parent ? byKey.get(row.parent) : undefined;
-    const host = parent && !parent.child ? parent : undefined;
-    if (!host) continue;
-    if (host.item.replacement) {
-      consumed.add(row);
-      continue;
-    }
-    host.item.replacement = toReplacement(row.item);
-    host.item.agreementNote = host.item.agreementNote ?? row.item.agreementNote;
-    if (host.item.suppliedQuantity == null || host.item.suppliedQuantity === host.item.orderedQuantity) {
-      const ordered = host.item.orderedQuantity ?? host.item.quantity;
-      const replaced = row.item.quantity || 1;
-      host.item.suppliedQuantity = replaced < ordered ? ordered - replaced : 0;
-    }
-    consumed.add(row);
+    if (!row.replacedByItemId) continue;
+    const child = byKey.get(row.replacedByItemId);
+    if (!child) continue;
+    foldReplacement(row, child);
   }
 
-  // A substitute that arrived after its product, with no parent id, hangs off the previous line.
-  let previous: (typeof parsed)[number] | undefined;
   for (const row of parsed) {
-    if (consumed.has(row)) continue;
-    if (row.child && previous && !previous.item.replacement) {
-      previous.item.replacement = toReplacement(row.item);
-      previous.item.agreementNote = previous.item.agreementNote ?? row.item.agreementNote;
-      const ordered = previous.item.orderedQuantity ?? previous.item.quantity;
-      const replaced = row.item.quantity || 1;
-      if (previous.item.suppliedQuantity == null || previous.item.suppliedQuantity === ordered) {
-        previous.item.suppliedQuantity = replaced < ordered ? ordered - replaced : 0;
-      }
-      consumed.add(row);
-      continue;
-    }
-    previous = row;
+    if (consumed.has(row) || !row.isReplacement || row.replacesProductId == null) continue;
+    const candidates = parsed.filter(
+      (host) =>
+        host !== row &&
+        !consumed.has(host) &&
+        !host.isReplacement &&
+        host.item.productId === row.replacesProductId &&
+        host.item.holdStatus !== "awaiting_customer",
+    );
+    const open = candidates.filter((host) => !host.item.replacement?.lineId);
+    const host =
+      candidates.find((candidate) => candidate.replacedByItemId === row.key) ??
+      open.find((candidate) => candidate.isReplaced) ??
+      (open.length === 1 ? open[0] : undefined);
+    if (host) foldReplacement(host, row);
+  }
+
+  for (const row of parsed) {
+    if (consumed.has(row) || !row.isReplacement || !row.parent) continue;
+    const host = byKey.get(row.parent);
+    if (!host || host.isReplacement) continue;
+    foldReplacement(host, row);
   }
 
   return parsed.filter((row) => !consumed.has(row)).map((row) => row.item);
@@ -382,6 +436,7 @@ export function readOrderItemChanges(raw: Record<string, unknown>): OrderItemCha
   const seenProductIds = new Set<number>();
 
   mapOrderItems(raw.items).forEach((item, index) => {
+    if (item.replacement || item.isReplaced || item.isReplacement) return;
     if (item.originalQuantity == null || item.originalQuantity === item.quantity) return;
     seenProductIds.add(item.productId);
     changes.push({

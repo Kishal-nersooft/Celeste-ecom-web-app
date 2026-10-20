@@ -5,29 +5,12 @@ import { ArrowDown, Phone, Plus } from "lucide-react";
 import PriceFormatter from "@/components/PriceFormatter";
 import OrderItemChoice from "@/components/OrderItemChoice";
 import { heldLineCopy } from "@/lib/order-hold";
-import type { OrderItem, OrderReplacement } from "@/store";
+import type { OrderItem } from "@/store";
 
 function lineTotal(item: OrderItem): number {
-  const quantity = item.orderedQuantity ?? item.quantity;
+  if (item.totalPrice != null) return item.totalPrice;
+  const quantity = item.suppliedQuantity ?? item.quantity;
   return item.price * quantity;
-}
-
-/** A removed line often stays on the order with its old quantity. The refund matches that line. */
-function withRemovedLines(items: OrderItem[], paid?: number, totalNow?: number): OrderItem[] {
-  if (paid == null || totalNow == null) return items;
-  const refund = paid - totalNow;
-  if (refund <= 0.009) return items;
-  if (items.some((item) => item.unavailable)) return items;
-
-  const matches = items.filter(
-    (item) =>
-      item.holdStatus !== "awaiting_customer" &&
-      !item.replacement &&
-      Math.abs(lineTotal(item) - refund) < 0.05,
-  );
-  if (matches.length !== 1) return items;
-
-  return items.map((item) => (item === matches[0] ? { ...item, unavailable: true } : item));
 }
 
 function ProductCard({
@@ -37,6 +20,7 @@ function ProductCard({
   amount,
   previousAmount,
   unavailable,
+  statusLabel,
   badge,
 }: {
   name: string;
@@ -45,6 +29,7 @@ function ProductCard({
   amount: number;
   previousAmount?: number;
   unavailable?: boolean;
+  statusLabel?: string;
   badge?: React.ReactNode;
 }) {
   return (
@@ -79,7 +64,7 @@ function ProductCard({
       {unavailable && (
         <div className="absolute inset-0 flex items-center justify-center">
           <span className="rounded-full border border-gray-200 bg-white/95 px-3 py-1 text-xs font-semibold text-gray-800 shadow-sm">
-            Unavailable
+            {statusLabel ?? "Refunded"}
           </span>
         </div>
       )}
@@ -121,27 +106,6 @@ function PriceDelta({ amount }: { amount: number }) {
   );
 }
 
-function QtyPriceDetail({
-  from,
-  to,
-  unitPrice,
-}: {
-  from: number;
-  to: number;
-  unitPrice: number;
-}) {
-  return (
-    <div className="space-y-0.5">
-      <p className="text-gray-400 line-through">
-        Qty: {from} × <PriceFormatter amount={unitPrice} className="text-[10px] font-normal text-gray-400 line-through sm:text-xs" />
-      </p>
-      <p className="text-gray-700">
-        Qty: {to} × <PriceFormatter amount={unitPrice} className="text-[10px] font-normal text-gray-700 sm:text-xs" />
-      </p>
-    </div>
-  );
-}
-
 function ReplacementGroup({
   item,
   ordered,
@@ -151,64 +115,80 @@ function ReplacementGroup({
   ordered: number;
   supplied: number;
 }) {
-  const replacement = item.replacement as OrderReplacement;
-  const replacedCount = replacement.quantity || Math.max(ordered - supplied, 1);
-  const removedValue = replacedCount * item.price;
-  const addedValue = replacement.quantity * replacement.unitPrice;
-  const delta = addedValue - removedValue;
-  const stillSupplied = supplied > 0 && supplied < ordered;
+  const replacement = item.replacement;
+  const fullReplace = item.isReplaced || supplied <= 0;
+  const partial = !fullReplace && supplied < ordered;
+  const replacedCount = fullReplace ? Math.max(ordered, 1) : Math.max(ordered - supplied, 0);
+  const unitPrice = item.originalUnitPrice ?? item.price;
+  const removedValue = replacedCount * unitPrice;
+  const addedValue = replacement
+    ? (replacement.totalPrice ?? replacement.quantity * replacement.unitPrice)
+    : 0;
+  const delta = replacement ? addedValue - removedValue : 0;
 
   return (
     <div className="rounded-xl border border-sky-100 bg-sky-50/80 p-3">
-      {stillSupplied && (
+      {partial && (
         <div className="mb-3 flex items-center gap-3 rounded-lg bg-white/80 px-2 py-2">
           <Thumb imageUrl={item.imageUrl} />
           <div className="min-w-0 flex-1">
             <h4 className="truncate text-sm font-medium text-gray-900">{item.name}</h4>
-            <QtyPriceDetail from={ordered} to={supplied} unitPrice={item.price} />
+            <p className="text-xs font-medium text-gray-700">
+              Ordered {ordered} · supplying {supplied}
+            </p>
           </div>
-          <div className="shrink-0 text-right">
-            <PriceFormatter
-              amount={ordered * item.price}
-              className="block text-xs font-normal text-gray-400 line-through"
-            />
-            <PriceFormatter amount={supplied * item.price} className="text-sm font-semibold text-gray-900" />
-          </div>
+          <PriceFormatter
+            amount={item.totalPrice ?? supplied * item.price}
+            className="shrink-0 text-sm font-semibold text-gray-900"
+          />
         </div>
       )}
 
-      <div className="flex items-center gap-3 px-1 opacity-70">
-        <Thumb imageUrl={item.imageUrl} mark="out" />
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate text-sm font-medium text-gray-500 line-through">{item.name}</h4>
-          <p className="text-xs text-gray-400">
-            Qty: {replacedCount} ×{" "}
-            <PriceFormatter amount={item.price} className="text-xs font-normal text-gray-400" />
-          </p>
+      {!partial && replacedCount > 0 && (
+        <div className="flex items-center gap-3 px-1 opacity-70">
+          <Thumb imageUrl={item.imageUrl} mark="out" />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2">
+              <h4 className="truncate text-sm font-medium text-gray-500 line-through">{item.name}</h4>
+              {fullReplace && (
+                <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-sky-800">
+                  Substituted
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-400">
+              Qty: {replacedCount} ×{" "}
+              <PriceFormatter amount={unitPrice} className="text-xs font-normal text-gray-400" />
+            </p>
+          </div>
+          <PriceFormatter amount={removedValue} className="shrink-0 text-sm font-medium text-gray-400 line-through" />
         </div>
-        <PriceFormatter amount={removedValue} className="shrink-0 text-sm font-medium text-gray-400 line-through" />
-      </div>
+      )}
 
-      <div className="my-2 flex items-center gap-2">
-        <div className="h-px flex-1 bg-sky-200" />
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 shadow-sm">
-          <ArrowDown className="h-3.5 w-3.5 text-sky-700" />
-          <PriceDelta amount={delta} />
-        </span>
-        <div className="h-px flex-1 bg-sky-200" />
-      </div>
+      {replacement && (
+        <>
+          <div className="my-2 flex items-center gap-2">
+            <div className="h-px flex-1 bg-sky-200" />
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 shadow-sm">
+              <ArrowDown className="h-3.5 w-3.5 text-sky-700" />
+              <PriceDelta amount={delta} />
+            </span>
+            <div className="h-px flex-1 bg-sky-200" />
+          </div>
 
-      <div className="flex items-center gap-3 rounded-lg bg-white px-2 py-2 shadow-sm">
-        <Thumb imageUrl={replacement.imageUrl} mark="in" />
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate text-sm font-medium text-gray-900">{replacement.name}</h4>
-          <p className="text-xs text-gray-500">
-            Qty: {replacement.quantity} ×{" "}
-            <PriceFormatter amount={replacement.unitPrice} className="text-xs font-normal text-gray-500" />
-          </p>
-        </div>
-        <PriceFormatter amount={addedValue} className="shrink-0 text-sm font-semibold text-gray-900" />
-      </div>
+          <div className="flex items-center gap-3 rounded-lg bg-white px-2 py-2 shadow-sm">
+            <Thumb imageUrl={replacement.imageUrl} mark="in" />
+            <div className="min-w-0 flex-1">
+              <h4 className="truncate text-sm font-medium text-gray-900">{replacement.name}</h4>
+              <p className="text-xs text-gray-500">
+                Qty: {replacement.quantity} ×{" "}
+                <PriceFormatter amount={replacement.unitPrice} className="text-xs font-normal text-gray-500" />
+              </p>
+            </div>
+            <PriceFormatter amount={addedValue} className="shrink-0 text-sm font-semibold text-gray-900" />
+          </div>
+        </>
+      )}
 
       {item.agreementNote && (
         <p className="mt-2 flex items-center gap-1.5 px-1 text-xs text-gray-500">
@@ -234,6 +214,10 @@ function ItemRow({
   const ordered = item.orderedQuantity ?? item.quantity;
   const supplied = item.suppliedQuantity ?? ordered;
   const amount = lineTotal(item);
+  const repriced =
+    item.isRepriced &&
+    item.originalUnitPrice != null &&
+    Math.abs(item.originalUnitPrice - item.price) > 0.009;
 
   if (item.holdStatus === "awaiting_customer") {
     const held = item.heldQuantity ?? 0;
@@ -261,13 +245,18 @@ function ItemRow({
     );
   }
 
-  if (item.unavailable) {
+  if (item.replacement || item.isReplaced) {
+    return <ReplacementGroup item={item} ordered={ordered} supplied={supplied} />;
+  }
+
+  if (item.unavailable || item.isOutOfStock) {
     return (
       <ProductCard
         name={item.name}
         imageUrl={item.imageUrl}
         amount={amount}
         unavailable
+        statusLabel={item.isOutOfStock ? "Refunded" : "Unavailable"}
         detail={
           <>
             Qty: {ordered} × <PriceFormatter amount={item.price} className="text-[10px] font-normal text-gray-600 sm:text-xs" />
@@ -278,12 +267,7 @@ function ItemRow({
   }
 
   const added = ordered === 0 && item.quantity > 0;
-  const fullReplace = Boolean(item.replacement) && supplied === 0;
-  const quantityChanged = supplied !== ordered && !fullReplace && !added;
-
-  if (item.replacement) {
-    return <ReplacementGroup item={item} ordered={ordered} supplied={supplied} />;
-  }
+  const quantityChanged = supplied !== ordered && !added;
 
   if (added) {
     return (
@@ -310,14 +294,33 @@ function ItemRow({
     <ProductCard
       name={item.name}
       imageUrl={item.imageUrl}
-      amount={quantityChanged ? supplied * item.price : amount}
-      previousAmount={quantityChanged ? ordered * item.price : undefined}
+      amount={quantityChanged ? (item.totalPrice ?? supplied * item.price) : amount}
+      previousAmount={
+        quantityChanged
+          ? ordered * (item.originalUnitPrice ?? item.price)
+          : repriced
+            ? ordered * (item.originalUnitPrice ?? item.price)
+            : undefined
+      }
       detail={
         quantityChanged ? (
-          <QtyPriceDetail from={ordered} to={supplied} unitPrice={item.price} />
+          <p className="font-medium text-gray-700">
+            Ordered {ordered} · supplying {supplied}
+          </p>
+        ) : repriced ? (
+          <p>
+            Qty: {ordered} ×{" "}
+            <PriceFormatter
+              amount={item.originalUnitPrice}
+              className="text-[10px] font-normal text-gray-400 line-through sm:text-xs"
+            />
+            {" "}
+            <PriceFormatter amount={item.price} className="text-[10px] font-medium text-gray-800 sm:text-xs" />
+          </p>
         ) : (
           <>
             Qty: {ordered} × <PriceFormatter amount={item.price} className="text-[10px] font-normal text-gray-600 sm:text-xs" />
+            {item.isReplacement ? <span className="ml-1 font-medium text-sky-700">· Replacement</span> : null}
           </>
         )
       }
@@ -327,8 +330,6 @@ function ItemRow({
 
 const OrderLines = ({
   items,
-  paid,
-  totalNow,
   orderId,
   liveVersion,
   onChoiceApplied,
@@ -340,7 +341,7 @@ const OrderLines = ({
   liveVersion?: number;
   onChoiceApplied?: () => void;
 }) => {
-  const rows = withRemovedLines(items, paid, totalNow);
+  const rows = items;
 
   return (
     <div className="space-y-2 sm:space-y-3">

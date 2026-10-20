@@ -1,8 +1,14 @@
 import React from "react";
 
-const ProductCardSkeleton = () => {
+const ProductCardSkeleton = ({ compact = false }: { compact?: boolean }) => {
   return (
-    <div className="rounded-lg overflow-hidden bg-gray-100 shadow-[0_0_1px_rgba(16,24,40,0.14),0_0_4px_rgba(16,24,40,0.12)] flex flex-col h-[170px] sm:h-[190px] md:h-[210px] lg:h-[240px] w-full max-w-[120px] sm:max-w-[140px] md:max-w-[160px] lg:max-w-[180px] relative animate-pulse">
+    <div
+      className={`rounded-lg overflow-hidden bg-gray-100 shadow-[0_0_1px_rgba(16,24,40,0.14),0_0_4px_rgba(16,24,40,0.12)] flex flex-col w-full relative animate-pulse ${
+        compact
+          ? "h-[148px] max-w-none sm:h-[190px] md:h-[210px] lg:h-[240px]"
+          : "h-[170px] sm:h-[190px] md:h-[210px] lg:h-[240px] max-w-[120px] sm:max-w-[140px] md:max-w-[160px] lg:max-w-[180px]"
+      }`}
+    >
       {/* Image skeleton - 65% height */}
       <div className="border-b border-gray-300 overflow-hidden relative h-[65%] bg-gray-200">
         {/* Discount tag skeleton (top left) */}

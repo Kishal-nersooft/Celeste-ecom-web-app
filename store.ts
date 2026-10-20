@@ -55,6 +55,10 @@ export interface OrderReplacement {
   imageUrl?: string;
   quantity: number;
   unitPrice: number;
+  /** Line total from `total_price`. Matches `quantity`. */
+  totalPrice?: number;
+  productId?: number;
+  lineId?: string;
 }
 
 export interface OrderItem {
@@ -72,6 +76,24 @@ export interface OrderItem {
   replacement?: OrderReplacement;
   /** Shown under a substitution, for example "Agreed with you by phone". */
   agreementNote?: string;
+  /** Line amount from `total_price`. Matches `quantity` when the API sends it. */
+  totalPrice?: number;
+  /** `is_replaced`: the whole line was swapped. Strike this product through. */
+  isReplaced?: boolean;
+  /** `is_replacement`: this line is the substitute for another product. */
+  isReplacement?: boolean;
+  /** `is_repriced`: `price` changed. `originalUnitPrice` is what it was. */
+  isRepriced?: boolean;
+  /** `is_out_of_stock`: cannot be supplied. The refund has already happened. */
+  isOutOfStock?: boolean;
+  /** Item id of the substitute line (`replaced_by_item_id`). */
+  replacedByItemId?: string;
+  /** Product id this substitute stands in for (`replaces_product_id`). */
+  replacesProductId?: number;
+  /** Unit price before a reprice (`original_unit_price`). */
+  originalUnitPrice?: number;
+  /** `unit_price` minus `original_unit_price` when the API sends it. */
+  unitPriceDifference?: number;
   /** Warehouse removed this line. The row stays on the card, marked unavailable. */
   unavailable?: boolean;
   /** Order line id. Required to load substitutes and submit a choice. */

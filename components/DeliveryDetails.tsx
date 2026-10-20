@@ -13,26 +13,35 @@ import {
   MapPin,
   Truck,
   ShoppingBag,
-  Sparkles,
   Clock,
   Zap,
   DoorOpen,
   UserRound,
   Building2,
   ChevronRight,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CartLocationSelector from "./CartLocationSelector";
+import ScheduleDateTimePicker from "./ScheduleDateTimePicker";
 import { useLocation } from "@/contexts/LocationContext";
 import type { CheckoutDeliveryOption } from "@/lib/api";
 
 interface DeliveryDetailsProps {
   onLocationChange: (location: string) => void;
   selectedLocation: string;
-  selectedDeliveryService?: "standard" | "premium" | "priority";
-  onDeliveryServiceChange?: (service: "standard" | "premium" | "priority") => void;
+  selectedDeliveryService?: "standard" | "priority";
+  onDeliveryServiceChange?: (service: "standard" | "priority") => void;
   selectedDeliveryOption: CheckoutDeliveryOption;
   onDeliveryOptionChange: (option: CheckoutDeliveryOption) => void;
+  isScheduled?: boolean;
+  scheduledLocal?: string;
+  minScheduledLocal?: string;
+  scheduleHint?: string | null;
+  farDeliveryNote?: string | null;
+  scheduleError?: string | null;
+  onScheduleConfirm?: (value: string) => void;
+  onScheduleClear?: () => void;
   loading?: boolean;
 }
 
@@ -145,6 +154,14 @@ function SelectionRow({
   );
 }
 
+function formatScheduleSummary(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const day = date.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const time = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${day} · ${time}`;
+}
+
 const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
   onLocationChange,
   selectedLocation,
@@ -152,11 +169,20 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
   onDeliveryServiceChange,
   selectedDeliveryOption,
   onDeliveryOptionChange,
+  isScheduled = false,
+  scheduledLocal = "",
+  minScheduledLocal = "",
+  scheduleHint,
+  farDeliveryNote,
+  scheduleError,
+  onScheduleConfirm,
+  onScheduleClear,
   loading = false,
 }) => {
   const { deliveryType: selectedOrderType, setDeliveryType } = useLocation();
   const [locationOpen, setLocationOpen] = useState(false);
   const [handoffOpen, setHandoffOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   const handleOrderTypeChange = (value: "delivery" | "pickup") => {
     setDeliveryType(value);
@@ -167,6 +193,13 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
     handoffOptions.find((option) => option.value === selectedDeliveryOption) ?? handoffOptions[1];
   const HandoffIcon = selectedHandoff.icon;
   const showDeliveryExtras = selectedOrderType === "delivery" && !!onDeliveryServiceChange;
+  const scheduleSummary = isScheduled && scheduledLocal ? formatScheduleSummary(scheduledLocal) : "";
+  const activeDeliveryOption = isScheduled || scheduleOpen
+    ? "schedule"
+    : selectedDeliveryService === "priority"
+      ? "priority"
+      : "standard";
+  const deliveryOptionIndex = Math.max(0, ["priority", "standard", "schedule"].indexOf(activeDeliveryOption));
 
   if (loading) {
     return (
@@ -273,20 +306,17 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
                   aria-hidden
                   className="pointer-events-none absolute bottom-1.5 left-1.5 top-1.5 w-[calc((100%-0.75rem-0.5rem)/3)] rounded-xl bg-neutral-900 shadow-sm transition-transform duration-300 ease-out"
                   style={{
-                    transform: `translateX(calc(${Math.max(
-                      0,
-                      ["premium", "standard", "priority"].indexOf(selectedDeliveryService)
-                    )} * (100% + 0.25rem)))`,
+                    transform: `translateX(calc(${deliveryOptionIndex} * (100% + 0.25rem)))`,
                   }}
                 />
                 {(
                   [
-                    { id: "premium" as const, label: "Premium", icon: Sparkles },
-                    { id: "standard" as const, label: "Standard", icon: Clock },
                     { id: "priority" as const, label: "Priority", icon: Zap },
+                    { id: "standard" as const, label: "Standard", icon: Clock },
+                    { id: "schedule" as const, label: "Schedule", icon: CalendarClock },
                   ]
                 ).map((option) => {
-                  const selected = selectedDeliveryService === option.id;
+                  const selected = activeDeliveryOption === option.id;
                   const Icon = option.icon;
                   return (
                     <button
@@ -294,7 +324,13 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
                       type="button"
                       role="radio"
                       aria-checked={selected}
-                      onClick={() => onDeliveryServiceChange?.(option.id)}
+                      onClick={() => {
+                        if (option.id === "schedule") {
+                          setScheduleOpen(true);
+                          return;
+                        }
+                        onDeliveryServiceChange?.(option.id);
+                      }}
                       className={cn(
                         "relative z-10 flex min-h-[4.25rem] flex-col items-center justify-center gap-1.5 rounded-xl px-2 py-3 text-sm transition-colors duration-300",
                         selected ? "font-bold text-white" : "font-medium text-neutral-500 hover:text-neutral-800"
@@ -312,8 +348,62 @@ const DeliveryDetails: React.FC<DeliveryDetailsProps> = ({
                   );
                 })}
               </div>
+              {(scheduleSummary || scheduleError || farDeliveryNote) && (
+                <div className="space-y-1.5">
+                  {farDeliveryNote && (
+                    <p className="px-0.5 text-xs leading-snug text-amber-800">{farDeliveryNote}</p>
+                  )}
+                  {scheduleSummary && (
+                    <button
+                      type="button"
+                      onClick={() => setScheduleOpen(true)}
+                      className="flex w-full items-center justify-between rounded-xl bg-white px-3 py-2.5 text-left shadow-sm ring-1 ring-black/5 transition-colors hover:bg-neutral-50"
+                    >
+                      <span className="shrink-0 text-sm text-neutral-500">Scheduled for</span>
+                      <span className="truncate text-sm font-semibold text-[#007AFF]">{scheduleSummary}</span>
+                    </button>
+                  )}
+                  {scheduleError && <p className="px-0.5 text-xs text-red-600">{scheduleError}</p>}
+                </div>
+              )}
             </div>
           </>
+        )}
+
+        {selectedOrderType === "pickup" && onScheduleConfirm && (
+          <div className="space-y-2">
+            <Label className="text-xs font-medium sm:text-sm">Pickup time</Label>
+            <button
+              type="button"
+              onClick={() => setScheduleOpen(true)}
+              className="flex w-full items-center gap-3 rounded-xl border border-neutral-200 bg-white px-3 py-2.5 text-left transition-colors hover:bg-neutral-50"
+            >
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-100 text-neutral-700">
+                <CalendarClock className="h-4 w-4" />
+              </span>
+              <span className={cn("min-w-0 flex-1 truncate text-sm font-medium", scheduleSummary ? "text-neutral-900" : "text-neutral-500")}>
+                {scheduleSummary || "Schedule pickup"}
+              </span>
+              <span className="shrink-0 text-sm font-semibold text-neutral-900">
+                {scheduleSummary ? "Edit" : "Set"}
+              </span>
+            </button>
+            {scheduleError && <p className="px-0.5 text-xs text-red-600">{scheduleError}</p>}
+          </div>
+        )}
+
+        {onScheduleConfirm && (
+          <ScheduleDateTimePicker
+            open={scheduleOpen}
+            onOpenChange={setScheduleOpen}
+            value={scheduledLocal}
+            min={minScheduledLocal}
+            hint={scheduleHint}
+            canClear={isScheduled}
+            clearLabel={selectedOrderType === "pickup" ? "Pick up as soon as possible" : "Deliver as soon as possible"}
+            onConfirm={onScheduleConfirm}
+            onClear={onScheduleClear}
+          />
         )}
       </CardContent>
     </Card>

@@ -35,7 +35,7 @@ function ProfileSectionLayoutSkeleton({ children }: { children: React.ReactNode 
         <ProfileSidebarSkeleton />
       </div>
       <div className="min-w-0 flex-1 bg-white py-4 lg:p-8">
-        <div className="mb-5 flex items-center gap-3 lg:hidden">
+        <div className="mb-5 flex items-center gap-3">
           <Pulse className="h-9 w-9 rounded-full" />
           <Pulse className="h-4 w-32" />
         </div>
@@ -182,30 +182,25 @@ export function ProfileSecuritySkeleton() {
 export function ProfilePersonalInfoSkeleton() {
   return (
     <ProfileSectionLayoutSkeleton>
-      <div className="max-w-2xl">
-        <Pulse className="mb-2 hidden h-8 w-36 lg:block" />
-        <Pulse className="mb-6 h-4 w-full max-w-md lg:mb-8" />
-        <Pulse className="h-5 w-24 mb-4" />
-        <div className="flex items-center gap-4 py-4 border-b border-gray-100 mb-2">
-          <Pulse className="h-16 w-16 rounded-full shrink-0" />
-          <div className="flex-1 space-y-2">
-            <Pulse className="h-4 w-32" />
-            <Pulse className="h-3 w-48" />
-          </div>
+      <div className="mx-auto w-full max-w-lg">
+        <Pulse className="mb-8 hidden h-7 w-36 lg:block" />
+        <div className="flex justify-center">
+          <Pulse className="h-28 w-28 rounded-full" />
         </div>
-        {Array.from({ length: 5 }).map((_, idx) => (
-          <div
-            key={idx}
-            className="py-4 flex items-start gap-3 border-b border-gray-100 last:border-0"
-          >
-            <Pulse className="h-9 w-9 rounded-full shrink-0" />
-            <div className="flex-1 space-y-2">
-              <Pulse className="h-4 w-28" />
-              <Pulse className="h-3 w-40" />
+        <div className="mt-8 border-y border-gray-100">
+          {Array.from({ length: 3 }).map((_, idx) => (
+            <div
+              key={idx}
+              className="flex items-center justify-between gap-4 border-b border-gray-100 py-4 last:border-b-0"
+            >
+              <div className="space-y-2">
+                <Pulse className="h-3 w-20" />
+                <Pulse className="h-4 w-36" />
+              </div>
+              <Pulse className="h-4 w-4 shrink-0" />
             </div>
-            <Pulse className="h-5 w-5 shrink-0 rounded-sm" />
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </ProfileSectionLayoutSkeleton>
   );
@@ -237,67 +232,7 @@ export function ProfilePrivacySkeleton() {
   );
 }
 
-function SavedLocationCardSkeleton() {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 space-y-4">
-      <div className="flex items-start justify-between">
-        <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Pulse className="h-5 w-5 shrink-0 rounded-full" />
-          <Pulse className="h-5 w-32" />
-        </div>
-        <div className="flex gap-1">
-          <Pulse className="h-8 w-8 rounded" />
-          <Pulse className="h-8 w-8 rounded" />
-        </div>
-      </div>
-      <Pulse className="h-5 w-20 rounded-full" />
-      <div className="space-y-2">
-        <Pulse className="h-4 w-full" />
-        <Pulse className="h-4 w-4/5" />
-      </div>
-      <Pulse className="h-9 w-full rounded-md" />
-    </div>
-  );
-}
-
-/** Address card grid only — use while addresses load inside saved-locations tab */
-export function ProfileSavedLocationsGridSkeleton({ count = 4 }: { count?: number }) {
-  return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-      {Array.from({ length: count }).map((_, idx) => (
-        <SavedLocationCardSkeleton key={idx} />
-      ))}
-    </div>
-  );
-}
-
-/** Matches saved locations list rows */
-export function ProfileSavedLocationsSkeleton() {
-  return (
-    <ProfileSectionLayoutSkeleton>
-      <div className="max-w-2xl">
-        <Pulse className="mb-2 hidden h-8 w-44 lg:block" />
-        <Pulse className="mb-6 h-4 w-full max-w-lg lg:mb-8" />
-        <Pulse className="h-5 w-32 mb-4" />
-        {Array.from({ length: 4 }).map((_, idx) => (
-          <div
-            key={idx}
-            className="py-4 flex items-start gap-3 border-b border-gray-100 last:border-0"
-          >
-            <Pulse className="h-9 w-9 rounded-full shrink-0" />
-            <div className="flex-1 space-y-2">
-              <Pulse className="h-4 w-32" />
-              <Pulse className="h-3 w-full max-w-md" />
-            </div>
-            <Pulse className="h-5 w-5 shrink-0 rounded-sm" />
-          </div>
-        ))}
-      </div>
-    </ProfileSectionLayoutSkeleton>
-  );
-}
-
-export type ProfileSectionKey = "profile" | "security" | "privacy" | "saved-locations";
+export type ProfileSectionKey = "profile" | "security" | "privacy";
 
 export function ProfileSectionSkeleton({ section }: { section: ProfileSectionKey | null }) {
   const withContainer = (node: React.ReactNode) => (
@@ -311,48 +246,29 @@ export function ProfileSectionSkeleton({ section }: { section: ProfileSectionKey
       return withContainer(<ProfilePersonalInfoSkeleton />);
     case "privacy":
       return withContainer(<ProfilePrivacySkeleton />);
-    case "saved-locations":
-      return withContainer(<ProfileSavedLocationsSkeleton />);
     default:
       return (
-        <Container className="py-5 lg:py-10">
-          <div className="pb-6 lg:hidden">
-            <div className="flex items-center gap-3 py-1">
-              <Pulse className="h-14 w-14 rounded-full" />
-              <div className="min-w-0 flex-1 space-y-2">
-                <Pulse className="h-5 w-36" />
-                <Pulse className="h-3 w-48 max-w-full" />
-              </div>
-            </div>
-            <div className="mt-5 overflow-hidden rounded-2xl border border-gray-200">
-              {Array.from({ length: 4 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center gap-3 border-b border-gray-100 px-4 py-3.5 last:border-b-0"
-                >
-                  <Pulse className="h-10 w-10 shrink-0 rounded-full" />
-                  <Pulse className="h-4 w-28" />
-                  <Pulse className="ml-auto h-5 w-5 shrink-0" />
-                </div>
-              ))}
-            </div>
+        <Container className="py-6 lg:py-10">
+          <div className="flex items-center gap-3">
+            <Pulse className="h-9 w-9 rounded-full" />
+            <Pulse className="h-7 w-40" />
           </div>
-          <div className="mx-auto hidden min-h-screen max-w-md bg-white lg:block">
-            <div className="flex flex-col items-center pt-8 pb-12">
-              <Pulse className="h-24 w-24 rounded-full mb-4" />
-              <Pulse className="h-6 w-40" />
-            </div>
-            <div className="space-y-3 px-4">
-              {Array.from({ length: 4 }).map((_, idx) => (
-                <div
-                  key={idx}
-                  className="w-full bg-gray-100 rounded-lg px-4 py-4 flex items-center justify-between"
-                >
-                  <Pulse className="h-4 w-28" />
-                  <Pulse className="h-5 w-5" />
-                </div>
-              ))}
-            </div>
+          <div className="mt-8 flex flex-col items-center">
+            <Pulse className="h-28 w-28 rounded-full" />
+            <Pulse className="mt-4 h-6 w-36" />
+            <Pulse className="mt-2 h-4 w-28" />
+          </div>
+          <div className="mx-auto mt-10 w-full max-w-md overflow-hidden rounded-2xl border border-gray-200">
+            {Array.from({ length: 3 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="flex items-center gap-3 border-b border-gray-100 px-4 py-3.5 last:border-b-0"
+              >
+                <Pulse className="h-10 w-10 shrink-0 rounded-full" />
+                <Pulse className="h-4 w-28" />
+                <Pulse className="ml-auto h-5 w-5 shrink-0" />
+              </div>
+            ))}
           </div>
         </Container>
       );

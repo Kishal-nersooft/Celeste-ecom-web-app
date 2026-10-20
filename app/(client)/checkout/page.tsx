@@ -28,9 +28,8 @@ import PaymentMethod from "@/components/PaymentMethod";
 import QuantityButtons from "@/components/QuantityButtons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import Image from "next/image";
-import { CalendarClock, Timer, Store, Package } from "lucide-react";
+import { Store, Package } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -56,7 +55,7 @@ const CheckoutPage = () => {
   const [loadingCheckout, setLoadingCheckout] = useState(false);
   // Use LocationContext for order type instead of local state
   const { deliveryType: selectedOrderType, setDeliveryType: setSelectedOrderType } = useLocation();
-  const [selectedDeliveryService, setSelectedDeliveryService] = useState<'standard' | 'premium' | 'priority'>('standard');
+  const [selectedDeliveryService, setSelectedDeliveryService] = useState<'standard' | 'priority'>('standard');
   const [selectedDeliveryOption, setSelectedDeliveryOption] = useState<CheckoutDeliveryOption>('meet_outside');
   const [isScheduled, setIsScheduled] = useState(false);
   const [scheduledLocal, setScheduledLocal] = useState<string>("");
@@ -250,7 +249,7 @@ const CheckoutPage = () => {
             address_id: contextAddressId, // Address required for delivery
             mode: selectedOrderType,
             store_id: null, // No store for delivery
-            delivery_service_level: selectedDeliveryService,
+            delivery_service_level: isScheduled ? "standard" : selectedDeliveryService,
             delivery_option: selectedDeliveryOption,
           };
 
@@ -292,7 +291,7 @@ const CheckoutPage = () => {
         setRefreshingPreview(false);
       }
     }
-  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, selectedDeliveryOption, pickupStoreId, router]);
+  }, [user, loading, contextAddressId, cartStore.cartId, cartStore.items.length, selectedOrderType, selectedDeliveryService, isScheduled, selectedDeliveryOption, pickupStoreId, router]);
 
   const previewRefreshTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -545,6 +544,28 @@ const CheckoutPage = () => {
     }
     return null;
   }, [isScheduled, scheduledLocal, scheduleLeadTimeMs]);
+
+  const scheduleHint =
+    selectedOrderType === "delivery" && isFarDelivery
+      ? "This address is eligible for far delivery. Scheduled orders need at least 2 days' notice."
+      : "Choose a time at least 3 hours from now.";
+
+  const handleDeliveryServiceChange = (service: "standard" | "priority") => {
+    setSelectedDeliveryService(service);
+    setIsScheduled(false);
+    setScheduledLocal("");
+  };
+
+  const handleScheduleConfirm = (value: string) => {
+    setScheduledLocal(value);
+    setIsScheduled(true);
+    setSelectedDeliveryService("standard");
+  };
+
+  const handleScheduleClear = () => {
+    setIsScheduled(false);
+    setScheduledLocal("");
+  };
 
   const handleSetToAvailable = async () => {
     setProcessingQuantityMismatch(true);
@@ -814,7 +835,7 @@ const CheckoutPage = () => {
             address_id: contextAddressId, // Address required for delivery
             mode: selectedOrderType,
             store_id: null, // No store for delivery
-            delivery_service_level: selectedDeliveryService,
+            delivery_service_level: isScheduled ? "standard" : selectedDeliveryService,
             delivery_option: selectedDeliveryOption,
           };
 
@@ -1039,7 +1060,7 @@ const CheckoutPage = () => {
               address_id: contextAddressId!,
               mode: selectedOrderType,
               store_id: null,
-              delivery_service_level: selectedDeliveryService,
+              delivery_service_level: isScheduled ? "standard" : selectedDeliveryService,
               delivery_option: selectedDeliveryOption,
             };
 
@@ -1108,97 +1129,23 @@ const CheckoutPage = () => {
             onLocationChange={handleLocationChange}
             selectedLocation={selectedLocation}
             selectedDeliveryService={selectedDeliveryService}
-            onDeliveryServiceChange={setSelectedDeliveryService}
+            onDeliveryServiceChange={handleDeliveryServiceChange}
             selectedDeliveryOption={selectedDeliveryOption}
             onDeliveryOptionChange={setSelectedDeliveryOption}
+            isScheduled={isScheduled}
+            scheduledLocal={scheduledLocal}
+            minScheduledLocal={minScheduledDateLocal}
+            scheduleHint={scheduleHint}
+            farDeliveryNote={
+              selectedOrderType === "delivery" && isFarDelivery
+                ? "This address is eligible for far delivery. Scheduled orders need at least 2 days' notice."
+                : null
+            }
+            scheduleError={scheduleValidationError}
+            onScheduleConfirm={handleScheduleConfirm}
+            onScheduleClear={handleScheduleClear}
             loading={loadingPreview}
           />
-
-          {loadingPreview ? (
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Timer
-                      className="h-4 w-4 shrink-0 text-neutral-400 sm:h-[18px] sm:w-[18px] md:h-5 md:w-5"
-                      aria-hidden
-                    />
-                    <div className="h-4 sm:h-5 w-36 rounded-md bg-gray-200 animate-pulse md:w-40" />
-                  </div>
-                  <div className="h-7 w-12 shrink-0 rounded-full bg-gray-200 animate-pulse" />
-                </div>
-              </CardHeader>
-            </Card>
-          ) : (
-            <Card>
-              <CardHeader className="pb-4">
-                <div className="flex items-center justify-between gap-3">
-                  <CardTitle className="text-sm sm:text-base md:text-lg flex items-center gap-2 min-w-0">
-                    <Timer
-                      className="h-4 w-4 sm:h-[18px] sm:w-[18px] md:h-5 md:w-5 shrink-0 text-neutral-600"
-                      aria-hidden
-                    />
-                    <span className="truncate">Schedule order</span>
-                  </CardTitle>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={isScheduled}
-                    aria-label={isScheduled ? "Turn off scheduled order" : "Schedule this order for later"}
-                    onClick={() => {
-                      setIsScheduled((prev) => {
-                        const next = !prev;
-                        if (!next) setScheduledLocal("");
-                        return next;
-                      });
-                    }}
-                    className={[
-                      "relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors",
-                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2",
-                      isScheduled ? "bg-black" : "bg-neutral-300",
-                    ].join(" ")}
-                  >
-                    <span
-                      className={[
-                        "inline-block h-5 w-5 transform rounded-full bg-white shadow-sm transition-transform",
-                        isScheduled ? "translate-x-6" : "translate-x-1",
-                      ].join(" ")}
-                    />
-                  </button>
-                </div>
-              </CardHeader>
-              {(isScheduled || (selectedOrderType === "delivery" && isFarDelivery)) && (
-                <CardContent className="space-y-3">
-                  {selectedOrderType === "delivery" && isFarDelivery && (
-                    <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                      This address is eligible for far delivery. Scheduled orders require a minimum 2-day lead time.
-                    </div>
-                  )}
-                  {isScheduled && (
-                    <div className="space-y-2">
-                      <div className="relative rounded-xl border-2 border-neutral-200 bg-neutral-50/90 p-1 shadow-sm transition-colors hover:border-neutral-300 focus-within:border-black focus-within:bg-white focus-within:shadow-md focus-within:ring-2 focus-within:ring-black/10">
-                        <CalendarClock
-                          className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-neutral-500 sm:h-[18px] sm:w-[18px]"
-                          aria-hidden
-                        />
-                        <Input
-                          id="scheduled-at"
-                          type="datetime-local"
-                          value={scheduledLocal}
-                          min={minScheduledDateLocal}
-                          onChange={(e) => setScheduledLocal(e.target.value)}
-                          className="h-11 border-0 bg-transparent pl-10 pr-2 text-sm font-medium text-neutral-900 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:text-sm [color-scheme:light]"
-                        />
-                      </div>
-                      {scheduleValidationError && (
-                        <div className="text-xs text-red-600">{scheduleValidationError}</div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              )}
-            </Card>
-          )}
 
           <div className="hidden lg:block">
             <PaymentMethod
@@ -1454,10 +1401,10 @@ const CheckoutPage = () => {
           <div className="flex flex-col-reverse gap-2 sm:flex-row">
             <Button
               type="button"
-              variant="ghost"
+              variant="outline"
               onClick={handleConfirmSplitNo}
               disabled={loadingPreview}
-              className="h-10 flex-1 text-muted-foreground hover:text-foreground"
+              className="h-10 flex-1 border-neutral-300 bg-neutral-50 text-neutral-700 shadow-none hover:bg-neutral-100 hover:text-foreground"
             >
               Adjust items
             </Button>
@@ -1467,7 +1414,7 @@ const CheckoutPage = () => {
               disabled={loadingPreview}
               className="h-10 flex-1"
             >
-              Place {fulfillableStores.length} orders
+              Proceed to checkout
             </Button>
           </div>
         </DialogContent>

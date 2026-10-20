@@ -2,7 +2,7 @@
 
 import React from "react";
 import Container from "@/components/Container";
-import { ArrowLeft, ChevronRight } from "lucide-react";
+import { ArrowLeft, ChevronRight, User } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 
@@ -10,7 +10,6 @@ export const PROFILE_MENU_ITEMS = [
   { label: "Personal Info", key: "profile" },
   { label: "Security", key: "security" },
   { label: "Privacy & Data", key: "privacy" },
-  { label: "Saved Locations", key: "saved-locations" },
 ] as const;
 
 export type ProfileSectionKey = (typeof PROFILE_MENU_ITEMS)[number]["key"];
@@ -59,16 +58,16 @@ export function ProfileAccountLayout({
         </aside>
         <div className={cn("min-w-0 flex-1 bg-white py-4 lg:p-8", contentClassName)}>
           {onBack && (
-            <div className="mb-5 flex items-center gap-3 lg:hidden">
+            <div className="mb-5 flex items-center gap-3">
               <button
                 type="button"
                 onClick={onBack}
-                aria-label="Back to account"
-                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-900"
+                aria-label="Go back"
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-900 shadow-sm transition-colors hover:bg-neutral-50"
               >
                 <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
               </button>
-              <h2 className="min-w-0 truncate text-base font-semibold text-gray-900">{activeLabel}</h2>
+              <h2 className="min-w-0 truncate text-base font-semibold text-neutral-950 lg:hidden">{activeLabel}</h2>
             </div>
           )}
           {children}
@@ -178,4 +177,29 @@ export function SettingsRow({
 
 export function ProfileSectionSeparator() {
   return <Separator className="mb-8 bg-gray-200 lg:mb-10" />;
+}
+
+export function ProfileAvatar({
+  src,
+  alt = "",
+  className,
+}: {
+  src?: string | null;
+  alt?: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex h-28 w-28 items-center justify-center overflow-hidden rounded-full bg-neutral-100",
+        className
+      )}
+    >
+      {src ? (
+        <img src={src} alt={alt} className="h-full w-full object-cover" />
+      ) : (
+        <User className="h-10 w-10 text-neutral-400" strokeWidth={1.75} />
+      )}
+    </div>
+  );
 }

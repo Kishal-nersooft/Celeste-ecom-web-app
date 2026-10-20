@@ -56,6 +56,8 @@ function ChromeInner({ children }: { children: React.ReactNode }) {
   const scrollToTop = <ScrollToTopButton />;
 
   const isCheckoutRoute = pathname === "/checkout" || pathname.startsWith("/checkout/");
+  const isProfileRoute = pathname === "/profile" || pathname.startsWith("/profile/");
+  const isFavoritesRoute = pathname === "/favorites";
 
   const chrome = isCheckoutRoute ? (
     <>
@@ -68,6 +70,18 @@ function ChromeInner({ children }: { children: React.ReactNode }) {
       <Footer />
       {scrollToTop}
     </>
+  ) : isProfileRoute ? (
+    <div>
+      <div className="main-content">{children}</div>
+      {scrollToTop}
+    </div>
+  ) : isFavoritesRoute ? (
+    <div className="min-h-screen bg-gray-100">
+      <Header />
+      <div className="main-content lg:pt-20">{children}</div>
+      <MobileGoToCartBar />
+      {scrollToTop}
+    </div>
   ) : (
     <div>
       <Header />

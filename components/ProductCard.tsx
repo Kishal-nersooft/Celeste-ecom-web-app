@@ -16,9 +16,11 @@ import LazyProductImage from "./LazyProductImage";
 const ProductCard = memo(({
   product,
   scrollRoot,
+  compact = false,
 }: {
   product: Product;
   scrollRoot?: HTMLDivElement | null;
+  compact?: boolean;
 }) => {
   const { selectedCategoryId, isDealsSelected, setLastVisitedCategory } =
     useCategory();
@@ -79,9 +81,11 @@ const ProductCard = memo(({
 
   return (
     <div
-      className={`rounded-lg overflow-hidden shadow-[0_0_1px_rgba(16,24,40,0.14),0_0_4px_rgba(16,24,40,0.12)] group text-xs flex flex-col h-[170px] sm:h-[190px] md:h-[210px] lg:h-[240px] w-full max-w-[120px] sm:max-w-[140px] md:max-w-[160px] lg:max-w-[180px] relative ${
-        isDiscounted ? "bg-black text-white" : "bg-gray-100"
-      }`}
+      className={`rounded-lg overflow-hidden shadow-[0_0_1px_rgba(16,24,40,0.14),0_0_4px_rgba(16,24,40,0.12)] group text-xs flex flex-col w-full relative ${
+        compact
+          ? "h-[148px] max-w-none sm:h-[190px] md:h-[210px] lg:h-[240px]"
+          : "h-[170px] sm:h-[190px] md:h-[210px] lg:h-[240px] max-w-[120px] sm:max-w-[140px] md:max-w-[160px] lg:max-w-[180px]"
+      } ${isDiscounted ? "bg-black text-white" : "bg-gray-100"}`}
     >
       <div
         className={`border-b overflow-hidden relative h-[65%] ${
@@ -133,8 +137,9 @@ const ProductCard = memo(({
         <AddToCartButton product={product} />
       </div>
 
-      <div className="p-1.5 sm:p-2 flex flex-col gap-0 sm:gap-0.5 h-[35%] justify-between pr-6 sm:pr-8">
+      <div className={`flex flex-col justify-between h-[35%] ${compact ? "gap-0 p-1 pr-6 sm:gap-0.5 sm:p-2 sm:pr-8" : "gap-0 sm:gap-0.5 p-1.5 sm:p-2 pr-6 sm:pr-8"}`}>
         <PriceView
+          compact={compact}
           price={
             product?.pricing?.final_price ||
             product?.base_price ||
@@ -153,9 +158,11 @@ const ProductCard = memo(({
           {product?.brand}
         </p>
         <p
-          className={`text-[9px] sm:text-[10px] md:text-xs tracking-wide font-semibold line-clamp-2 capitalize ${
-            isDiscounted ? "text-white" : "text-black"
-          }`}
+          className={`tracking-wide font-semibold capitalize ${
+            compact
+              ? "text-[9px] line-clamp-1 sm:text-[10px] sm:line-clamp-2 md:text-xs"
+              : "text-[9px] sm:text-[10px] md:text-xs line-clamp-2"
+          } ${isDiscounted ? "text-white" : "text-black"}`}
         >
           {product?.name}
         </p>

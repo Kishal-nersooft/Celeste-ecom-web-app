@@ -2,14 +2,14 @@
 
 import React, { useEffect } from "react";
 import Container from "@/components/Container";
-import ProductGrid from "@/components/ProductGrid";
+import ProductCard from "@/components/ProductCard";
 import ProductCardSkeleton from "@/components/ProductCardSkeleton";
 import { useAuth } from "@/components/FirebaseAuthProvider";
 import { useFavorites } from "@/contexts/FavoritesContext";
 import Loader from "@/components/Loader";
 import AuthRetryScreen from "@/components/AuthRetryScreen";
 import { useRouter } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Heart } from "lucide-react";
 
 export default function FavoritesPage() {
   const { user, loading: authLoading, unresolved, isGuest } = useAuth();
@@ -40,45 +40,61 @@ export default function FavoritesPage() {
     return null;
   }
 
+  const productGridClass =
+    "grid w-full grid-cols-3 gap-3 sm:grid-cols-4 sm:gap-4 md:grid-cols-5 lg:grid-cols-6";
+
   return (
-    <div className="bg-gray-100 min-h-screen">
+    <div className="bg-gray-100 pb-6">
       <Container className="py-3 sm:py-4">
-        <div className="flex items-center mb-3 sm:mb-4">
+        <div className="relative mb-3 flex h-11 items-center sm:mb-4">
           <button
+            type="button"
             onClick={() => router.push("/")}
-            className="flex items-center text-gray-600 hover:text-gray-800 transition-colors mr-3 sm:mr-4"
+            aria-label="Back to home"
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-neutral-200 bg-white text-neutral-900 shadow-sm transition-colors hover:bg-neutral-50"
           >
-            <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 mr-1.5 sm:mr-2" />
-            <span className="font-medium text-sm sm:text-base truncate">Favorites</span>
+            <ArrowLeft className="h-[18px] w-[18px]" strokeWidth={2.25} />
           </button>
+          <h1 className="pointer-events-none absolute left-1/2 -translate-x-1/2 text-base font-semibold tracking-tight text-neutral-900 sm:text-lg">
+            Favorites
+          </h1>
         </div>
 
         {error && (
-          <div className="mb-4 p-4 bg-yellow-100 border border-yellow-400 text-yellow-700 rounded-lg">
-            <p className="font-semibold">⚠️ {error}</p>
+          <div className="mb-4 rounded-lg border border-yellow-400 bg-yellow-100 px-4 py-3 text-yellow-800">
+            <p className="text-sm font-semibold">{error}</p>
           </div>
         )}
 
-        <div className="bg-white rounded-lg shadow-md p-3 sm:p-4 md:p-6">
-          <h1 className="text-lg sm:text-xl md:text-2xl font-semibold text-gray-800 mb-3 sm:mb-4 md:mb-6">
-            Favorites
-          </h1>
+        <div className="rounded-lg bg-white p-3 shadow-md sm:p-4 md:p-6">
           {loading ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 sm:gap-3 md:gap-4">
-              {Array.from({ length: 12 }).map((_, index) => (
-                <div key={`skeleton-${index}`} className="w-full">
-                  <ProductCardSkeleton />
-                </div>
+            <div className={productGridClass}>
+              {Array.from({ length: 6 }).map((_, index) => (
+                <ProductCardSkeleton key={`skeleton-${index}`} compact />
               ))}
             </div>
           ) : favorites.length > 0 ? (
-            <ProductGrid products={favorites} />
+            <div className={productGridClass}>
+              {favorites.map((product) => (
+                <ProductCard key={product.id} product={product} compact />
+              ))}
+            </div>
           ) : (
-            <div className="text-center py-20">
-              <p className="text-gray-500 text-lg">No favorites yet</p>
-              <p className="text-gray-400 text-sm mt-2">
-                Tap the heart on any product to add it here.
+            <div className="flex flex-col items-center px-4 py-12 text-center sm:py-16">
+              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
+                <Heart className="h-6 w-6 text-black" />
+              </div>
+              <p className="text-lg font-semibold text-black">No favorites yet</p>
+              <p className="mt-1 max-w-xs text-sm text-gray-500">
+                Tap the heart on any product to save it here.
               </p>
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="mt-6 rounded-md bg-black px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-neutral-800"
+              >
+                Browse products
+              </button>
             </div>
           )}
         </div>
